@@ -30,9 +30,9 @@ Serve the parent of `tide/` so the compost submodule resolves, then open the
 page:
 
 ```sh
-cd ../..            # the folder that contains tide/
+cd ../..            # the folder that contains slide/
 python3 -m http.server 8765
-# http://localhost:8765/tide/prototype/slide.html
+# http://localhost:8765/slide/prototype/slide.html
 ```
 
 Or open `slide-standalone.html` directly. MIDI needs a served page in Chrome;
