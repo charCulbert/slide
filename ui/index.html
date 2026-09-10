@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tide</title>
+<link rel="icon" href="data:,">
+<style>
+:root { color-scheme: dark; background: #080808; color: #bdbdb9; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; --line: #ffffff21; --faint: #ffffff12; }
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; }
+body { min-width: 560px; min-height: 320px; }
+main { height: 100%; display: grid; grid-template-rows: 40px minmax(110px, 1fr) auto; padding: 0 18px; }
+header { display: flex; align-items: center; gap: 12px; }
+h1 { font: inherit; font-size: 13px; font-weight: 400; letter-spacing: .34em; text-transform: uppercase; color: #eee; margin: 0 auto 0 0; }
+button { font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: lowercase; color: #8b8b87; background: none; border: 1px solid transparent; border-radius: 0; cursor: pointer; min-height: 26px; padding: 4px 9px; }
+button:hover { color: #fff; }
+button[aria-pressed="true"] { color: #eee; border-color: #ffffff5c; }
+button:focus-visible, compost-knob:focus-visible { outline: 1px solid #9e9e9a; outline-offset: 2px; }
+#readout { color: #92928e; font-size: 10px; letter-spacing: .06em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.field { position: relative; min-height: 96px; }
+#field { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#hint { position: absolute; left: 0; bottom: 2px; margin: 0; color: #6d6d69; font-size: 10px; }
+#hint:empty { display: none; }
+#controls { display: grid; gap: 0; border-top: 1px solid var(--line); padding: 0 0 8px; }
+.row { display: grid; gap: 0 4px; }
+h2.group { grid-column: 1 / -1; margin: 5px 0 0; font: inherit; font-size: 9px; font-weight: 400; letter-spacing: .3em; text-transform: uppercase; color: #61615e; }
+h2.group::after { content: ""; display: inline-block; vertical-align: middle; width: 100%; height: 1px; margin-left: 8px; background: var(--faint); }
+compost-knob { width: 100%; justify-self: center; color: #cfcfc9; --compost-accent: #e6e6e1; --knob-dial-size: 40px; --knob-ring-width: 4px; }
+compost-knob[disabled] { opacity: .28; }
+compost-knob::part(label) { color: #9d9d98; font-size: 10px; letter-spacing: .06em; text-transform: lowercase; }
+compost-knob::part(value) { color: #e4e4df; font-size: 10px; }
+compost-knob::part(track) { color: #ffffff33; }
+compost-knob::part(cap) { background: #0e0e0e; border-color: #ffffff38; }
+/* Short windows: the group labels move into a rack ear column so the three
+   knob rows and the field still fit without scrolling. */
+@media (max-height: 430px) {
+  body { min-height: 260px; }
+  main { grid-template-rows: 34px minmax(44px, 1fr) auto; padding: 0 12px; }
+  h1 { font-size: 12px; letter-spacing: .26em; }
+  .row { grid-template-columns: 40px repeat(var(--row-knobs, 5), minmax(0, 1fr)) !important; gap: 0 4px; }
+  #controls { padding: 0 0 6px; }
+  h2.group { grid-column: auto; align-self: center; margin: 0; font-size: 8px; letter-spacing: .1em; }
+  h2.group::after { display: none; }
+  compost-knob { --knob-dial-size: 30px; --knob-ring-width: 3px; }
+  compost-knob::part(label) { font-size: 9px; }
+  compost-knob::part(value) { font-size: 9px; }
+}
+</style>
+</head>
+<body><main>
+<header>
+<h1>Tide</h1>
+<span id="readout" role="status">connecting</span>
+<button id="sync" aria-pressed="false" title="Follow the host tempo instead of the free time">free</button>
+<button id="mode" aria-pressed="false" title="Warp: the repeats come slower and lower together. Stretch: the pitch holds.">warp</button>
+<button id="freeze" aria-pressed="false" title="Mute the input and hold the repeats">freeze</button>
+<button id="clear" title="Flush the delay lines">clear</button>
+</header>
+<div class="field">
+<canvas id="field" aria-hidden="true"></canvas>
+<p id="hint" role="status">connecting</p>
+</div>
+<div id="controls"></div>
+</main><script type="module" src="main.js"></script></body>
+</html>
