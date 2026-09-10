@@ -1,0 +1,79 @@
+<meta charset="utf-8">
+<title>Slide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+:root{ --bg:#d6d6d6; --panel:#d2d2d2; --band:#c3c3c3; --ink:#1c1c1c; --ink2:#4f4f4f; --dim:#5d5d5d; --hair:#a9a9a9; --acc:#75540a; color-scheme:light }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --bg:#292929; --panel:#2e2e2e; --band:#3a3a3a; --ink:#dedede; --ink2:#bdbdbd; --dim:#909090; --hair:#575757; --acc:#ddc07e; color-scheme:dark } }
+:root[data-theme="dark"]{ --bg:#292929; --panel:#2e2e2e; --band:#3a3a3a; --ink:#dedede; --ink2:#bdbdbd; --dim:#909090; --hair:#575757; --acc:#ddc07e; color-scheme:dark }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14px;line-height:1.55;padding-inline:clamp(16px,5vw,64px);padding-block:48px 96px}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+h1{font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:14px;letter-spacing:.4em;margin:0;color:var(--ink)}
+.pitch{font-size:20px;line-height:1.4;max-width:34ch;text-wrap:balance;margin:0}
+.pitch b{font-weight:500;color:var(--acc)}
+p{margin:0;color:var(--ink2);max-width:66ch}
+h2{font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim);margin:0 0 12px;padding-bottom:6px;border-bottom:1px solid var(--band)}
+section{display:flex;flex-direction:column;gap:12px}
+dl{display:grid;grid-template-columns:minmax(120px,160px) 1fr;gap:10px 20px;margin:0}
+dt{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink);padding-top:2px}
+dt small{display:block;color:var(--dim);font-size:11px;letter-spacing:.02em}
+dd{margin:0;color:var(--ink2)}
+dd b{color:var(--ink);font-weight:500}
+.rule{position:relative;height:56px;border-bottom:1px solid var(--hair);margin:4px 0 8px}
+.rule i{position:absolute;bottom:-1px;width:1px;background:var(--hair);height:6px} .rule i.m{height:11px;background:var(--ink2)}
+.rule b{position:absolute;bottom:14px;transform:translateX(-50%);font:12px "IBM Plex Mono",monospace;color:var(--dim);font-weight:400}
+.rule .h{position:absolute;bottom:-1px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:8px solid var(--ink);transform:translateX(-50%)} .rule .h.a{border-bottom-color:var(--acc)}
+.rule .lab{position:absolute;bottom:26px;transform:translateX(-50%);font:500 12px "IBM Plex Sans",sans-serif;color:var(--ink)} .rule .lab.a{color:var(--acc)}
+.foot{color:var(--dim);font-size:12.5px;max-width:66ch}
+@media(max-width:520px){dl{grid-template-columns:1fr}dt{padding-top:6px}}
+</style>
+<div class="wrap">
+<header>
+  <h1>S L I D E</h1>
+  <p class="pitch" style="margin-top:22px">A stereo delay you set by <b>reading it</b>. The face is a picture of the repeats, and the controls are the scales of a slide rule underneath.</p>
+</header>
+
+<section>
+  <h2>The pitch</h2>
+  <p>Every delay plugin draws its knobs and leaves you to imagine the echoes. Slide draws the echoes. A log time axis from 1 ms to 100 s, your note at the left, every repeat where it will land, left channel up, right channel down, as tall as it is loud, as smeared as it is diffused, drifting the way its medium drifts. You drag the repeats themselves. The rails under the picture are scales that read the same numbers, and two of them slide with the first, which is exactly how a slide rule multiplies.</p>
+  <p>Six things to set, four switches, one picture that never lies about what you'll hear. The engine is simple on purpose: two lines, a rotation between them, diffusion, tone, a medium. The character lives in the ratios and the rule.</p>
+  <div class="rule" aria-hidden="true">
+    <i class="m" style="left:0%"></i><b style="left:0%">1 ms</b><i class="m" style="left:20%"></i><b style="left:20%">10</b><i class="m" style="left:40%"></i><b style="left:40%">100</b><i class="m" style="left:60%"></i><b style="left:60%">1 s</b><i class="m" style="left:80%"></i><b style="left:80%">10 s</b><i class="m" style="left:100%"></i><b style="left:100%">100 s</b>
+    <i style="left:6%"></i><i style="left:12%"></i><i style="left:26%"></i><i style="left:32%"></i><i style="left:46%"></i><i style="left:52%"></i><i style="left:66%"></i><i style="left:72%"></i><i style="left:86%"></i><i style="left:92%"></i>
+    <span class="h" style="left:51%"></span><span class="lab" style="left:51%">Left</span>
+    <span class="h" style="left:54.5%"></span><span class="lab" style="left:57%;bottom:40px">Right · 3:2</span>
+    <span class="h a" style="left:69%"></span><span class="lab a" style="left:69%">8 ×</span>
+  </div>
+</section>
+
+<section>
+  <h2>Parameters</h2>
+  <dl>
+    <dt>Left<small>1 ms – 2 s, or a note value</small></dt>
+    <dd>The left delay time. The upper bracket in the picture and the top rail. With <b>Sync</b> on the axis turns into note values from 1/128 to 1/1, plain, dotted and triplet, and the time snaps to them and follows tempo.</dd>
+    <dt>Right<small>ratio, difference, or free</small></dt>
+    <dd>The right delay time. The lower bracket and the second rail, whose scale is a ratio of Left and slides with it. <b>Link ratio</b> keeps Right a multiple of Left, so 3:2 survives a tempo change. <b>Link difference</b> keeps a fixed gap in milliseconds, for Haas widths. <b>Link off</b> frees it, with light snapping to musical ratios you can push through.</dd>
+    <dt>Repeats<small>1 – 64, then hold</small></dt>
+    <dd>How many repeats before the tail ends. The accent marker and the third rail, whose scale counts from the later of the two times. Drag past 64 and it lands on ∞: hold, where the loop runs at full level with the tone open and keeps adding what you play. Drag back to release.</dd>
+    <dt>Shape<small>Fade – Flat – Swell</small></dt>
+    <dd>How the level runs across the repeats. Bottom is a normal fade, which is feedback. Middle is flat, every repeat at one level then stop. Top is swell, repeats growing to the last one. Continuous between them. Drag the marker up or down, or the rail.</dd>
+    <dt>Blur<small>Sharp – Blur</small></dt>
+    <dd>Diffusion. Each repeat smears a little, and each pass through the loop smears further, so late repeats become a wash. Above a third of the way up the first repeat softens too. The rail's track is drawn as the smear it produces.</dd>
+    <dt>Tone<small>Dark – Full – Thin</small></dt>
+    <dd>Filtering in the loop, so every pass darkens or thins further. Below the middle is a high cut down to about 280 Hz. Above it is a low cut up to 2.5 kHz. The picture greys and thins the repeats to match.</dd>
+    <dt>Mix<small>dry – wet</small></dt>
+    <dd>Equal-power balance of dry and wet. Small rail in the top band. It doesn't change the picture.</dd>
+    <dt>Mode<small>Stereo · Ping pong · R is a tap · L is a tap</small></dt>
+    <dd><b>Stereo</b>: each line feeds itself, with a fixed 15% leak into the other so unequal times fill in rather than flam. <b>Ping pong</b>: the note enters left and swaps sides every lap. <b>R is a tap</b>: the right side becomes a second read head on the left line, heard but never fed back, the Echorec trick. <b>L is a tap</b> is the mirror.</dd>
+    <dt>Medium<small>Tape · Oil can · Bucket · Tide · Clean</small></dt>
+    <dd>What the delay line is pretending to be. Each is a recipe of read-head wobble, loss, hiss and grain applied inside the loop. Tape is wow and flutter with a warm roof. Oil can is a rotating lurch, dark and grainy. Bucket is fast jitter that darkens as the time gets longer. Tide is three slow tides summed, never repeating. Clean is nothing. The small rail after the name is the strength; at the top it's an effect. The repeats drift on screen the same way.</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>Gestures</h2>
+  <p>Above the line drags Left, below drags Right. The marker drags Repeats sideways and Shape vertically, deciding in the first few pixels. Inside the band, a sideways drag slides everything together at the current ratio; an up-and-down drag is Blur in the left half and Shape in the right. Every rail handle does the same job as its picture gesture, and while you hold anything a hairline joins the handle to the thing it moves. Cmd or Ctrl bypasses snapping.</p>
+</section>
+
+<p class="foot">Engine: two delay lines, a rotation bleed, one-pole tone and low cut, a saturator transparent below half scale, four-stage allpass diffusers, seeded wobble. Fade below the midpoint is a true feedback loop; flat and swell run a chain of up to 64 stages. The browser prototype runs this as an AudioWorklet and is impulse-tested against the picture's model.</p>
+</div>

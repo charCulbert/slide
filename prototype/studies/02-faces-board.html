@@ -1,0 +1,316 @@
+<meta charset="utf-8">
+<title>Tide Faces</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+:root{ --bg:#d6d6d6; --panel:#cfcfcf; --band:#c3c3c3; --ink:#1c1c1c; --ink2:#4f4f4f; --dim:#5d5d5d; --hair:#a9a9a9; --track:#b9b9b9; --acc:#75540a; --acc2:#22468f; color-scheme:light }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --bg:#292929; --panel:#2e2e2e; --band:#3a3a3a; --ink:#dedede; --ink2:#bdbdbd; --dim:#909090; --hair:#575757; --track:#3a3a3a; --acc:#ddc07e; --acc2:#96b9e6; color-scheme:dark } }
+:root[data-theme="dark"]{ --bg:#292929; --panel:#2e2e2e; --band:#3a3a3a; --ink:#dedede; --ink2:#bdbdbd; --dim:#909090; --hair:#575757; --track:#3a3a3a; --acc:#ddc07e; --acc2:#96b9e6; color-scheme:dark }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:13px;line-height:1.5;padding-inline:clamp(16px,4vw,48px);padding-block:36px 80px}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
+h1{font-family:"IBM Plex Mono",monospace;font-weight:500;font-size:13px;letter-spacing:.3em;text-transform:uppercase;margin:0;color:var(--dim)} h1 b{color:var(--ink)}
+.lede{color:var(--dim);max-width:66ch;margin:8px 0 0}
+section{display:flex;flex-direction:column;gap:12px}
+h2{font-size:15px;font-weight:500;margin:0;display:flex;gap:12px;align-items:baseline} h2 code{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;color:var(--acc)}
+section p{margin:0;color:var(--dim);max-width:70ch} section p b{color:var(--ink);font-weight:500}
+.panel{background:var(--panel);border:1px solid var(--band);padding:14px 18px 16px;display:flex;flex-direction:column;gap:12px}
+.head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--dim);letter-spacing:.06em}
+.head b{color:var(--ink);font-weight:500;letter-spacing:.3em}
+.grp{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+canvas{display:block;width:100%;height:auto;max-width:100%;touch-action:none;cursor:ew-resize}
+button,.chip{font:inherit;font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);background:none;border:1px solid var(--hair);padding:3px 9px;cursor:pointer}
+button.on,.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)} button.acc.on{background:var(--acc);border-color:var(--acc)}
+button:focus-visible{outline:1px solid var(--acc);outline-offset:2px}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:600px){.three{grid-template-columns:1fr}}
+.ctl{display:flex;flex-direction:column;gap:4px}
+.ctl label{display:flex;justify-content:space-between;font-weight:500} .ctl label output{font-family:"IBM Plex Mono",monospace;font-weight:400;color:var(--ink)}
+.ctl small{color:var(--dim);font-size:11px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--track)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:18px;border-radius:2px;background:var(--ink);margin-top:-8px;border:0}
+input[type=range]:focus-visible{outline:1px solid var(--acc);outline-offset:4px}
+input.acc::-webkit-slider-thumb{background:var(--acc)}
+/* pattern chips with tiny pictures */
+.pats{display:flex;gap:6px;flex-wrap:wrap}
+.pat{display:flex;flex-direction:column;align-items:center;gap:3px;border:1px solid var(--hair);padding:5px 8px 4px;cursor:pointer;background:none;color:var(--dim);font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.pat.on{border-color:var(--ink);color:var(--ink);background:none} .pat svg{display:block}
+/* device strip */
+.strip{display:grid;grid-template-columns:auto 1fr auto;gap:0;background:var(--panel);border:1px solid var(--band);height:172px}
+.strip .title{writing-mode:vertical-rl;transform:rotate(180deg);font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.3em;padding:10px 6px;border-right:1px solid var(--band);color:var(--ink);display:flex;align-items:center;justify-content:center}
+.strip .mid{display:flex;flex-direction:column;padding:8px 12px 6px;gap:6px;min-width:0}
+.strip .mid canvas{height:96px;width:100%}
+.strip .knobs{display:flex;gap:10px;padding:10px 14px;border-left:1px solid var(--band);align-items:center}
+.knob{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;width:64px}
+.knob canvas{width:44px;height:44px;cursor:ns-resize}
+.knob output{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink);letter-spacing:0;text-transform:none}
+.verdict{border-left:1px solid var(--acc);padding-left:16px;color:var(--dim);max-width:70ch} .verdict b{color:var(--ink);font-weight:500}
+
+.bigknobs{display:flex;justify-content:center;gap:34px;flex-wrap:wrap;padding-top:6px}
+.bigknob{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;width:120px}
+.bigknob canvas{width:96px;height:96px;cursor:ns-resize} .bigknob.small canvas{width:64px;height:64px}
+.bigknob output{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink);letter-spacing:0;text-transform:none}
+.faders{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:stretch}
+.fader-col{display:flex;gap:16px;padding:6px 4px 0}
+.fader{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:10.5px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;width:56px}
+.fader input[type=range]{writing-mode:vertical-lr;direction:rtl;width:18px;height:200px}
+.fader input[type=range]::-webkit-slider-runnable-track{width:2px;height:100%;background:var(--track)}
+.fader input[type=range]::-webkit-slider-thumb{width:18px;height:12px;margin-top:0;margin-left:-8px}
+.fader output{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink);letter-spacing:0;text-transform:none}
+.axis-sliders{display:flex;flex-direction:column;gap:2px;padding:0 4% 0 5%}
+.axis-sliders .row{display:grid;grid-template-columns:1fr 92px;gap:12px;align-items:center;font-size:11px;color:var(--dim)}
+.axis-sliders .row output{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink);text-align:right}
+.axis-sliders .row.wash{grid-template-columns:110px 1fr 92px;color:var(--ink);font-weight:500}
+</style>
+<div class="wrap">
+<header><h1><b>Tide</b> · faces</h1><p class="lede">Four ways to put the same engine on a face with three controls, a mix, and toggles. Each one draws the same picture from the same numbers. Drag on any picture: above the line for the left time, below for the right, the marker for repeats. Link ratio keeps R a multiple of L, link difference keeps the gap in milliseconds, off frees it with light snapping to nice ratios. The sliders and knobs are live too.</p></header>
+
+<!-- F1 -->
+<section>
+  <h2><code>F1</code>Three sliders under the picture</h2>
+  <p>The current study, cut down. Time, Repeats and Wash as sliders with plain-word ends, Mix at the right, toggles in the header. Wash replaces four sliders. The right side is the lower bracket in the picture, dragged below the line, and one chip cycles link ratio, link difference, off. Ratio snaps lightly to 3:2, φ, 2:1 and friends.</p>
+  <div class="panel" data-face="f1">
+    <div class="head"><b>TIDE</b><span class="grp"><button data-t="sync">sync</button><button data-t="shape">fade</button><button data-t="medium">tape</button></span><span class="grp"><button class="acc" data-t="hold">hold</button><button class="acc" data-t="auto">auto</button></span></div>
+    <canvas class="pic" width="1800" height="330"></canvas>
+    <div class="pats" data-pats></div>
+    <div class="three">
+      <div class="ctl"><label>Time<output data-o="time"></output></label><input type="range" data-s="time" min="0" max="1" step="0.001"><small>first repeat</small></div>
+      <div class="ctl"><label>Repeats<output data-o="rep"></output></label><input type="range" class="acc" data-s="rep" min="0" max="1" step="0.001"><small>how long it lasts</small></div>
+      <div class="ctl"><label>Wash<output data-o="wash"></output></label><input type="range" data-s="wash" min="0" max="1" step="0.01"><small>clean echo · smeared · underwater</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- F2 -->
+<section>
+  <h2><code>F2</code>The picture is the only control</h2>
+  <p>No sliders. Time is the bracket, Repeats is the marker, Wash is a vertical drag anywhere in the field, which fattens the marks as you pull down. Numbers appear only while you drag. The right side is the lower bracket, with the same link chip. Everything else is a chip. This is the most radical and the most honest: if the picture really shows every parameter, it can also set every parameter.</p>
+  <div class="panel" data-face="f2">
+    <div class="head"><b>TIDE</b><span class="grp" data-pats></span><span class="grp"><button data-t="sync">sync</button><button data-t="shape">fade</button><button data-t="medium">tape</button><button class="acc" data-t="hold">hold</button></span></div>
+    <canvas class="pic" width="1800" height="420"></canvas>
+    <div class="head"><span data-readout style="color:var(--ink)"></span><span>drag ↕ for wash · above the line for L, below for R · marker for repeats</span></div>
+  </div>
+</section>
+
+<!-- F3 -->
+<section>
+  <h2><code>F3</code>Ableton device strip</h2>
+  <p>The form factor Live and most hosts actually give a delay: one row, 170 px tall. The picture shrinks to a strip and three knobs sit to its right. The link mode is one cycling button. This tests whether the picture survives at small size, which decides whether it can be the identity of the plugin or only a feature of it.</p>
+  <div class="strip" data-face="f3">
+    <div class="title">TIDE</div>
+    <div class="mid"><canvas class="pic" width="1400" height="190"></canvas><div class="head" style="font-size:10px"><span class="grp"><button data-t="pat">link ×</button><button data-t="pp">pong</button><button data-t="tap">tap</button><button data-t="sync">sync</button><button data-t="shape">fade</button><button data-t="medium">tape</button></span><span class="grp"><button class="acc" data-t="hold">hold</button></span></div></div>
+    <div class="knobs">
+      <div class="knob"><canvas data-k="time" width="88" height="88"></canvas><span>time</span><output data-o="time"></output></div>
+      <div class="knob"><canvas data-k="rep" width="88" height="88"></canvas><span>repeats</span><output data-o="rep"></output></div>
+      <div class="knob"><canvas data-k="wash" width="88" height="88"></canvas><span>wash</span><output data-o="wash"></output></div>
+      <div class="knob"><canvas data-k="mix" width="88" height="88"></canvas><span>mix</span><output data-o="mix"></output></div>
+    </div>
+  </div>
+</section>
+
+<!-- F4 -->
+<section>
+  <h2><code>F4</code>Two pictures</h2>
+  <p>Time and Repeats stay in the repeats picture. Wash gets its own small picture beside it: one repeat, drawn as the smear it would become, with tone as its brightness. Drag in either. This keeps every control visual without asking one picture to carry a third axis.</p>
+  <div class="panel" data-face="f4">
+    <div class="head"><b>TIDE</b><span class="grp" data-pats></span><span class="grp"><button data-t="sync">sync</button><button data-t="shape">fade</button><button data-t="medium">tape</button><button class="acc" data-t="hold">hold</button></span></div>
+    <div style="display:grid;grid-template-columns:3fr 1fr;gap:14px;align-items:stretch">
+      <canvas class="pic" width="1400" height="330"></canvas>
+      <canvas class="washpic" width="440" height="330" style="cursor:ns-resize"></canvas>
+    </div>
+    <div class="head"><span data-readout style="color:var(--ink)"></span><span>left: time and repeats · right: wash, drag ↕</span></div>
+  </div>
+</section>
+
+
+<!-- F5 -->
+<section>
+  <h2><code>F5</code>Big knobs under the picture</h2>
+  <p>The picture on top, three large knobs under it, Mix smaller at the end. Both are live: drag the bracket and the Time knob turns, turn the knob and the bracket moves. The link chip sits between them so it reads as belonging to both. Knobs are what a hand expects on a delay, the picture is what the eye gets.</p>
+  <div class="panel" data-face="f5">
+    <div class="head"><b>TIDE</b><span class="grp" data-pats></span><span class="grp"><button data-t="sync">sync</button><button data-t="shape">fade</button><button data-t="medium">tape</button><button class="acc" data-t="hold">hold</button></span></div>
+    <canvas class="pic" width="1800" height="330"></canvas>
+    <div class="bigknobs">
+      <div class="bigknob"><canvas data-k="time" width="192" height="192"></canvas><span>time</span><output data-o="time"></output></div>
+      <div class="bigknob"><canvas data-k="rep" width="192" height="192"></canvas><span>repeats</span><output data-o="rep"></output></div>
+      <div class="bigknob"><canvas data-k="wash" width="192" height="192"></canvas><span>wash</span><output data-o="wash"></output></div>
+      <div class="bigknob small"><canvas data-k="mix" width="192" height="192"></canvas><span>mix</span><output data-o="mix"></output></div>
+    </div>
+  </div>
+</section>
+
+<!-- F6 -->
+<section>
+  <h2><code>F6</code>Faders beside the picture</h2>
+  <p>Mixer logic. The picture takes the width, three tall faders stand to its right like a channel strip, Mix beside them. Faders give the biggest travel per control on a face this size, and vertical motion for Wash matches the drag-down gesture in the picture.</p>
+  <div class="panel" data-face="f6">
+    <div class="head"><b>TIDE</b><span class="grp" data-pats></span><span class="grp"><button data-t="sync">sync</button><button data-t="shape">fade</button><button data-t="medium">tape</button><button class="acc" data-t="hold">hold</button></span></div>
+    <div class="faders">
+      <canvas class="pic" width="1400" height="360"></canvas>
+      <div class="fader-col">
+        <div class="fader"><input type="range" data-s="time" min="0" max="1" step="0.001"><span>time</span><output data-o="time"></output></div>
+        <div class="fader"><input type="range" class="acc" data-s="rep" min="0" max="1" step="0.001"><span>repeats</span><output data-o="rep"></output></div>
+        <div class="fader"><input type="range" data-s="wash" min="0" max="1" step="0.01"><span>wash</span><output data-o="wash"></output></div>
+        <div class="fader"><input type="range" data-s="mix" min="0" max="1" step="0.01"><span>mix</span><output data-o="mix"></output></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- F7 -->
+<section>
+  <h2><code>F7</code>The sliders are the axis</h2>
+  <p>Time and Repeats as full-width sliders that share the picture's time axis exactly, so the Time handle sits directly under the bracket and the Repeats handle directly under the marker. Move either and the other follows because they are the same number. Wash is the one slider with its own scale. This is the tightest coupling of control and picture without giving up a handle.</p>
+  <div class="panel" data-face="f7">
+    <div class="head"><b>TIDE</b><span class="grp" data-pats></span><span class="grp"><button data-t="sync">sync</button><button data-t="shape">fade</button><button data-t="medium">tape</button><button class="acc" data-t="hold">hold</button></span></div>
+    <canvas class="pic" width="1800" height="300"></canvas>
+    <div class="axis-sliders">
+      <div class="row"><input type="range" data-s="timeAxis" min="0" max="1" step="0.0005"><output data-o="time"></output></div>
+      <div class="row"><input type="range" class="acc" data-s="repAxis" min="0" max="1" step="0.0005"><output data-o="rep"></output></div>
+      <div class="row wash"><span>wash</span><input type="range" data-s="wash" min="0" max="1" step="0.01"><output data-o="wash"></output></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- F8 -->
+<section>
+  <h2><code>F8</code>The whole UI is the picture</h2>
+  <p>No panel, no rows. The plugin window is the field, edge to edge. Chips sit on it where they belong: the link chip under the right bracket, hold by the marker, sync and shape and medium along the top edge. Wash is a thin gauge on the right edge that you drag, Mix the same on the left. Every number appears next to the thing it describes and only while you touch it. This is F2 taken all the way.</p>
+  <canvas id="f8" width="1800" height="620" style="background:var(--panel);border:1px solid var(--band)"></canvas>
+</section>
+
+<p class="verdict"><b>My read:</b> F8 is what the whole study has been pointing at, and it only works because the picture already carries every parameter. F7 is the new favourite among the ones with handles: the sliders and the picture are literally the same axis, so nothing has to be learned twice, and it still gives a real handle. F5 is the one that looks most like a plugin people already own. F6 earns its place only if the face is short and wide. F3 remains the test of whether the picture survives small.</p>
+</div>
+
+<script>
+(() => {
+const T={}; const readTheme=()=>{ const s=getComputedStyle(document.documentElement); for(const k of ['panel','band','ink','ink2','dim','hair','acc','acc2','bg']) T[k]=s.getPropertyValue('--'+k).trim(); };
+const MONO='"IBM Plex Mono", ui-monospace, monospace', SANS='"IBM Plex Sans", system-ui, sans-serif';
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const fmtMs=v=> v<1000? `${v<100?v.toFixed(1):v.toFixed(0)} ms` : `${(v/1000).toFixed(v<10000?2:1)} s`;
+const dB=a=>20*Math.log10(Math.max(1e-6,a));
+const lapsFor=fb=>60/(-20*Math.log10(Math.max(1e-3,fb))), fbFor=n=>Math.pow(10,-3/n);
+const PATS=[['1:1',1,false,false],['3:2',1.5,false,false],['φ',1.618,false,false],['2:1',2,false,false],['pong',1,true,false],['tap',0.5,false,true]];
+const shapes=['fade','flat','swell'], media=['tape','oil','bbd','tide','clean'];
+// shared state, one per face so you can compare settings
+const mk=()=>({tl:350, tr:525, link:'ratio', ratio:1.5, offset:175, pp:false, tap:false, sync:false, shape:0, medium:0, fb:0.46, count:6, wash:0.2, mix:0.5, hold:false});
+const NICE=[0.5,2/3,0.75,1,1.25,4/3,1.5,1.6180339887,2,3];
+function snapRatio(P,raw){ if(P.held!=null && Math.abs(Math.log(raw/P.held))<0.025) return P.held; P.held=null; for(const r of NICE){ if(Math.abs(Math.log(raw/r))<0.012){ P.held=r; return r; } } return raw; }
+const ratioName=r=>Math.abs(r-1.6180339887)<0.002?'φ':Math.abs(r-2/3)<0.002?'2:3':Math.abs(r-4/3)<0.002?'4:3':Math.abs(r-1.5)<0.002?'3:2':Math.abs(r-1)<0.002?'1:1':Math.abs(r-2)<0.002?'2:1':Math.abs(r-0.5)<0.002?'1:2':r.toFixed(2)+'×';
+const applyLink=P=>{ if(P.link==='ratio') P.tr=clamp(P.tl*P.ratio,10,2000); else if(P.link==='offset') P.tr=clamp(P.tl+P.offset,10,2000); };
+const derive=P=>{ const w=P.wash; return {tr:P.tr, diff:Math.min(1,w*1.15), early:Math.pow(Math.max(0,(w-0.3)/0.7),1.3), tone:clamp(9000*Math.pow(2,-w*3.3),200,20000)}; };
+function repeats(P){ const D=derive(P); const out=[]; const FLOOR=-66; const th=Math.asin(P.pp?1:0.15), sk=Math.cos(th), lk=Math.sin(th); const FB=P.hold?1:P.fb; const TL=P.tl, TR=D.tr; const finite=shapes[P.shape]!=='fade'&&!P.hold; const N=P.count; const gains=k=>shapes[P.shape]==='flat'?1:(k+1)/N;
+  if(P.tap){ const n=finite?N:400; for(let k=0;k<n;k++){ const lvl=finite?gains(k):Math.pow(FB,k+1); if(dB(lvl)<FLOOR) break; out.push({t:(k+1)*TL,side:0,a:lvl,n:k+1}); out.push({t:k*TL+TR,side:1,a:lvl,n:k+1}); } return out; }
+  const heap=[], key=new Map(); const K=e=>e.side+':'+Math.round(Math.log10(e.t)*300);
+  const push=e=>{ const k=K(e); const ex=key.get(k); if(ex){ ex.a=Math.hypot(ex.a,e.a); ex.n=Math.min(ex.n,e.n); return; } key.set(k,e); heap.push(e); let i=heap.length-1; while(i>0){ const p=(i-1)>>1; if(heap[p].t<=heap[i].t) break; [heap[p],heap[i]]=[heap[i],heap[p]]; i=p; } };
+  const pop=()=>{ const top=heap[0], last=heap.pop(); if(heap.length){ heap[0]=last; let i=0; for(;;){ const l=2*i+1, r=l+1; let m=i; if(l<heap.length&&heap[l].t<heap[m].t) m=l; if(r<heap.length&&heap[r].t<heap[m].t) m=r; if(m===i) break; [heap[m],heap[i]]=[heap[i],heap[m]]; i=m; } } key.delete(K(top)); return top; };
+  push({t:TL,side:0,a:Math.SQRT1_2,n:1}); push({t:TR,side:1,a:Math.SQRT1_2,n:1});
+  while(heap.length&&out.length<4000){ const e=pop(); if(e.t>100000) continue; if(finite){ if(e.n>N) continue; out.push({t:e.t,side:e.side,a:e.a*gains(e.n-1),n:e.n}); if(e.n>=N) continue; push({t:e.t+[TL,TR][e.side],side:e.side,a:e.a*sk,n:e.n+1}); push({t:e.t+[TL,TR][1-e.side],side:1-e.side,a:e.a*lk,n:e.n+1}); }
+    else { if(dB(e.a)<FLOOR) continue; out.push(e); const s=e.a*FB*sk, l=e.a*FB*lk; if(dB(s)>=FLOOR) push({t:e.t+[TL,TR][e.side],side:e.side,a:s,n:e.n+1}); if(dB(l)>=FLOOR) push({t:e.t+[TL,TR][1-e.side],side:1-e.side,a:l,n:e.n+1}); } }
+  return out; }
+const tailMs=P=>{ const D=derive(P); if(P.hold) return 100000; if(shapes[P.shape]!=='fade') return P.count*Math.max(P.tl,D.tr); const n=lapsFor(P.fb); return P.pp? n*(P.tl+D.tr)/2 : n*Math.max(P.tl,D.tr); };
+
+// the picture. opts: {labels:bool, axis:bool, small:bool}
+function drawPic(c,P,opts={}){ readTheme(); const g=c.getContext('2d'), W=c.width, H=c.height; g.clearRect(0,0,W,H);
+  const small=!!opts.small; const full=c.id==='f8'; const X0=W*(full?0.045:small?0.04:0.05), X1=W*(full?0.955:0.96), yA=H-(small?22:full?60:34), top=full?70:0, Y=top+(yA-top)/2+(small?4:8), HMAX=((yA-top)/2)-(small?18:full?54:40);
+  const XD=v=>X0+(Math.log10(v)-1)/4*(X1-X0); const D=derive(P); const tail=tailMs(P), xTail=XD(Math.min(tail,100000)); const fs=small?15:20;
+  g.strokeStyle=T.hair; g.lineWidth=1; g.beginPath(); g.moveTo(X0,yA); g.lineTo(X1,yA); g.stroke();
+  for(let d=1; d<=5; d++){ const b=Math.pow(10,d); for(let m=1;m<10;m++){ const v=b*m; if(v>100000) break; const x=XD(v); const lab=(m===1||(m===2&&!small)||(m===5&&!small)); g.strokeStyle=lab?T.ink2:T.dim; g.globalAlpha=lab?1:.5; g.beginPath(); g.moveTo(x,yA); g.lineTo(x,yA+(lab?8:4)); g.stroke(); g.globalAlpha=1; if(lab){ g.fillStyle=T.dim; g.font=`${fs}px ${MONO}`; g.textAlign='center'; g.textBaseline='top'; g.fillText(v<1000?v+(m===1&&d===1?' ms':''):(v/1000)+' s', x, yA+10); } } }
+  g.strokeStyle=T.hair; g.beginPath(); g.moveTo(X0,Y); g.lineTo(X1,Y); g.stroke();
+  const xFirst=XD(Math.min(P.tl,D.tr)); g.fillStyle=T.band; g.globalAlpha=.5; g.fillRect(xFirst,Y-HMAX,Math.max(0,xTail-xFirst),2*HMAX); g.globalAlpha=1;
+  const toneK=Math.pow(clamp((Math.log10(D.tone)-Math.log10(200))/2,0,1),0.6); const mW=Math.sin(P.mix*Math.PI/2), mD=Math.cos(P.mix*Math.PI/2);
+  for(const q of repeats(P)){ const x=XD(q.t); if(x>X1) continue; const frac=clamp((dB(q.a*mW)+66)/66,0,1); if(frac<=0) continue; const h=HMAX*frac; const lv=Math.pow(frac,0.7); const fade=(1-(1-toneK)*Math.min(1,q.n/6))*lv; const smear=(D.early*18+D.diff*(3+q.n*2.2))*(small?0.6:1);
+    for(let s=-smear;s<=smear;s+=Math.max(1,smear/6)){ const a=(smear>0?(1-Math.abs(s)/(smear+1))/(1+smear/8):1)*(0.25+0.75*fade); g.strokeStyle=T.ink; g.globalAlpha=a; g.lineWidth=small?2:3; g.beginPath(); g.moveTo(x+s,Y); g.lineTo(x+s,q.side===0?Y-h:Y+h); g.stroke(); if(smear===0) break; } }
+  g.globalAlpha=1; const x0=X0+3; const nh=HMAX*clamp((dB(Math.SQRT1_2*mD)+66)/66,0,1); g.strokeStyle=T.ink; g.lineWidth=small?3:5; g.beginPath(); g.moveTo(x0,Y-nh); g.lineTo(x0,Y+nh); g.stroke();
+  const hl=(x,up,label)=>{ g.strokeStyle=T.ink; g.lineWidth=2; const y=up?Y-HMAX-3:Y+HMAX+3; g.beginPath(); g.moveTo(x-8,y); g.lineTo(x,up?y-8:y+8); g.lineTo(x+8,y); g.stroke(); if(label){ g.fillStyle=T.ink; g.font=`500 ${fs}px ${SANS}`; g.textAlign='center'; g.textBaseline=up?'bottom':'top'; g.fillText(label,x,up?y-12:y+12); } };
+  hl(XD(P.tl),true,opts.labels&&!small?fmtMs(P.tl):''); { const rl = P.link==='ratio'? ratioName(P.tr/P.tl) : P.link==='offset'? `${P.tr-P.tl>=0?'+':'−'}${fmtMs(Math.abs(P.tr-P.tl))}` : fmtMs(P.tr); hl(XD(D.tr),false,opts.labels&&!small?(P.tap?'tap ':'')+rl:''); }
+  g.strokeStyle=T.acc; g.lineWidth=1.5; g.beginPath(); g.moveTo(xTail,Y-HMAX-3); g.lineTo(xTail,yA); g.stroke(); g.fillStyle=T.acc; g.beginPath(); g.moveTo(xTail-8,Y-HMAX-3); g.lineTo(xTail+8,Y-HMAX-3); g.lineTo(xTail,Y-HMAX+8); g.closePath(); g.fill();
+  if(opts.labels){ g.fillStyle=T.acc; g.font=`500 ${fs}px ${SANS}`; g.textAlign=xTail>W*0.8?'right':'left'; g.textBaseline='top'; g.fillText(P.hold?'holding':shapes[P.shape]==='fade'?fmtMs(tail):`${P.count} ×`, xTail+(xTail>W*0.8?-8:8), Y+HMAX+3); }
+  return {XD, X0, X1, Y, HMAX, perDec:(X1-X0)/4}; }
+
+// wash picture (F4): one repeat as the smear it becomes, tone as brightness
+function drawWash(c,P){ readTheme(); const g=c.getContext('2d'), W=c.width, H=c.height; g.clearRect(0,0,W,H); const D=derive(P); const Y=H*0.5, HMAX=H*0.36;
+  g.strokeStyle=T.hair; g.beginPath(); g.moveTo(W*0.08,Y); g.lineTo(W*0.92,Y); g.stroke();
+  const toneK=Math.pow(clamp((Math.log10(D.tone)-Math.log10(200))/2,0,1),0.6); const x=W*0.35; const smear=(D.early*18+D.diff*(3+3*2.2))*2.2;
+  for(let s=-smear;s<=smear;s+=Math.max(1,smear/10)){ const a=(smear>0?(1-Math.abs(s)/(smear+1))/(1+smear/12):1)*(0.25+0.75*toneK); g.strokeStyle=T.ink; g.globalAlpha=a; g.lineWidth=4; g.beginPath(); g.moveTo(x+s,Y-HMAX); g.lineTo(x+s,Y+HMAX); g.stroke(); if(smear===0) break; }
+  g.globalAlpha=1; g.fillStyle=T.dim; g.font=`20px ${MONO}`; g.textAlign='left'; g.textBaseline='top'; g.fillText(`wash ${Math.round(P.wash*100)}`, W*0.08, 10); g.textAlign='right'; g.fillText(`${D.tone<1000?D.tone.toFixed(0)+' Hz':(D.tone/1000).toFixed(1)+' kHz'}`, W*0.92, 10);
+  g.textAlign='center'; g.textBaseline='bottom'; g.fillText('one repeat, as it will sound', W/2, H-8); }
+
+function knob(c,val,label){ readTheme(); const g=c.getContext('2d'), W=c.width, H=c.height; g.clearRect(0,0,W,H); const cx=W/2, cy=H/2, r=W*0.38; const a0=Math.PI*0.75, a1=Math.PI*2.25;
+  g.strokeStyle=T.track; g.lineWidth=5; g.beginPath(); g.arc(cx,cy,r,a0,a1); g.stroke(); g.strokeStyle=label==='rep'?T.acc:T.ink; g.beginPath(); g.arc(cx,cy,r,a0,a0+(a1-a0)*val); g.stroke();
+  const a=a0+(a1-a0)*val; g.strokeStyle=T.ink; g.lineWidth=3; g.beginPath(); g.moveTo(cx+Math.cos(a)*r*0.55,cy+Math.sin(a)*r*0.55); g.lineTo(cx+Math.cos(a)*r*0.9,cy+Math.sin(a)*r*0.9); g.stroke(); }
+
+// wire each face
+const tFromS=s=>Math.pow(10,1+s*Math.log10(200)), sFromT=t=>(Math.log10(t)-1)/Math.log10(200);
+const repS=P=> shapes[P.shape]==='fade'? P.fb/0.99 : (P.count-1)/15;
+const setRepS=(P,s)=>{ if(shapes[P.shape]==='fade') P.fb=clamp(s*0.99,0.02,0.99); else P.count=clamp(Math.round(1+s*15),1,16); };
+const repTxt=P=> shapes[P.shape]==='fade'? `${Math.round(P.fb*100)} %` : `${P.count} ×`;
+document.querySelectorAll('[data-face]').forEach(face=>{
+  const P=mk(); const pic=face.querySelector('canvas.pic'); const washpic=face.querySelector('canvas.washpic'); const small=face.dataset.face==='f3'; const labels=face.dataset.face!=='f2'||false;
+  const outs={}; face.querySelectorAll('[data-o]').forEach(o=>outs[o.dataset.o]=o); const sl={}; face.querySelectorAll('[data-s]').forEach(s=>sl[s.dataset.s]=s); const ro=face.querySelector('[data-readout]');
+  const pats=face.querySelector('[data-pats]');
+  if(pats){ for(const [t,txt] of [['link','link ratio'],['pp','ping pong'],['tap','R is a tap']]){ const b=document.createElement('button'); b.dataset.t=t; b.textContent=txt; pats.appendChild(b); } }
+  function miniPat(r,pp,tap){ const col='currentColor'; let s=''; const xs=[6,12,18,24,30]; for(let k=0;k<5;k++){ const up=pp? (k%2===0) : true; const xr=6*r*(k+1)*(tap?1:1); if(!pp){ s+=`<line x1="${xs[k]}" y1="8" x2="${xs[k]}" y2="2" stroke="${col}" stroke-width="1.5"/>`; const x2=6*(k+1)*r/(tap?2:1)*(tap?1:1); const xt = tap? 6*k+3 : 6*(k+1)*r; if(xt<=33) s+=`<line x1="${xt}" y1="8" x2="${xt}" y2="14" stroke="${col}" stroke-width="1.5" opacity=".7"/>`; } else { s+=`<line x1="${xs[k]}" y1="8" x2="${xs[k]}" y2="${up?2:14}" stroke="${col}" stroke-width="1.5"/>`; } } return s+`<line x1="1" y1="8" x2="33" y2="8" stroke="${col}" stroke-width=".5" opacity=".5"/>`; }
+  face.querySelectorAll('button[data-t]').forEach(b=>b.addEventListener('click',()=>{ const t=b.dataset.t; if(t==='sync') P.sync=!P.sync; else if(t==='shape'){ P.shape=(P.shape+1)%3; b.textContent=shapes[P.shape]; } else if(t==='medium'){ P.medium=(P.medium+1)%5; b.textContent=media[P.medium]; } else if(t==='hold') P.hold=!P.hold; else if(t==='link'){ P.link=P.link==='ratio'?'offset':P.link==='offset'?'off':'ratio'; P.ratio=P.tr/P.tl; P.offset=P.tr-P.tl; } else if(t==='pp'){ P.pp=!P.pp; if(P.pp) P.tap=false; } else if(t==='tap'){ P.tap=!P.tap; if(P.tap) P.pp=false; } else if(t==='pat'){ P.link=P.link==='ratio'?'offset':P.link==='offset'?'off':'ratio'; P.ratio=P.tr/P.tl; P.offset=P.tr-P.tl; } render(); }));
+  Object.entries(sl).forEach(([k,s])=>s.addEventListener('input',()=>{ if(k==='timeAxis'){ P.tl=clamp(Math.pow(10,1+4*(+s.value)),10,2000); applyLink(P); } else if(k==='repAxis'){ const tail=Math.pow(10,1+4*(+s.value)); const base=P.pp?(P.tl+P.tr)/2:Math.max(P.tl,P.tr); if(shapes[P.shape]==='fade') P.fb=clamp(fbFor(clamp(tail/base,0.6,700)),0.05,0.99); else P.count=clamp(Math.round(tail/base),1,16); } else if(k==='mix') P.mix=+s.value; else if(k==='time'){ P.tl=tFromS(+s.value); applyLink(P); } else if(k==='rep') setRepS(P,+s.value); else if(k==='wash') P.wash=+s.value; render(); }));
+  const knobs={}; face.querySelectorAll('canvas[data-k]').forEach(k=>{ knobs[k.dataset.k]=k; let d=null; k.addEventListener('pointerdown',e=>{ k.setPointerCapture(e.pointerId); d={y:e.clientY, v:kval(k.dataset.k)}; }); k.addEventListener('pointermove',e=>{ if(!d) return; const v=clamp(d.v+(d.y-e.clientY)/150,0,1); kset(k.dataset.k,v); render(); }); k.addEventListener('pointerup',()=>d=null); });
+  const kval=n=> n==='time'?sFromT(P.tl): n==='rep'?repS(P): n==='wash'?P.wash: P.mix; const kset=(n,v)=>{ if(n==='time'){ P.tl=tFromS(v); applyLink(P); } else if(n==='rep') setRepS(P,v); else if(n==='wash') P.wash=v; else P.mix=v; };
+  let geo=null, drag=null;
+  pic.addEventListener('pointerdown',e=>{ pic.setPointerCapture(e.pointerId); const r=pic.getBoundingClientRect(); const x=(e.clientX-r.left)/r.width*pic.width, y=(e.clientY-r.top)/r.height*pic.height; const near=Math.abs(x-geo.XD(tailMs(P)))<36; const nearL=Math.abs(x-geo.XD(P.tl))<60, nearR=Math.abs(x-geo.XD(P.tr))<60; const side = y<geo.Y?'time':'tr'; drag={which: near?'rep':(face.dataset.face==='f2'&&!nearL&&!nearR?'wash':side), x0:x, y0:y, tl0:P.tl, tr0:P.tr, laps0:lapsFor(P.fb), c0:P.count, w0:P.wash}; });
+  pic.addEventListener('pointermove',e=>{ if(!drag) return; const r=pic.getBoundingClientRect(); const x=(e.clientX-r.left)/r.width*pic.width, y=(e.clientY-r.top)/r.height*pic.height; const k=Math.pow(10,(x-drag.x0)/geo.perDec);
+    if(drag.which==='time'){ P.tl=clamp(drag.tl0*k,10,2000); applyLink(P); } else if(drag.which==='tr'){ if(P.link==='ratio'){ P.tl=clamp(drag.tr0*k/P.ratio,10,2000); applyLink(P); } else if(P.link==='offset'){ P.tl=clamp(drag.tr0*k-P.offset,10,2000); applyLink(P); } else { const raw=clamp(drag.tr0*k,10,2000); P.tr=clamp(P.tl*snapRatio(P,raw/P.tl),10,2000); } } else if(drag.which==='rep'){ if(shapes[P.shape]==='fade') P.fb=clamp(fbFor(clamp(drag.laps0*k,0.6,700)),0.05,0.99); else P.count=clamp(Math.round(drag.c0*k),1,16); } else P.wash=clamp(drag.w0+(y-drag.y0)/(pic.height*0.6),0,1);
+    render(true); });
+  const end=()=>{ drag=null; render(); }; pic.addEventListener('pointerup',end); pic.addEventListener('pointercancel',end);
+  if(washpic){ let d=null; washpic.addEventListener('pointerdown',e=>{ washpic.setPointerCapture(e.pointerId); d={y:e.clientY,w:P.wash}; }); washpic.addEventListener('pointermove',e=>{ if(!d) return; P.wash=clamp(d.w+(d.y-e.clientY)/200,0,1); render(); }); washpic.addEventListener('pointerup',()=>d=null); }
+  function render(dragging){ geo=drawPic(pic,P,{labels: labels || dragging, small}); if(washpic) drawWash(washpic,P);
+    if(outs.time) outs.time.textContent=fmtMs(P.tl); if(outs.rep) outs.rep.textContent=repTxt(P); if(outs.wash) outs.wash.textContent=`${Math.round(P.wash*100)} %`; if(outs.mix) outs.mix.textContent=`${Math.round(P.mix*100)} %`;
+    if(sl.time) sl.time.value=sFromT(P.tl); if(sl.rep) sl.rep.value=repS(P); if(sl.wash) sl.wash.value=P.wash; if(sl.mix) sl.mix.value=P.mix; if(sl.timeAxis) sl.timeAxis.value=(Math.log10(P.tl)-1)/4; if(sl.repAxis) sl.repAxis.value=(Math.log10(Math.min(100000,tailMs(P)))-1)/4;
+    for(const n in knobs) knob(knobs[n],kval(n),n);
+    if(ro) ro.textContent=`${fmtMs(P.tl)} · ${repTxt(P)} · wash ${Math.round(P.wash*100)}${P.hold?' · holding':''}`;
+    face.querySelectorAll('button[data-t]').forEach(b=>{ const t=b.dataset.t; if(t==='sync') b.classList.toggle('on',P.sync); if(t==='hold') b.classList.toggle('on',P.hold); if(t==='pp') b.classList.toggle('on',P.pp); if(t==='tap') b.classList.toggle('on',P.tap); if(t==='link'||t==='pat'){ b.classList.toggle('on',P.link!=='off'); b.textContent = t==='pat' ? (P.link==='ratio'?'link ×':P.link==='offset'?'link +':'link off') : (P.link==='ratio'?'link ratio':P.link==='offset'?'link difference':'link off'); } }); }
+  render();
+});
+
+// ===== F8: everything on the canvas =====
+(function(){ const c=document.getElementById('f8'), g=c.getContext('2d'), W=c.width, H=c.height; const P=mk(); let hot=null, drag=null, showNums=false;
+  const chips=[]; // hit regions
+  const chip=(x,y,label,on,key,align='left',acc=false)=>{ g.font=`500 17px ${MONO}`; const w=g.measureText(label).width+22, h=30; const X=align==='right'?x-w:align==='center'?x-w/2:x; g.fillStyle=on?(acc?T.acc:T.ink):'rgba(0,0,0,0)'; g.strokeStyle=on?(acc?T.acc:T.ink):T.hair; g.lineWidth=1; g.beginPath(); g.rect(X,y,w,h); g.fill(); g.stroke(); g.fillStyle=on?T.bg:T.ink; g.textAlign='left'; g.textBaseline='middle'; g.fillText(label,X+11,y+h/2+1); chips.push({x:X,y,w,h,key}); };
+  function render(){ readTheme(); chips.length=0;
+    // the field, full bleed, with a top band reserved for chips
+    const geo=drawPic(c,P,{labels:showNums});
+    // title and top chips
+    g.font=`500 18px ${MONO}`; g.fillStyle=T.ink; g.textAlign='left'; g.textBaseline='top'; g.fillText('T I D E', 26, 20);
+    let x=W-26; for(const [key,label,on,acc] of [['hold','hold',P.hold,true],['medium',media[P.medium],false,false],['shape',shapes[P.shape],false,false],['sync','sync',P.sync,false]]){ chip(x,14,label,on,key,'right',acc); x=chips[chips.length-1].x-8; }
+    // link chips under the right bracket, following it
+    const xr=Math.min(W-330, Math.max(30, geo.XD(P.tr)-40)); const yb=geo.Y+geo.HMAX+44;
+    chip(xr, yb, P.link==='ratio'?'link ratio':P.link==='offset'?'link difference':'link off', P.link!=='off', 'link'); let x2=chips[chips.length-1].x+chips[chips.length-1].w+8;
+    chip(x2, yb, 'pong', P.pp, 'pp'); x2=chips[chips.length-1].x+chips[chips.length-1].w+8; chip(x2, yb, 'tap', P.tap, 'tap');
+    // wash gauge, right edge; mix gauge, left edge
+    const gauge=(x,val,label,acc)=>{ const y0=geo.Y-geo.HMAX, y1=geo.Y+geo.HMAX; g.fillStyle=T.track; g.fillRect(x-3,y0,6,y1-y0); g.fillStyle=acc?T.acc:T.ink; g.fillRect(x-3,y1-(y1-y0)*val,6,(y1-y0)*val); g.fillStyle=T.dim; g.font=`15px ${MONO}`; g.textAlign='center'; g.textBaseline='top'; g.fillText(label,x,y1+8); if(showNums||hot===label){ g.fillStyle=T.ink; g.textBaseline='bottom'; g.fillText(`${Math.round(val*100)}`,x,y0-6); } chips.push({x:x-16,y:y0,w:32,h:y1-y0,key:label}); };
+    gauge(W-22, P.wash, 'wash', false); gauge(22, P.mix, 'mix', false);
+    // readouts by the brackets while touching
+    if(showNums){ g.fillStyle=T.dim; g.font=`15px ${MONO}`; g.textAlign='left'; g.textBaseline='bottom'; g.fillText(`${fmtMs(P.tl)} · ${P.link==='ratio'?ratioName(P.tr/P.tl):fmtMs(P.tr)} · ${shapes[P.shape]==='fade'?Math.round(P.fb*100)+' %':P.count+' ×'} · wash ${Math.round(P.wash*100)} · mix ${Math.round(P.mix*100)}`, 26, H-14); }
+    return geo; }
+  let geo=render();
+  const pt=e=>{ const r=c.getBoundingClientRect(); return {x:(e.clientX-r.left)/r.width*W, y:(e.clientY-r.top)/r.height*H}; };
+  const hit=p=>chips.find(h=>p.x>=h.x&&p.x<=h.x+h.w&&p.y>=h.y&&p.y<=h.y+h.h);
+  c.style.cursor='default';
+  c.addEventListener('pointermove',e=>{ if(drag){ move(pt(e)); return; } const h=hit(pt(e)); hot=h?h.key:null; c.style.cursor=h?(h.key==='wash'||h.key==='mix'?'ns-resize':'pointer'):'ew-resize'; });
+  c.addEventListener('pointerdown',e=>{ const p=pt(e); c.setPointerCapture(e.pointerId); const h=hit(p);
+    if(h&&h.key!=='wash'&&h.key!=='mix'){ const k=h.key; if(k==='sync') P.sync=!P.sync; else if(k==='shape') P.shape=(P.shape+1)%3; else if(k==='medium') P.medium=(P.medium+1)%5; else if(k==='hold') P.hold=!P.hold; else if(k==='link'){ P.link=P.link==='ratio'?'offset':P.link==='offset'?'off':'ratio'; P.ratio=P.tr/P.tl; P.offset=P.tr-P.tl; } else if(k==='pp'){ P.pp=!P.pp; if(P.pp) P.tap=false; } else if(k==='tap'){ P.tap=!P.tap; if(P.tap) P.pp=false; } geo=render(); return; }
+    showNums=true; const near=Math.abs(p.x-geo.XD(tailMs(P)))<36; const which = h? h.key : near?'rep' : p.y<geo.Y?'time':'tr';
+    drag={which,x0:p.x,y0:p.y,tl0:P.tl,tr0:P.tr,laps0:lapsFor(P.fb),c0:P.count,w0:P.wash,m0:P.mix}; geo=render(); });
+  function move(p){ const k=Math.pow(10,(p.x-drag.x0)/geo.perDec);
+    if(drag.which==='time'){ P.tl=clamp(drag.tl0*k,10,2000); applyLink(P); }
+    else if(drag.which==='tr'){ if(P.link==='ratio'){ P.tl=clamp(drag.tr0*k/P.ratio,10,2000); applyLink(P); } else if(P.link==='offset'){ P.tl=clamp(drag.tr0*k-P.offset,10,2000); applyLink(P); } else { const raw=clamp(drag.tr0*k,10,2000); P.tr=clamp(P.tl*snapRatio(P,raw/P.tl),10,2000); } }
+    else if(drag.which==='rep'){ if(shapes[P.shape]==='fade') P.fb=clamp(fbFor(clamp(drag.laps0*k,0.6,700)),0.05,0.99); else P.count=clamp(Math.round(drag.c0*k),1,16); }
+    else if(drag.which==='wash') P.wash=clamp(drag.w0+(drag.y0-p.y)/(geo.HMAX*2),0,1);
+    else if(drag.which==='mix') P.mix=clamp(drag.m0+(drag.y0-p.y)/(geo.HMAX*2),0,1);
+    geo=render(); }
+  const end=()=>{ drag=null; showNums=false; geo=render(); }; c.addEventListener('pointerup',end); c.addEventListener('pointercancel',end); c.addEventListener('pointerleave',()=>{ if(!drag){ hot=null; } });
+})();
+
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>location.reload());
+})();
+</script>

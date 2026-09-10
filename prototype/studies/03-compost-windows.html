@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tide in Compost</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+:root{ --bg:#d6d6d6; --panel:#cfcfcf; --band:#c3c3c3; --ink:#1c1c1c; --ink2:#4f4f4f; --dim:#5d5d5d; --hair:#a9a9a9; --track:#b9b9b9; --acc:#75540a; color-scheme:light;
+  --compost-ui-font:"IBM Plex Sans",system-ui,sans-serif; --compost-accent:var(--acc);
+  --compost-window-bg:var(--panel); --compost-window-text:var(--ink); --compost-window-border:var(--band); --compost-window-muted:var(--dim); --compost-window-header-height:26px; --compost-window-header-font-size:11px; --compost-window-close-color:var(--dim); --compost-window-close-hover-color:var(--ink); --compost-window-grip-color:var(--hair); --compost-window-focus:var(--acc); }
+:root[data-color-scheme="dark"]{ --bg:#292929; --panel:#2e2e2e; --band:#3a3a3a; --ink:#dedede; --ink2:#bdbdbd; --dim:#909090; --hair:#575757; --track:#3a3a3a; --acc:#ddc07e; color-scheme:dark }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--compost-ui-font);font-size:13px;min-height:100vh;padding:20px 24px}
+.mobile-panel{background:var(--panel);border:1px solid var(--band);margin:0 0 14px;display:flex;flex-direction:column}
+.mobile-panel>h2{margin:0;font:500 11px/1 "IBM Plex Mono",monospace;letter-spacing:.06em;color:var(--dim);padding:8px 10px;border-bottom:1px solid var(--band)}
+.mobile-panel>.body{position:relative;height:var(--h,320px)}
+.mobile-panel .face,.mobile-panel .full{height:100%}
+canvas.pic{min-width:0} .face,.edge,.full{min-width:0} .mobile-panel>.body{overflow:hidden}
+@media(max-width:700px){ body{padding:12px 10px} header{font-size:11px} header .test{gap:6px;flex-wrap:wrap} header .test .dim:first-child{display:none} p.note{display:none} .knobs{flex-wrap:nowrap;gap:6px} .knobs compost-knob{width:56px;min-width:0;font-size:11px} .knobs compost-knob.small{width:44px} .edge{grid-template-columns:1fr 30px;padding:6px 6px 4px} .knobs{gap:10px} .knobs compost-knob{width:64px} .knobs compost-knob.small{width:48px} }
+header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--dim);letter-spacing:.06em;padding-bottom:10px;border-bottom:1px solid var(--band);margin-bottom:10px}
+header b{color:var(--ink);letter-spacing:.3em}
+header .test{display:flex;gap:8px;align-items:center} header .dim{color:var(--dim);letter-spacing:0} header select{font:inherit;font-family:"IBM Plex Mono",monospace;font-size:11px;background:none;border:1px solid var(--hair);color:var(--ink);padding:3px 6px}
+header button.on{background:var(--acc);color:var(--bg);border-color:var(--acc)}
+header button{font:inherit;color:var(--ink);background:none;border:1px solid var(--hair);padding:4px 10px;cursor:pointer;letter-spacing:.1em;text-transform:uppercase;font-size:10.5px}
+p.note{color:var(--dim);max-width:78ch;margin:0 0 6px;font-size:12px}
+compost-window{font-family:var(--compost-ui-font)}
+.face{display:flex;flex-direction:column;height:100%;gap:8px;padding:10px 12px 10px}
+.face canvas.pic{display:block;width:100%;flex:1;min-height:0;touch-action:none;cursor:ew-resize}
+.chips{display:flex;gap:6px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.chips .grp{display:flex;gap:6px;flex-wrap:wrap}
+compost-button{--compost-button-size:auto;--compost-button-height:24px;--compost-button-width:auto;--compost-button-label-size:10.5px;--compost-button-label-padding:0 9px;font-family:"IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+.knobs{display:flex;justify-content:center;gap:22px;align-items:end;padding:2px 0 0}
+.knobs compost-knob{width:88px}
+.knobs compost-knob.small{width:64px}
+.axis{display:grid;grid-template-columns:1fr;gap:0;padding:0 3.5% 0 4.5%}
+.axis compost-slider{width:100%;height:30px}
+.wash{display:grid;grid-template-columns:70px 1fr;gap:10px;align-items:center;padding:0 3.5% 0 4.5%;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
+.wash compost-slider{height:30px}
+.full{position:relative;height:100%}
+.full canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.overlay{position:absolute;right:14px;bottom:36px;display:flex;gap:16px;align-items:end;padding:8px 14px 6px;background:color-mix(in srgb,var(--panel) 72%,transparent);border:1px solid color-mix(in srgb,var(--band) 70%,transparent);backdrop-filter:blur(6px);transition:opacity .25s;opacity:.55}
+.full:hover .overlay{opacity:.22} .overlay:hover,.overlay:focus-within{opacity:1 !important}
+/* dock: hidden below the edge until the pointer comes down to it */
+.full.dock .overlay{left:50%;right:auto;bottom:0;transform:translate(-50%,calc(100% + 4px));opacity:0;border-bottom:0;transition:transform .22s ease,opacity .22s}
+.full.dock.near .overlay,.full.dock .overlay:focus-within{opacity:1;transform:translate(-50%,0)}
+/* strip: a thin bar under the axis that grows when you reach it */
+.full.strip .overlay{right:0;left:0;bottom:0;justify-content:center;gap:28px;padding:2px 12px;height:22px;overflow:hidden;opacity:.9;transform:none;background:color-mix(in srgb,var(--panel) 85%,transparent);border-width:1px 0 0;transition:height .18s ease}
+.full.strip .overlay compost-knob{width:16px;--compost-knob-size:16px;transition:width .18s ease}
+.full.strip .overlay:hover,.full.strip .overlay:focus-within{height:104px}
+.full.strip .overlay:hover compost-knob,.full.strip .overlay:focus-within compost-knob{width:64px}
+.overlay compost-knob{width:72px} .overlay compost-knob.small{width:54px}
+
+/* edge sliders face: picture in the middle, rails around it that share its axes */
+.edge{display:grid;grid-template-rows:auto 1fr auto auto auto;grid-template-columns:1fr 34px;height:100%;gap:0;padding:8px 10px 6px}
+.edge .chips{grid-column:1/-1}
+.edge canvas.pic{grid-column:1;grid-row:2;min-height:0;width:100%;height:100%}
+.edge .v{grid-row:2;display:flex;align-items:start;justify-content:center;padding:0}
+.edge .v.r{grid-column:2}
+.edge .h{grid-column:1;padding:0 4% 0 5%}
+.edge .chips compost-slider.mix{width:120px;margin-left:10px;--slider-thumb-size:10px;--slider-track-height:1px;--slider-label-size:10px;font-family:"IBM Plex Mono",monospace}
+.edge compost-slider{--slider-thumb-size:12px;--slider-track-height:1px;opacity:.6;transition:opacity .15s;--slider-label-size:10px;--slider-label-gap:2px;--slider-row-gap:4px;--slider-vertical-width:28px;--slider-vertical-length:100%;font-family:"IBM Plex Mono",monospace;letter-spacing:.04em}
+.edge .h compost-slider{height:30px}
+.edge .v compost-slider{width:28px}
+.edge compost-slider.time{--compost-accent:var(--ink)}
+.edge compost-slider:hover,.edge compost-slider.active,.edge compost-slider:focus-within{opacity:1;--slider-track-height:2px}
+</style>
+</head>
+<body>
+<header><span><b>TIDE</b> · faces in compost windows</span>
+  <span class="test"><span class="dim">plays through the focused window</span><select id="voice"><option value="pluck">pluck</option><option value="pad">pad</option><option value="click">click</option></select><button id="play" type="button">play</button><button id="phrase" type="button">phrase</button><span class="dim">keys a–k</span><input id="bpm" type="number" value="120" min="40" max="240" style="width:56px;font:inherit;font-family:'IBM Plex Mono',monospace;font-size:11px;background:none;border:1px solid var(--hair);color:var(--ink);padding:3px 6px"><span class="dim">bpm</span><button id="midi" type="button">midi</button><span class="dim" id="midi-st"></span><button id="scheme" type="button">dark mode</button></span></header>
+<p class="note">Faces in compost-window frames. Click a window to make it the one you hear, then play. Each window keeps its own settings.</p>
+
+
+<compost-window id="w10" heading="Tide · edge sliders" width="900" height="470" resizable open>
+  <div class="edge" data-face="edge">
+    <div class="chips"><span class="grp"><compost-button label="link ratio" mode="switch" pressed data-t="link"></compost-button><compost-button label="stereo" mode="trigger" data-t="mode"></compost-button></span><span class="grp"><compost-button label="sync" mode="switch" data-t="sync"></compost-button><compost-button label="fade" mode="trigger" data-t="shape"></compost-button><compost-button label="tape" mode="trigger" data-t="medium"></compost-button><compost-button label="hold" mode="switch" data-t="hold"></compost-button><compost-slider class="mix" label="mix" data-k="mix" min="0" max="100" value="50" unit="" display-fraction-digits="0"></compost-slider></span></div>
+    <canvas class="pic" width="1600" height="300"></canvas>
+    <div class="v r"><compost-slider orientation="vertical" label="wash" data-k="wash" min="0" max="100" value="20" unit="" display-fraction-digits="0"></compost-slider></div>
+    <div class="h"><compost-slider class="time" label="time L" data-k="timeAxis" min="10" max="100000" curve="log" value="350" unit=" ms" display-fraction-digits="0" interaction="relative"></compost-slider></div>
+    <div class="h"><compost-slider class="time" label="time R" data-k="trAxis" min="10" max="100000" curve="log" value="525" unit=" ms" display-fraction-digits="0" interaction="relative"></compost-slider></div>
+    <div class="h"><compost-slider label="repeats" data-k="repAxis" min="10" max="100000" curve="log" value="4670" unit=" ms" display-fraction-digits="0" interaction="relative"></compost-slider></div>
+  </div>
+</compost-window>
+
+<compost-window id="w5" heading="Tide · big knobs" width="600" height="360" resizable open>
+  <div class="face" data-face="knobs">
+    <div class="chips"><span class="grp"><compost-button label="link ratio" mode="switch" pressed data-t="link"></compost-button><compost-button label="stereo" mode="trigger" data-t="mode"></compost-button></span><span class="grp"><compost-button label="sync" mode="switch" data-t="sync"></compost-button><compost-button label="fade" mode="trigger" data-t="shape"></compost-button><compost-button label="tape" mode="trigger" data-t="medium"></compost-button><compost-button label="hold" mode="switch" data-t="hold"></compost-button></span></div>
+    <canvas class="pic" width="1600" height="300"></canvas>
+    <div class="knobs">
+      <compost-knob label="Time" data-k="time" min="10" max="2000" curve="log" value="350" unit=" ms" display-fraction-digits="0"></compost-knob>
+      <compost-knob label="Repeats" data-k="rep" min="0" max="100" value="46" unit=" %" display-fraction-digits="0"></compost-knob>
+      <compost-knob label="Wash" data-k="wash" min="0" max="100" value="20" unit=" %" display-fraction-digits="0"></compost-knob>
+      <compost-knob class="small" label="Mix" data-k="mix" min="0" max="100" value="50" unit=" %" display-fraction-digits="0"></compost-knob>
+    </div>
+  </div>
+</compost-window>
+
+<compost-window id="w7" heading="Tide · sliders on the axis" width="600" height="330" resizable open>
+  <div class="face" data-face="axis">
+    <div class="chips"><span class="grp"><compost-button label="link ratio" mode="switch" pressed data-t="link"></compost-button><compost-button label="stereo" mode="trigger" data-t="mode"></compost-button></span><span class="grp"><compost-button label="sync" mode="switch" data-t="sync"></compost-button><compost-button label="fade" mode="trigger" data-t="shape"></compost-button><compost-button label="tape" mode="trigger" data-t="medium"></compost-button><compost-button label="hold" mode="switch" data-t="hold"></compost-button></span></div>
+    <canvas class="pic" width="1600" height="260"></canvas>
+    <div class="axis">
+      <compost-slider label="Time" data-k="timeAxis" min="10" max="100000" curve="log" value="350" unit=" ms" display-fraction-digits="0" interaction="relative"></compost-slider>
+      <compost-slider label="Repeats" data-k="repAxis" min="10" max="100000" curve="log" value="4670" unit=" ms" display-fraction-digits="0" interaction="relative"></compost-slider>
+    </div>
+    <div class="wash" style="grid-template-columns:1fr"><compost-slider label="Wash" data-k="wash" min="0" max="100" value="20" unit=" %" display-fraction-digits="0"></compost-slider></div>
+  </div>
+</compost-window>
+
+<compost-window id="w9" heading="Tide" width="900" height="420" resizable open>
+  <div class="full dock" data-face="overlay" data-place="dock"><canvas class="pic" width="1600" height="620"></canvas>
+    <div class="overlay">
+      <compost-knob label="Time" data-k="time" min="10" max="2000" curve="log" value="350" unit=" ms" display-fraction-digits="0"></compost-knob>
+      <compost-knob label="Repeats" data-k="rep" min="0" max="100" value="46" unit=" %" display-fraction-digits="0"></compost-knob>
+      <compost-knob label="Wash" data-k="wash" min="0" max="100" value="20" unit=" %" display-fraction-digits="0"></compost-knob>
+      <compost-knob class="small" label="Mix" data-k="mix" min="0" max="100" value="50" unit=" %" display-fraction-digits="0"></compost-knob>
+    </div>
+  </div>
+</compost-window>
+
+<compost-window id="w8" heading="Tide · picture only" width="600" height="300" resizable open>
+  <div class="full" data-face="full"><canvas class="pic" width="1600" height="620"></canvas></div>
+</compost-window>
+
+<script type="module">
+import '../../external/compost/src/components/compost-window.js';
+import '../../external/compost/src/components/compost-knob.js';
+import '../../external/compost/src/components/compost-slider.js';
+import '../../external/compost/src/components/compost-button.js';
+import { ENGINE_SRC, WOB } from '../slide-engine.js';
+
+// phones: floating windows can't fit, so turn each window into a stacked panel before anything wires up
+const MOBILE=innerWidth<700 || matchMedia('(pointer:coarse)').matches && innerWidth<900;
+if(MOBILE){ document.querySelectorAll('compost-window').forEach(w=>{ const panel=document.createElement('section'); panel.className='mobile-panel'; panel.dataset.win='1'; const h=document.createElement('h2'); h.textContent=w.getAttribute('heading'); const body=document.createElement('div'); body.className='body'; const hh=+w.getAttribute('height')||320; body.style.setProperty('--h', Math.min(hh, Math.round(innerHeight*0.62))+'px'); while(w.firstChild) body.appendChild(w.firstChild); panel.append(h,body); w.replaceWith(panel); }); }
+const WINS=()=>document.querySelectorAll(MOBILE?'.mobile-panel':'compost-window');
+const root=document.documentElement; const sb=document.getElementById('scheme');
+const setScheme=d=>{ root.dataset.colorScheme=d?'dark':'light'; sb.textContent=d?'light mode':'dark mode'; document.querySelectorAll('canvas.pic').forEach(c=>c.dispatchEvent(new Event('redraw'))); };
+setScheme(matchMedia('(prefers-color-scheme: dark)').matches); sb.addEventListener('click',()=>setScheme(root.dataset.colorScheme!=='dark'));
+
+const T={}; const readTheme=()=>{ const s=getComputedStyle(root); for(const k of ['panel','band','ink','ink2','dim','hair','track','acc','bg']) T[k]=s.getPropertyValue('--'+k).trim(); };
+const MONO='"IBM Plex Mono", ui-monospace, monospace', SANS='"IBM Plex Sans", system-ui, sans-serif';
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const fmtMs=v=> v<1000? `${v<100?v.toFixed(1):v.toFixed(0)} ms` : `${(v/1000).toFixed(v<10000?2:1)} s`;
+const dB=a=>20*Math.log10(Math.max(1e-6,a));
+const lapsFor=fb=>60/(-20*Math.log10(Math.max(1e-3,fb))), fbFor=n=>Math.pow(10,-3/n);
+const shapes=['fade','flat','swell'], media=['tape','oil','bbd','tide','clean'];
+const NICE=[0.5,2/3,0.75,1,1.25,4/3,1.5,1.6180339887,2,3];
+const ratioName=r=>Math.abs(r-1.6180339887)<0.002?'φ':Math.abs(r-2/3)<0.002?'2:3':Math.abs(r-4/3)<0.002?'4:3':Math.abs(r-1.5)<0.002?'3:2':Math.abs(r-1)<0.002?'1:1':Math.abs(r-2)<0.002?'2:1':Math.abs(r-0.5)<0.002?'1:2':r.toFixed(2)+'×';
+const mk=()=>({audio:true, tl:350, tr:525, link:'ratio', ratio:1.5, offset:175, pp:false, tap:false, sync:false, shape:0, medium:0, fb:0.46, count:6, wash:0.2, mix:0.5, hold:false, held:null});
+function snapRatio(P,raw){ if(P.held!=null && Math.abs(Math.log(raw/P.held))<0.025) return P.held; P.held=null; for(const r of NICE){ if(Math.abs(Math.log(raw/r))<0.012){ P.held=r; return r; } } return raw; }
+let BPM=120; const DIVS=[['1/32',.125],['1/16',.25],['1/8',.5],['1/4',1],['1/2',2],['1/1',4]];
+function grid(){ const q=60000/BPM; const out=[]; for(const [n,m] of DIVS){ out.push({name:n,ms:q*m,kind:'plain'}); out.push({name:n+'.',ms:q*m*1.5,kind:'dot'}); out.push({name:n+'T',ms:q*m*2/3,kind:'trip'}); } return out.filter(d=>d.ms>=10&&d.ms<=2000).sort((a,b)=>a.ms-b.ms); }
+function snapT(P,ms){ if(!P.sync) return ms; let best=null; for(const d of grid()){ const e=Math.abs(Math.log(d.ms/ms)); if(!best||e<best.e) best={e,d}; } return best?best.d.ms:ms; }
+function nameT(P,ms){ if(!P.sync) return fmtMs(ms); const d=grid().find(d=>Math.abs(d.ms-ms)<0.01); return d?d.name:fmtMs(ms); }
+const applyLink=P=>{ if(P.link==='ratio') P.tr=clamp(P.tl*P.ratio,10,2000); else if(P.link==='offset') P.tr=clamp(P.tl+P.offset,10,2000); if(P.sync){ P.tl=snapT(P,P.tl); P.tr=snapT(P,P.tr); } };
+const derive=P=>{ const w=P.wash; return {tr:P.tr, diff:Math.min(1,w*1.15), early:Math.pow(Math.max(0,(w-0.3)/0.7),1.3), tone:clamp(9000*Math.pow(2,-w*3.3),200,20000)}; };
+function repeats(P){ const D=derive(P); const out=[]; const FLOOR=-66; const th=Math.asin(P.pp?1:0.15), sk=Math.cos(th), lk=Math.sin(th); const FB=P.hold?1:P.fb; const TL=P.tl, TR=D.tr; const finite=shapes[P.shape]!=='fade'&&!P.hold; const N=P.count; const gains=k=>shapes[P.shape]==='flat'?1:(k+1)/N;
+  if(P.tap){ const n=finite?N:400; for(let k=0;k<n;k++){ const lvl=finite?gains(k):Math.pow(FB,k+1); if(dB(lvl)<FLOOR) break; out.push({t:(k+1)*TL,side:0,a:lvl,n:k+1}); out.push({t:k*TL+TR,side:1,a:lvl,n:k+1}); } return out; }
+  const heap=[], key=new Map(); const K=e=>e.side+':'+Math.round(Math.log10(e.t)*300);
+  const push=e=>{ const k=K(e); const ex=key.get(k); if(ex){ ex.a=Math.hypot(ex.a,e.a); ex.n=Math.min(ex.n,e.n); return; } key.set(k,e); heap.push(e); let i=heap.length-1; while(i>0){ const p=(i-1)>>1; if(heap[p].t<=heap[i].t) break; [heap[p],heap[i]]=[heap[i],heap[p]]; i=p; } };
+  const pop=()=>{ const top=heap[0], last=heap.pop(); if(heap.length){ heap[0]=last; let i=0; for(;;){ const l=2*i+1, r=l+1; let m=i; if(l<heap.length&&heap[l].t<heap[m].t) m=l; if(r<heap.length&&heap[r].t<heap[m].t) m=r; if(m===i) break; [heap[m],heap[i]]=[heap[i],heap[m]]; i=m; } } key.delete(K(top)); return top; };
+  push({t:TL,side:0,a:Math.SQRT1_2,n:1}); push({t:TR,side:1,a:Math.SQRT1_2,n:1});
+  while(heap.length&&out.length<4000){ const e=pop(); if(e.t>100000) continue; if(finite){ if(e.n>N) continue; out.push({t:e.t,side:e.side,a:e.a*gains(e.n-1),n:e.n}); if(e.n>=N) continue; push({t:e.t+[TL,TR][e.side],side:e.side,a:e.a*sk,n:e.n+1}); push({t:e.t+[TL,TR][1-e.side],side:1-e.side,a:e.a*lk,n:e.n+1}); }
+    else { if(dB(e.a)<FLOOR) continue; out.push(e); const s=e.a*FB*sk, l=e.a*FB*lk; if(dB(s)>=FLOOR) push({t:e.t+[TL,TR][e.side],side:e.side,a:s,n:e.n+1}); if(dB(l)>=FLOOR) push({t:e.t+[TL,TR][1-e.side],side:1-e.side,a:l,n:e.n+1}); } }
+  return out; }
+const tailMs=P=>{ const D=derive(P); if(P.hold) return 100000; if(shapes[P.shape]!=='fade') return P.count*Math.max(P.tl,D.tr); const n=lapsFor(P.fb); return P.pp? n*(P.tl+D.tr)/2 : n*Math.max(P.tl,D.tr); };
+
+function drawPic(c,P,opts={}){ if(P===active) applyAudio(P); readTheme(); const g=c.getContext('2d'); const r=c.getBoundingClientRect(); const dpr=Math.min(2,devicePixelRatio||1); const W=Math.max(300,Math.round(r.width*dpr)), H=Math.max(120,Math.round(r.height*dpr)); if(c.width!==W||c.height!==H){ c.width=W; c.height=H; } g.clearRect(0,0,W,H);
+  const full=!!opts.full; const narrow=W/dpr<720; const X0=W*(full?0.04:0.05), X1=W*(full?0.96:0.96), yA=H-(full?40:30)*dpr*0.8, top=full?(narrow?96:64)*dpr*0.8:0, Y=top+(yA-top)/2, HMAX=((yA-top)/2)-(full?40:30)*dpr*0.8; const fs=Math.round(11*dpr);
+  const XD=v=>X0+(Math.log10(v)-1)/4*(X1-X0); const D=derive(P); const tail=tailMs(P), xTail=XD(Math.min(tail,100000));
+  g.strokeStyle=T.hair; g.lineWidth=1; g.beginPath(); g.moveTo(X0,yA); g.lineTo(X1,yA); g.stroke();
+  if(P.sync){ for(const d of grid()){ const x=XD(d.ms); const plain=d.kind==='plain'&&(!narrow||['1/16','1/4','1/1'].includes(d.name)); g.strokeStyle=plain?T.ink2:T.dim; g.globalAlpha=plain?1:.5; g.beginPath(); g.moveTo(x,yA); g.lineTo(x,yA+(plain?7:3)*dpr); g.stroke(); g.strokeStyle=T.hair; g.globalAlpha=plain?.55:.22; g.beginPath(); g.moveTo(x,top+6*dpr); g.lineTo(x,yA); g.stroke(); g.globalAlpha=1; if(plain){ g.fillStyle=T.dim; g.font=`${fs}px ${MONO}`; g.textAlign='center'; g.textBaseline='top'; g.fillText(d.name,x,yA+8*dpr); } }
+    for(const v of [5000,10000,20000,50000,100000]){ const x=XD(v); g.strokeStyle=T.dim; g.globalAlpha=.6; g.beginPath(); g.moveTo(x,yA); g.lineTo(x,yA+5*dpr); g.stroke(); g.globalAlpha=1; g.fillStyle=T.dim; g.font=`${fs}px ${MONO}`; g.textAlign='center'; g.textBaseline='top'; g.fillText((v/1000)+' s',x,yA+8*dpr); } }
+  else for(let d=1; d<=5; d++){ const b=Math.pow(10,d); for(let m=1;m<10;m++){ const v=b*m; if(v>100000) break; const x=XD(v); const lab=(m===1||(!narrow&&(m===2||m===5))); g.strokeStyle=lab?T.ink2:T.dim; g.globalAlpha=lab?1:.5; g.beginPath(); g.moveTo(x,yA); g.lineTo(x,yA+(lab?6:3)*dpr); g.stroke(); g.globalAlpha=1; if(lab){ g.fillStyle=T.dim; g.font=`${fs}px ${MONO}`; g.textAlign='center'; g.textBaseline='top'; g.fillText(v<1000?v+(m===1&&d===1?' ms':''):(v/1000)+' s', x, yA+8*dpr); } } }
+  g.strokeStyle=T.hair; g.beginPath(); g.moveTo(X0,Y); g.lineTo(X1,Y); g.stroke();
+  const xFirst=XD(Math.min(P.tl,D.tr)); g.fillStyle=T.band; g.globalAlpha=.5; g.fillRect(xFirst,Y-HMAX,Math.max(0,xTail-xFirst),2*HMAX); g.globalAlpha=1;
+  const toneK=Math.pow(clamp((Math.log10(D.tone)-Math.log10(200))/2,0,1),0.6); const mW=Math.sin(P.mix*Math.PI/2), mD=Math.cos(P.mix*Math.PI/2);
+  for(const q of repeats(P)){ const x=XD(q.t); if(x>X1) continue; const frac=clamp((dB(q.a*mW)+66)/66,0,1); if(frac<=0) continue; const h=HMAX*frac; const lv=Math.pow(frac,0.7); const fade=(1-(1-toneK)*Math.min(1,q.n/6))*lv; const smear=(D.early*18+D.diff*(3+q.n*2.2))*dpr*0.5;
+    for(let s=-smear;s<=smear;s+=Math.max(1,smear/6)){ const a=(smear>0?(1-Math.abs(s)/(smear+1))/(1+smear/8):1)*(0.25+0.75*fade); g.strokeStyle=T.ink; g.globalAlpha=a; g.lineWidth=1.5*dpr; g.beginPath(); g.moveTo(x+s,Y); g.lineTo(x+s,q.side===0?Y-h:Y+h); g.stroke(); if(smear===0) break; } }
+  g.globalAlpha=1; const x0=X0+2; const nh=HMAX*clamp((dB(Math.SQRT1_2*mD)+66)/66,0,1); g.strokeStyle=T.ink; g.lineWidth=2.5*dpr; g.beginPath(); g.moveTo(x0,Y-nh); g.lineTo(x0,Y+nh); g.stroke();
+  const hv=opts.hover; const hl=(x,up,label,key)=>{ const hot=hv===key; g.strokeStyle=hot?T.acc:T.ink; g.lineWidth=(hot?2.2:1.2)*dpr; if(hot){ g.save(); g.globalAlpha=.18; g.fillStyle=T.acc; g.fillRect(x-14*dpr,up?top:Y,28*dpr,up?Y-top:yA-Y); g.restore(); } const y=up?Y-HMAX-2:Y+HMAX+2; g.beginPath(); g.moveTo(x-5*dpr,y); g.lineTo(x,up?y-5*dpr:y+5*dpr); g.lineTo(x+5*dpr,y); g.stroke(); if(label){ g.fillStyle=T.ink; g.font=`500 ${fs}px ${SANS}`; g.textAlign='center'; g.textBaseline=up?'bottom':'top'; g.fillText(label,x,up?y-8*dpr:y+8*dpr); } };
+  const lab=opts.labels||hv==='time'||hv==='tr'; hl(XD(P.tl),true,(opts.labels||hv==='time')?nameT(P,P.tl):'','time'); { const rl=P.sync?nameT(P,P.tr):P.link==='ratio'?ratioName(P.tr/P.tl):P.link==='offset'?`${P.tr-P.tl>=0?'+':'−'}${fmtMs(Math.abs(P.tr-P.tl))}`:fmtMs(P.tr); hl(XD(D.tr),false,(opts.labels||hv==='tr')?(P.tap?'tap ':'')+rl:'','tr'); }
+  if(hv==='field'||hv==='all'){ g.save(); g.globalAlpha=.1; g.fillStyle=T.acc; g.fillRect(xFirst,Y-HMAX,Math.max(0,xTail-xFirst),2*HMAX); g.restore(); g.fillStyle=T.dim; g.font=`${fs}px ${MONO}`; g.textAlign='center'; g.textBaseline='bottom'; g.fillText('↔ slide all · ↕ wash', (xFirst+xTail)/2, Y-HMAX-4*dpr); }
+  if(hv==='wash'){ g.save(); g.globalAlpha=.08; g.fillStyle=T.acc; g.fillRect(X0,Y-HMAX,X1-X0,2*HMAX); g.restore(); g.fillStyle=T.dim; g.font=`${fs}px ${MONO}`; g.textAlign='center'; g.textBaseline='bottom'; g.fillText(`wash ${Math.round(P.wash*100)} · drag ↕`, (X0+X1)/2, Y-HMAX-4*dpr); }
+  { const hot=hv==='rep'; if(hot){ g.save(); g.globalAlpha=.18; g.fillStyle=T.acc; g.fillRect(xTail-14*dpr,Y-HMAX-2,28*dpr,yA-(Y-HMAX-2)); g.restore(); g.fillStyle=T.dim; g.font=`${Math.round(fs*0.9)}px ${MONO}`; g.textAlign=xTail>W*0.8?'right':'left'; const tx=xTail+(xTail>W*0.8?-10:10)*dpr; g.textBaseline='middle'; for(const [i,name] of [[2,'swell ↑'],[1,'flat'],[0,'fade ↓']]){ const yy=Y+(i===2?-HMAX*0.6:i===1?0:HMAX*0.6); g.fillStyle=P.shape===i?T.acc:T.dim; g.fillText(name,tx,yy); } } g.strokeStyle=T.acc; g.lineWidth=(hot?2.5:1)*dpr; } g.beginPath(); g.moveTo(xTail,Y-HMAX-2); g.lineTo(xTail,yA); g.stroke(); g.fillStyle=T.acc; g.beginPath(); g.moveTo(xTail-5*dpr,Y-HMAX-2); g.lineTo(xTail+5*dpr,Y-HMAX-2); g.lineTo(xTail,Y-HMAX+5*dpr); g.closePath(); g.fill();
+  if(opts.labels||hv==='rep'){ g.fillStyle=T.acc; g.font=`500 ${fs}px ${SANS}`; g.textAlign=xTail>W*0.8?'right':'left'; g.textBaseline='top'; g.fillText(P.hold?'holding':shapes[P.shape]==='fade'?fmtMs(tail):`${P.count} ×`, xTail+(xTail>W*0.8?-6:6)*dpr, Y+HMAX+2); }
+  return {XD,X0,X1,Y,HMAX,W,H,dpr,perDec:(X1-X0)/4,yA,top}; }
+
+// picture dragging shared by all faces
+function wirePic(c,P,onChange,opts={}){ let geo=null, drag=null, hover=null;
+  const pick=(p,gg)=>{ const near=Math.abs(p.x-gg.XD(tailMs(P)))<18*gg.dpr; const nearL=Math.abs(p.x-gg.XD(P.tl))<30*gg.dpr, nearR=Math.abs(p.x-gg.XD(P.tr))<30*gg.dpr; if(near) return 'rep'; if(p.y<gg.top||p.y>gg.yA) return null; const inBand=p.x>gg.XD(Math.min(P.tl,P.tr))&&p.x<gg.XD(Math.min(100000,tailMs(P)))&&Math.abs(p.y-gg.Y)<gg.HMAX; if(!nearL&&!nearR&&inBand) return 'field'; if(opts.full&&!nearL&&!nearR) return 'wash'; return p.y<gg.Y?'time':'tr'; };
+  c.addEventListener('pointermove',e=>{ if(drag) return; if(opts.hit&&opts.hitOnly&&opts.hitOnly(pt(e))){ if(hover){ hover=null; onChange(false); } return; } const gg=geo||drawPic(c,P,{full:opts.full}); const h=pick(pt(e),gg); if(h!==hover){ hover=h; c.style.cursor=h==='wash'?'ns-resize':h==='field'?'move':h?'ew-resize':'default'; onChange(false); } });
+  c.addEventListener('pointerleave',()=>{ if(!drag&&hover){ hover=null; onChange(false); } });
+  const pt=e=>{ const r=c.getBoundingClientRect(); return {x:(e.clientX-r.left)/r.width*c.width, y:(e.clientY-r.top)/r.height*c.height}; };
+  c.addEventListener('pointerdown',e=>{ if(opts.hit&&opts.hit(pt(e))) return; c.setPointerCapture(e.pointerId); const p=pt(e); geo=drawPic(c,P,{labels:true,full:opts.full}); const which=pick(p,geo)||(p.y<geo.Y?'time':'tr'); drag={which,pending:which==='field',x0:p.x,y0:p.y,tl0:P.tl,tr0:P.tr,laps0:lapsFor(P.fb),c0:P.count,w0:P.wash}; onChange(true,drag.which); });
+  c.addEventListener('pointermove',e=>{ if(!drag) return; const p=pt(e); if(drag.pending){ const dx=Math.abs(p.x-drag.x0), dy=Math.abs(p.y-drag.y0); if(Math.max(dx,dy)<4*geo.dpr) return; drag.which= dx>=dy?'all':'wash'; drag.pending=false; } const k=Math.pow(10,(p.x-drag.x0)/geo.perDec);
+    if(drag.which==='all'){ const kk=clamp(k, 10/Math.min(drag.tl0,drag.tr0), 2000/Math.max(drag.tl0,drag.tr0)); P.tl=drag.tl0*kk; P.tr=drag.tr0*kk; if(P.sync){ P.tl=snapT(P,P.tl); P.tr=snapT(P,P.tr); } }
+    else if(drag.which==='time'){ P.tl=P.sync?snapT(P,clamp(drag.tl0*k,10,2000)):clamp(drag.tl0*k,10,2000); applyLink(P); }
+    else if(drag.which==='tr'){ if(P.link==='ratio'){ P.tl=clamp(drag.tr0*k/P.ratio,10,2000); applyLink(P); } else if(P.link==='offset'){ P.tl=clamp(drag.tr0*k-P.offset,10,2000); applyLink(P); } else { const raw=clamp(drag.tr0*k,10,2000); P.tr=P.sync?snapT(P,raw):clamp(P.tl*snapRatio(P,raw/P.tl),10,2000); } }
+    else if(drag.which==='rep'){ const dy=p.y-drag.y0; if(Math.abs(dy)>geo.HMAX*0.35){ const want= dy<0? 2 : 0; if(P.shape!==want){ if(want===2&&P.shape===0){ P.count=clamp(Math.round(lapsFor(P.fb)),2,16); } if(want===0&&P.shape!==0){ P.fb=clamp(fbFor(P.count),0.05,0.99); } P.shape=want; } } else if(Math.abs(dy)>geo.HMAX*0.12&&P.shape!==1){ if(P.shape===0) P.count=clamp(Math.round(lapsFor(P.fb)),2,16); P.shape=1; }
+      if(shapes[P.shape]==='fade') P.fb=clamp(fbFor(clamp(drag.laps0*k,0.6,700)),0.05,0.99); else P.count=clamp(Math.round(drag.c0*k),1,16); }
+    else if(drag.which==='wash') P.wash=clamp(drag.w0+(drag.y0-p.y)/(geo.HMAX*2),0,1);
+    onChange(true,drag.which); });
+  const end=()=>{ drag=null; onChange(false,null); }; c.addEventListener('pointerup',end); c.addEventListener('pointercancel',end);
+  return ()=>{ geo=drawPic(c,P,{labels:!!drag||opts.alwaysLabels,full:opts.full,hover:drag?drag.which:hover}); return geo; }; }
+
+const FACES=[]; let active=null;
+const setSilently=(el,v)=>{ if(el&&Math.abs(el.value-v)>1e-6) el.setValue(v,false,'picture'); };
+function wireChips(face,P,render){ face.querySelectorAll('compost-button[data-t]').forEach(b=>{ const t=b.dataset.t;
+  const apply=()=>{ if(t==='link'){ P.link=P.link==='ratio'?'offset':P.link==='offset'?'off':'ratio'; P.ratio=P.tr/P.tl; P.offset=P.tr-P.tl; b.setAttribute('label',P.link==='ratio'?'link ratio':P.link==='offset'?'link difference':'link off'); b.pressed=P.link!=='off'; }
+    else if(t==='pp'){ P.pp=b.pressed; if(P.pp){ P.tap=false; const tb=face.querySelector('[data-t=tap]'); if(tb) tb.pressed=false; } }
+    else if(t==='tap'){ P.tap=b.pressed; if(P.tap){ P.pp=false; const pb=face.querySelector('[data-t=pp]'); if(pb) pb.pressed=false; } }
+    else if(t==='mode'){ if(!P.pp&&!P.tap) P.pp=true; else if(P.pp){ P.pp=false; P.tap=true; } else P.tap=false; b.setAttribute('label',P.pp?'ping pong':P.tap?'R is a tap':'stereo'); }
+    else if(t==='sync'){ P.sync=b.pressed; applyLink(P); if(P.sync&&P.link==='off'){ P.tl=snapT(P,P.tl); P.tr=snapT(P,P.tr); } } else if(t==='hold') P.hold=b.pressed;
+    else if(t==='shape'){ P.shape=(P.shape+1)%3; b.setAttribute('label',shapes[P.shape]); } else if(t==='medium'){ P.medium=(P.medium+1)%5; b.setAttribute('label',media[P.medium]); }
+    render(); };
+  if(t==='link'){ b.addEventListener('change',e=>{ e.preventDefault?.(); apply(); }); b.addEventListener('button-trigger',apply); }
+  else if(b.getAttribute('mode')==='trigger') b.addEventListener('button-trigger',apply); else b.addEventListener('change',apply); }); }
+
+// ---- knobs face
+{ const face=document.querySelector('[data-face=knobs]'); const P=mk(); FACES[[...WINS()].findIndex(w=>w.contains(face))]=P; const c=face.querySelector('canvas.pic'); const K={}; face.querySelectorAll('compost-knob[data-k]').forEach(k=>K[k.dataset.k]=k);
+  const syncKnobs=()=>{ setSilently(K.time,P.tl); setSilently(K.rep, shapes[P.shape]==='fade'?P.fb*100:(P.count/16)*100); setSilently(K.wash,P.wash*100); setSilently(K.mix,P.mix*100); K.rep.setAttribute('unit', shapes[P.shape]==='fade'?' %':' ×'); };
+  const draw=wirePic(c,P,()=>{ syncKnobs(); draw(); });
+  const render=()=>{ syncKnobs(); draw(); };
+  K.time.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.tl=e.detail.value; applyLink(P); draw(); });
+  K.rep.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; const v=e.detail.value/100; if(shapes[P.shape]==='fade') P.fb=clamp(v,0.05,0.99); else P.count=clamp(Math.round(v*16),1,16); draw(); });
+  K.wash.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.wash=e.detail.value/100; draw(); });
+  K.mix.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.mix=e.detail.value/100; draw(); });
+  wireChips(face,P,render); c.addEventListener('redraw',draw); new ResizeObserver(draw).observe(c); render(); }
+
+// ---- overlay face: full picture, knobs floating on it
+{ const face=document.querySelector('[data-face=overlay]'); const P=mk(); FACES[[...WINS()].findIndex(w=>w.contains(face))]=P; const c=face.querySelector('canvas.pic'); const g=c.getContext('2d'); const K={}; face.querySelectorAll('compost-knob[data-k]').forEach(k=>K[k.dataset.k]=k); let chips=[];
+  const chip=(x,y,label,on,key,align,acc)=>{ const dpr=Math.min(2,devicePixelRatio||1); g.font=`500 ${Math.round(11*dpr)}px ${MONO}`; const w=g.measureText(label.toUpperCase()).width+16*dpr, h=22*dpr; const X=align==='right'?x-w:x; g.fillStyle=on?(acc?T.acc:T.ink):'rgba(0,0,0,0)'; g.strokeStyle=on?(acc?T.acc:T.ink):T.hair; g.lineWidth=1; g.beginPath(); g.rect(X,y,w,h); g.fill(); g.stroke(); g.fillStyle=on?T.bg:(key==='place'?T.dim:T.ink); g.textAlign='left'; g.textBaseline='middle'; g.fillText(label.toUpperCase(),X+8*dpr,y+h/2+1); chips.push({x:X,y,w,h,key}); return X; };
+  const hit=p=>chips.find(h=>p.x>=h.x&&p.x<=h.x+h.w&&p.y>=h.y&&p.y<=h.y+h.h);
+  const syncKnobs=()=>{ setSilently(K.time,P.tl); setSilently(K.rep, shapes[P.shape]==='fade'?P.fb*100:(P.count/16)*100); setSilently(K.wash,P.wash*100); setSilently(K.mix,P.mix*100); K.rep.setAttribute('unit', shapes[P.shape]==='fade'?' %':' ×'); };
+  const draw=wirePic(c,P,()=>{ syncKnobs(); render(); },{full:true, hit:p=>{ const h=hit(p); if(!h) return false; act(h.key); return true; }, hitOnly:p=>!!hit(p)});
+  function act(k){ if(k==='sync'){ P.sync=!P.sync; applyLink(P); if(P.sync&&P.link==='off'){ P.tl=snapT(P,P.tl); P.tr=snapT(P,P.tr); } } else if(k==='shape') P.shape=(P.shape+1)%3; else if(k==='medium') P.medium=(P.medium+1)%5; else if(k==='hold') P.hold=!P.hold; else if(k==='link'){ P.link=P.link==='ratio'?'offset':P.link==='offset'?'off':'ratio'; P.ratio=P.tr/P.tl; P.offset=P.tr-P.tl; } else if(k==='mode'){ if(!P.pp&&!P.tap){ P.pp=true; } else if(P.pp){ P.pp=false; P.tap=true; } else { P.tap=false; } } else if(k==='place'){ const order=['float','dock','strip']; const cur=face.dataset.place||'float'; const nx=order[(order.indexOf(cur)+1)%3]; face.dataset.place=nx; face.classList.toggle('dock',nx==='dock'); face.classList.toggle('strip',nx==='strip'); } render(); }
+  face.addEventListener('pointermove',e=>{ if(!face.classList.contains('dock')) return; const r=face.getBoundingClientRect(); face.classList.toggle('near', e.clientY>r.bottom-70); }); face.addEventListener('pointerleave',()=>face.classList.remove('near'));
+  function render(){ chips=[]; const geo=draw(); const dpr=geo.dpr, W=geo.W;
+    g.font=`500 ${Math.round(12*dpr)}px ${MONO}`; g.fillStyle=T.ink; g.textAlign='left'; g.textBaseline='middle'; g.fillText('T I D E', 16*dpr, 22*dpr);
+    const narrow=W/dpr<720; const yc=11*dpr, y2=narrow?40*dpr:yc; let X=chip(92*dpr,yc,P.link==='ratio'?'link ratio':P.link==='offset'?'link difference':'link off',P.link!=='off','link','left'); X=X+chips[chips.length-1].w+6*dpr; X=chip(X,yc,P.pp?'ping pong':P.tap?'R is a tap':'stereo',P.pp||P.tap,'mode','left'); X=narrow?16*dpr:X+chips[chips.length-1].w+22*dpr; X=chip(X,y2,'sync',P.sync,'sync','left'); X=X+chips[chips.length-1].w+6*dpr; X=chip(X,y2,shapes[P.shape],false,'shape','left'); X=X+chips[chips.length-1].w+6*dpr; chip(X,y2,media[P.medium],false,'medium','left');
+    let xr=W-16*dpr; if(!narrow) xr=chip(xr,yc,'knobs · '+(face.dataset.place||'float'),false,'place','right')-18*dpr; chip(xr,y2,'hold',P.hold,'hold','right',true); }
+  K.time.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.tl=e.detail.value; applyLink(P); render(); });
+  K.rep.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; const v=e.detail.value/100; if(shapes[P.shape]==='fade') P.fb=clamp(v,0.05,0.99); else P.count=clamp(Math.round(v*16),1,16); render(); });
+  K.wash.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.wash=e.detail.value/100; render(); });
+  K.mix.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.mix=e.detail.value/100; render(); });
+  c.addEventListener('pointermove',e=>{ const r=c.getBoundingClientRect(); const p={x:(e.clientX-r.left)/r.width*c.width,y:(e.clientY-r.top)/r.height*c.height}; if(hit(p)) c.style.cursor='pointer'; });
+  c.addEventListener('redraw',render); new ResizeObserver(render).observe(c); syncKnobs(); render(); }
+
+
+// ---- edge sliders face: same numbers as the axis face, rails around the picture
+{ const face=document.querySelector('[data-face=edge]'); const P=mk(); FACES[[...WINS()].findIndex(w=>w.contains(face))]=P; const c=face.querySelector('canvas.pic'); const S={}; face.querySelectorAll('compost-slider[data-k]').forEach(s=>S[s.dataset.k]=s);
+  const syncS=()=>{ setSilently(S.timeAxis,P.tl); setSilently(S.trAxis,P.tr); S.repAxis.setAttribute('min', Math.max(P.tl,P.tr).toFixed(1)); setSilently(S.repAxis,Math.min(100000,tailMs(P))); setSilently(S.wash,P.wash*100); setSilently(S.mix,P.mix*100); S.trAxis.setAttribute('label', P.link==='ratio'?`time R · ${ratioName(P.tr/P.tl)}`:P.link==='offset'?`time R · ${P.tr-P.tl>=0?'+':'−'}${fmtMs(Math.abs(P.tr-P.tl))}`:'time R'); };
+  const railFor={time:'timeAxis',tr:'trAxis',all:'timeAxis',rep:'repAxis',wash:'wash',mix:'mix'};
+  const draw=wirePic(c,P,(dragging,which)=>{ Object.values(S).forEach(sl=>sl.classList.remove('active')); if(dragging&&railFor[which]&&S[railFor[which]]) S[railFor[which]].classList.add('active'); if(which==='all'&&S.trAxis) S.trAxis.classList.add('active'); syncS(); draw(); });
+  const render=()=>{ syncS(); draw(); };
+  S.timeAxis.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.tl=P.sync?snapT(P,clamp(e.detail.value,10,2000)):clamp(e.detail.value,10,2000); applyLink(P); syncS(); draw(); });
+  S.trAxis.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; const v=clamp(e.detail.value,10,2000); if(P.link==='ratio'){ P.tl=clamp(v/P.ratio,10,2000); applyLink(P); } else if(P.link==='offset'){ P.tl=clamp(v-P.offset,10,2000); applyLink(P); } else { P.tr=P.sync?snapT(P,v):clamp(P.tl*snapRatio(P,v/P.tl),10,2000); } syncS(); draw(); });
+  S.repAxis.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; const tail=e.detail.value; const base=P.pp?(P.tl+P.tr)/2:Math.max(P.tl,P.tr); if(shapes[P.shape]==='fade') P.fb=clamp(fbFor(clamp(tail/base,0.6,700)),0.05,0.99); else P.count=clamp(Math.round(tail/base),1,16); draw(); });
+  S.wash.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.wash=e.detail.value/100; draw(); });
+  S.mix.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.mix=e.detail.value/100; draw(); });
+  wireChips(face,P,render); c.addEventListener('redraw',draw); new ResizeObserver(draw).observe(c);
+  // vertical rails: the length has to be a real number, so measure the column
+  const fitV=()=>{ const geo=drawPic(c,P,{}); const r=c.getBoundingClientRect(); const scale=r.height/c.height; const bandTop=(geo.Y-geo.HMAX)*scale, bandH=2*geo.HMAX*scale; face.querySelectorAll('.v').forEach(v=>{ const sl=v.querySelector('compost-slider'); const vr=v.getBoundingClientRect(); sl.style.setProperty('--slider-vertical-length', Math.max(40,bandH)+'px'); sl.style.marginTop=Math.max(0, r.top+bandTop-vr.top)+'px'; }); }; new ResizeObserver(fitV).observe(face); fitV(); render(); }
+
+// ---- axis sliders face
+{ const face=document.querySelector('[data-face=axis]'); const P=mk(); FACES[[...WINS()].findIndex(w=>w.contains(face))]=P; const c=face.querySelector('canvas.pic'); const S={}; face.querySelectorAll('compost-slider[data-k]').forEach(s=>S[s.dataset.k]=s);
+  const syncS=()=>{ setSilently(S.timeAxis,P.tl); setSilently(S.repAxis,Math.min(100000,tailMs(P))); setSilently(S.wash,P.wash*100); };
+  const draw=wirePic(c,P,()=>{ syncS(); draw(); });
+  const render=()=>{ syncS(); draw(); };
+  S.timeAxis.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.tl=clamp(e.detail.value,10,2000); applyLink(P); syncS(); draw(); });
+  S.repAxis.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; const tail=e.detail.value; const base=P.pp?(P.tl+P.tr)/2:Math.max(P.tl,P.tr); if(shapes[P.shape]==='fade') P.fb=clamp(fbFor(clamp(tail/base,0.6,700)),0.05,0.99); else P.count=clamp(Math.round(tail/base),1,16); draw(); });
+  S.wash.addEventListener('parameter-edit',e=>{ if(e.detail.source==='picture') return; P.wash=e.detail.value/100; draw(); });
+  wireChips(face,P,render); c.addEventListener('redraw',draw); new ResizeObserver(draw).observe(c); render(); }
+
+// ---- full picture face: chips and gauges drawn on the canvas
+{ const face=document.querySelector('[data-face=full]'); const P=mk(); FACES[[...WINS()].findIndex(w=>w.contains(face))]=P; const c=face.querySelector('canvas.pic'); const g=c.getContext('2d'); let chips=[]; let showNums=false;
+  const chip=(x,y,label,on,key,align,acc)=>{ const dpr=Math.min(2,devicePixelRatio||1); g.font=`500 ${Math.round(11*dpr)}px ${MONO}`; const w=g.measureText(label.toUpperCase()).width+16*dpr, h=22*dpr; const X=align==='right'?x-w:x; g.fillStyle=on?(acc?T.acc:T.ink):'rgba(0,0,0,0)'; g.strokeStyle=on?(acc?T.acc:T.ink):T.hair; g.lineWidth=1; g.beginPath(); g.rect(X,y,w,h); g.fill(); g.stroke(); g.fillStyle=on?T.bg:T.ink; g.textAlign='left'; g.textBaseline='middle'; g.fillText(label.toUpperCase(),X+8*dpr,y+h/2+1); chips.push({x:X,y,w,h,key}); return X; };
+  const hit=p=>chips.find(h=>p.x>=h.x&&p.x<=h.x+h.w&&p.y>=h.y&&p.y<=h.y+h.h);
+  let drag=null;
+  const draw=wirePic(c,P,(dragging)=>{ showNums=dragging; render(); },{full:true, hit:p=>{ const h=hit(p); if(!h) return false; if(h.key==='wash'||h.key==='mix'){ startGauge(h.key,p); return true; } act(h.key); return true; }});
+  function act(k){ if(k==='sync'){ P.sync=!P.sync; applyLink(P); if(P.sync&&P.link==='off'){ P.tl=snapT(P,P.tl); P.tr=snapT(P,P.tr); } } else if(k==='shape') P.shape=(P.shape+1)%3; else if(k==='medium') P.medium=(P.medium+1)%5; else if(k==='hold') P.hold=!P.hold; else if(k==='link'){ P.link=P.link==='ratio'?'offset':P.link==='offset'?'off':'ratio'; P.ratio=P.tr/P.tl; P.offset=P.tr-P.tl; } else if(k==='mode'){ if(!P.pp&&!P.tap){ P.pp=true; } else if(P.pp){ P.pp=false; P.tap=true; } else { P.tap=false; } } render(); }
+  function startGauge(key,p){ drag={key,y0:p.y,v0:key==='wash'?P.wash:P.mix}; showNums=true; render(); }
+  c.addEventListener('pointermove',e=>{ if(!drag) return; const r=c.getBoundingClientRect(); const y=(e.clientY-r.top)/r.height*c.height; const geo=draw(); const v=clamp(drag.v0+(drag.y0-y)/(geo.HMAX*2),0,1); if(drag.key==='wash') P.wash=v; else P.mix=v; render(); });
+  const endG=()=>{ if(drag){ drag=null; showNums=false; render(); } }; c.addEventListener('pointerup',endG); c.addEventListener('pointercancel',endG);
+  c.addEventListener('pointermove',e=>{ if(drag) return; const r=c.getBoundingClientRect(); const p={x:(e.clientX-r.left)/r.width*c.width,y:(e.clientY-r.top)/r.height*c.height}; const h=hit(p); c.style.cursor=h?(h.key==='wash'||h.key==='mix'?'ns-resize':'pointer'):'ew-resize'; });
+  function render(){ chips=[]; const geo=draw(); const dpr=geo.dpr, W=geo.W, H=geo.H;
+    g.font=`500 ${Math.round(12*dpr)}px ${MONO}`; g.fillStyle=T.ink; g.textAlign='left'; g.textBaseline='middle'; g.fillText('T I D E', 16*dpr, 22*dpr);
+    const narrow=W/dpr<720; const yc=11*dpr, y2=narrow?40*dpr:yc; let X=chip(92*dpr,yc,P.link==='ratio'?'link ratio':P.link==='offset'?'link difference':'link off',P.link!=='off','link','left'); X=X+chips[chips.length-1].w+6*dpr; X=chip(X,yc,P.pp?'ping pong':P.tap?'R is a tap':'stereo',P.pp||P.tap,'mode','left'); X=narrow?16*dpr:X+chips[chips.length-1].w+22*dpr; X=chip(X,y2,'sync',P.sync,'sync','left'); X=X+chips[chips.length-1].w+6*dpr; X=chip(X,y2,shapes[P.shape],false,'shape','left'); X=X+chips[chips.length-1].w+6*dpr; chip(X,y2,media[P.medium],false,'medium','left'); chip(W-16*dpr,y2,'hold',P.hold,'hold','right',true);
+    const gauge=(x,val,label)=>{ const y0=geo.Y-geo.HMAX, y1=geo.Y+geo.HMAX; g.fillStyle=T.track; g.fillRect(x-2*dpr,y0,4*dpr,y1-y0); g.fillStyle=T.ink; g.fillRect(x-2*dpr,y1-(y1-y0)*val,4*dpr,(y1-y0)*val); g.fillStyle=T.dim; g.font=`${Math.round(10*dpr)}px ${MONO}`; g.textAlign='center'; g.textBaseline='top'; g.fillText(label,x,y1+6*dpr); if(showNums){ g.fillStyle=T.ink; g.textBaseline='bottom'; g.fillText(`${Math.round(val*100)}`,x,y0-4*dpr); } chips.push({x:x-12*dpr,y:y0,w:24*dpr,h:y1-y0,key:label}); };
+    gauge(W-16*dpr,P.wash,'wash'); gauge(16*dpr,P.mix,'mix');
+    if(showNums){ g.fillStyle=T.dim; g.font=`${Math.round(11*dpr)}px ${MONO}`; g.textAlign='left'; g.textBaseline='bottom'; g.fillText(`${fmtMs(P.tl)} · ${P.link==='ratio'?ratioName(P.tr/P.tl):fmtMs(P.tr)} · ${shapes[P.shape]==='fade'?Math.round(P.fb*100)+' %':P.count+' ×'} · wash ${Math.round(P.wash*100)} · mix ${Math.round(P.mix*100)}`, 16*dpr, H-8*dpr); } }
+  c.addEventListener('redraw',render); new ResizeObserver(render).observe(c); render(); }
+
+// ---- audio: one engine, fed by whichever window is focused
+const BLEED=0.15; let A=null, building=null;
+function buildAudio(){ if(building) return building; building=(async()=>{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([ENGINE_SRC],{type:'application/javascript'})));
+  const src=ctx.createGain(); const merge=ctx.createChannelMerger(2); src.connect(merge,0,0); src.connect(merge,0,1);
+  const eng=new AudioWorkletNode(ctx,'tide-engine',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],channelCount:2,channelCountMode:'explicit',channelInterpretation:'discrete'});
+  const lim=ctx.createDynamicsCompressor(); lim.threshold.value=-6; lim.knee.value=6; lim.ratio.value=20; lim.attack.value=0.002; lim.release.value=0.15;
+  merge.connect(eng).connect(lim).connect(ctx.destination); A={ctx,src,eng}; if(active) applyAudio(active); })(); return building; }
+function applyAudio(P){ if(!A) return; const D=derive(P); const w=WOB[media[P.medium]]; const amt=P.wash>0.6?(P.wash-0.6)*0.8+0.15*P.wash:0.15*P.wash; const wob={sine:w.sine*amt,sineHz:w.sineHz,rand:w.rand*amt,randHz:w.randHz,tide:!!w.tide,lp:amt>0?w.lp+(20000-w.lp)*(1-Math.min(1,amt*2)):20000,lpTime:w.lpTime&&amt>0,bits:amt>0.15?w.bits:0,hiss:w.hiss*amt};
+  const gains=[]; for(let k=0;k<P.count;k++) gains.push(shapes[P.shape]==='flat'?1:(k+1)/P.count);
+  A.eng.port.postMessage({tl:P.tl,tr:P.tr,fb:P.fb,bleed:P.pp?1:BLEED,inL:1,inR:P.pp?0:1,tone:D.tone,early:D.early,diff:D.diff,mix:P.mix,shape:shapes[P.shape]==='fade'?'exp':shapes[P.shape],gains,tap:P.tap,hold:P.hold,autoHold:false,wob}); }
+WINS().forEach((w,i)=>{ const P=FACES[i]; w.addEventListener('window-focus',()=>{ active=P; applyAudio(P); }); w.addEventListener('pointerdown',()=>{ active=P; applyAudio(P); },true); });
+active=FACES[0];
+// test voices
+function noiseBuf(ctx, seed){ const n=ctx.sampleRate*4, b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0); let x=(seed*2147483647)|0||1; for(let i=0;i<n;i++){ x=(x*48271)%2147483647; d[i]=x/2147483647*2-1; } return b; }
+const voices=new Map(); const $=id=>document.getElementById(id);
+async function ensure(){ if(!A) await buildAudio(); if(A.ctx.state!=='running') A.ctx.resume(); return A.ctx; }
+async function noteOn(freq=220, vel=0.8, id='btn'){ const ctx=await ensure(), t=ctx.currentTime, v=$('voice').value; noteOff(id);
+  if(v==='click'){ const nz=ctx.createBufferSource(); nz.buffer=noiseBuf(ctx,0.31); const f=ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq*6; f.Q.value=1.2; const e=ctx.createGain(); e.gain.setValueAtTime(0.0001,t); e.gain.exponentialRampToValueAtTime(0.8*vel,t+0.001); e.gain.exponentialRampToValueAtTime(0.0001,t+0.03); nz.connect(f).connect(e).connect(A.src); nz.start(t); nz.stop(t+0.05); return; }
+  const amp=0.05+0.6*vel*vel; const o=ctx.createOscillator(), o2=ctx.createOscillator(); o.type=o2.type='sawtooth'; o.frequency.value=freq; o2.frequency.value=freq*1.004; const f=ctx.createBiquadFilter(); f.type='lowpass'; const e=ctx.createGain(); o.connect(f); o2.connect(f); f.connect(e).connect(A.src); o.start(t); o2.start(t);
+  if(v==='pad'){ f.frequency.setValueAtTime(freq*(2+8*vel),t); f.Q.value=0.7; e.gain.setValueAtTime(0.0001,t); e.gain.exponentialRampToValueAtTime(amp*0.6,t+0.08); voices.set(id,{stop:()=>{ const tt=ctx.currentTime; e.gain.setTargetAtTime(0.0001,tt,0.12); o.stop(tt+0.8); o2.stop(tt+0.8); }}); }
+  else { f.frequency.setValueAtTime(freq*(4+12*vel),t); f.frequency.exponentialRampToValueAtTime(freq*1.5,t+0.12); e.gain.setValueAtTime(0.0001,t); e.gain.exponentialRampToValueAtTime(amp,t+0.004); e.gain.exponentialRampToValueAtTime(0.0001,t+0.16); o.stop(t+0.2); o2.stop(t+0.2); } }
+function noteOff(id){ const v=voices.get(id); if(v){ v.stop(); voices.delete(id); } }
+$('bpm').addEventListener('input',()=>{ const v=+$('bpm').value; if(v>=40&&v<=240){ BPM=v; document.querySelectorAll('canvas.pic').forEach(c=>c.dispatchEvent(new Event('redraw'))); } });
+$('play').addEventListener('click',()=>{ noteOn(220,0.8,'btn'); if($('voice').value==='pad') setTimeout(()=>noteOff('btn'),600); });
+let phraseTimer=null; $('phrase').addEventListener('click',async()=>{ if(phraseTimer){ clearInterval(phraseTimer); phraseTimer=null; $('phrase').classList.remove('on'); return; } await ensure(); const seq=[[220,1],[0,0],[220,.25],[220,.25],[330,1],[0,0],[247,.2],[0,0],[220,.25],[196,1],[0,0],[220,.2],[247,.25],[0,0],[330,.9],[0,0]]; let i=0; const step=()=>{ const [f,v]=seq[i%seq.length]; if(f) noteOn(f,v,'ph'); i++; }; step(); phraseTimer=setInterval(step,60000/BPM/2); $('phrase').classList.add('on'); });
+const KEYS={a:220,s:246.9,d:277.2,f:293.7,g:329.6,h:370,j:415.3,k:440};
+window.addEventListener('keydown',ev=>{ if(ev.target.tagName==='INPUT'||ev.target.tagName==='SELECT'||ev.target.tagName==='COMPOST-KNOB'||ev.target.tagName==='COMPOST-SLIDER'||ev.metaKey||ev.ctrlKey||ev.repeat) return; const f=KEYS[ev.key]; if(f){ ev.preventDefault(); noteOn(f,0.8,'k'+ev.key); } });
+window.addEventListener('keyup',ev=>{ if(KEYS[ev.key]) noteOff('k'+ev.key); });
+$('midi').addEventListener('click',async()=>{ await ensure(); if(!navigator.requestMIDIAccess){ $('midi-st').textContent='no Web MIDI'; return; } try{ const acc=await navigator.requestMIDIAccess(); const wire=()=>{ const names=[]; for(const inp of acc.inputs.values()){ inp.onmidimessage=ev=>{ const [st,n,v]=ev.data; const cmd=st&0xf0; if(cmd===0x90&&v>0) noteOn(440*Math.pow(2,(n-69)/12), v/127, 'm'+n); else if(cmd===0x80||(cmd===0x90&&v===0)) noteOff('m'+n); }; names.push(inp.name); } $('midi-st').textContent=names.join(', ')||'no inputs'; $('midi').classList.toggle('on',names.length>0); }; wire(); acc.onstatechange=wire; } catch(e){ $('midi-st').textContent='midi blocked'; } });
+
+// place the windows
+const w5=document.getElementById('w5'), w7=document.getElementById('w7'), w8=document.getElementById('w8');
+const w9=document.getElementById('w9'); const w10=document.getElementById('w10'); if(!MOBILE) requestAnimationFrame(()=>{ w10.moveTo(24,140); w9.moveTo(950,140); w5.moveTo(950,620); w7.moveTo(24,628); w8.moveTo(1400,620); });
+</script>
+</body>
+</html>

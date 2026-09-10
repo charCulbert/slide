@@ -1,0 +1,1304 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Slide</title>
+<style>
+:root{ --bg:#d6d6d6; --panel:#d2d2d2; --band:#c3c3c3; --ink:#1c1c1c; --ink2:#4f4f4f; --dim:#5d5d5d; --hair:#a9a9a9; --track:#b9b9b9; --acc:#75540a; color-scheme:light;
+  --compost-ui-font:"IBM Plex Sans",system-ui,sans-serif; --compost-accent:var(--acc);
+  --compost-window-bg:var(--panel); --compost-window-text:var(--ink); --compost-window-border:var(--band); --compost-window-muted:var(--dim); --compost-window-header-height:26px; --compost-window-header-font-size:11px; --compost-window-close-color:var(--dim); --compost-window-close-hover-color:var(--ink); --compost-window-grip-color:var(--hair); --compost-window-focus:var(--acc); }
+:root[data-color-scheme="dark"]{ --bg:#292929; --panel:#2e2e2e; --band:#3a3a3a; --ink:#dedede; --ink2:#bdbdbd; --dim:#909090; --hair:#575757; --track:#3a3a3a; --acc:#ddc07e; color-scheme:dark }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--compost-ui-font);font-size:13px;min-height:100vh;padding:16px 20px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--dim);letter-spacing:.06em;padding-bottom:10px;border-bottom:1px solid var(--band);margin-bottom:12px}
+header b{color:var(--ink);letter-spacing:.3em}
+header .test{display:flex;gap:8px;align-items:center;flex-wrap:wrap} header .dim{color:var(--dim);letter-spacing:0}
+header select,header input{font:inherit;font-family:"IBM Plex Mono",monospace;font-size:11px;background:none;border:1px solid var(--hair);color:var(--ink);padding:3px 6px}
+header button{font:inherit;color:var(--ink);background:none;border:1px solid var(--hair);padding:4px 10px;cursor:pointer;letter-spacing:.1em;text-transform:uppercase;font-size:10.5px}
+header button.on{background:var(--acc);color:var(--bg);border-color:var(--acc)}
+compost-window{--compost-window-bg:var(--panel);--compost-window-text:var(--ink);--compost-window-border:var(--band);--compost-window-muted:var(--dim);--compost-window-header-height:26px;--compost-window-header-font-size:11px;--compost-window-close-color:var(--dim);--compost-window-close-hover-color:var(--ink);--compost-window-grip-color:var(--hair);--compost-window-focus:var(--acc)}
+.full{position:relative;height:100%;min-width:0}
+.full canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.mobile-panel{background:var(--panel);border:1px solid var(--band);margin:0 0 14px;display:flex;flex-direction:column}
+.mobile-panel>.body{position:relative;height:var(--h,520px)}
+@media(max-width:700px){ body{padding:12px 10px} header{font-size:11px} header .test .dim:first-child{display:none} }
+</style>
+
+<header><span><b>SLIDE</b></span>
+  <span class="test"><button id="prev" type="button" title="previous preset">‹</button><select id="preset" aria-label="preset"></select><button id="next" type="button" title="next preset">›</button><span class="dim">test input</span><select id="voice"><option value="pluck">pluck</option><option value="pad">pad</option><option value="click">click</option></select><button id="play" type="button">play</button><button id="phrase" type="button">phrase</button><span class="dim">keys a–k</span><input id="bpm" type="number" value="120" min="40" max="240" style="width:56px"><span class="dim">bpm</span><button id="midi" type="button">midi</button><span class="dim" id="midi-st"></span><button id="scheme" type="button">dark mode</button></span></header>
+
+<compost-window id="w" heading="Slide" width="960" height="560" resizable open>
+  <div class="full" data-face="rule"><canvas class="pic" width="1600" height="900"></canvas></div>
+</compost-window>
+
+
+</head><body><script>
+const __m={};
+__m['/Users/charlieculbert/Development/char-clap-examples/tide/external/compost/src/utils.js']=(()=>{ function defineElement(name, constructor) {
+	if (!customElements.get(name)) {
+		customElements.define(name, constructor);
+	}
+}
+
+function clamp(value, min, max) {
+	return Math.min(max, Math.max(min, value));
+}
+
+function numberAttr(element, name, fallback) {
+	const raw = element.getAttribute(name);
+	if (raw === null || raw === "") return fallback;
+
+	const value = Number(raw);
+	return Number.isFinite(value) ? value : fallback;
+}
+
+function snap(value, step) {
+	if (!step) {
+		return value;
+	}
+
+	return Math.round(value / step) * step;
+}
+
+function rangeDragIncrement(min, max, pixels = 180) {
+	const range = Math.abs(Number(max) - Number(min));
+	const dragPixels = Number(pixels);
+	const usableRange = Number.isFinite(range) && range > 0 ? range : 1;
+	const usablePixels =
+		Number.isFinite(dragPixels) && dragPixels > 0 ? dragPixels : 180;
+	return usableRange / usablePixels;
+}
+
+function splitValueTextOptions(text = "") {
+	const source = String(text ?? "").trim();
+	if (!source) return [];
+
+	const separator = source.includes("|") ? "|" : ",";
+	return source.split(separator).map((option) => option.trim());
+}
+
+function valueTextOption(value, text = "") {
+	const options = Array.isArray(text) ? text : splitValueTextOptions(text);
+	if (!options.length) return null;
+
+	const number = Number(value);
+	if (!Number.isFinite(number)) return null;
+
+	const index = Math.round(number);
+	if (Math.abs(number - index) > 0.000001) return null;
+
+	const option = options[index];
+	return option ? String(option) : null;
+}
+
+function fractionDigitsForStep(step, displayFractionDigits = null) {
+	const explicit = Number(displayFractionDigits);
+	if (
+		displayFractionDigits !== null &&
+		displayFractionDigits !== "" &&
+		Number.isFinite(explicit)
+	) {
+		return Math.min(12, Math.max(0, Math.round(explicit)));
+	}
+
+	const numericStep = Number(step);
+	if (!(numericStep > 0) || !Number.isFinite(numericStep)) {
+		return 2;
+	}
+
+	for (let digits = 0; digits <= 12; digits += 1) {
+		const scaled = numericStep * 10 ** digits;
+		const tolerance = Math.max(1e-7, Math.abs(scaled) * 1e-7);
+		if (Math.abs(scaled - Math.round(scaled)) <= tolerance) {
+			return digits;
+		}
+	}
+
+	return 12;
+}
+
+function formatNumber(value, step, displayFractionDigits = null) {
+	const number = Number(value);
+	if (!Number.isFinite(number)) return String(value);
+	const fixed = number.toFixed(
+		fractionDigitsForStep(step, displayFractionDigits),
+	);
+	// Digits that come from a step or an explicit request are a promise of
+	// stable width. Digits that were only a guess (no step) should not show as
+	// trailing zeros: 800 reads as "800", not "800.00".
+	const guessed = displayFractionDigits === null && !(Number(step) > 0);
+	if (!guessed || !fixed.includes(".")) return fixed;
+	return fixed.replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatValue(
+	value,
+	step,
+	unit = "",
+	text = "",
+	displayFractionDigits = null,
+	bounds = null,
+) {
+	const option = valueTextOption(value, text);
+	if (option !== null) return option;
+
+	// A control that bottoms out at silence reads better as its own word than as
+	// whatever dB number the range happens to stop at.
+	if (bounds?.minLabel && Number.isFinite(bounds.min) && value <= bounds.min) {
+		return bounds.minLabel;
+	}
+	if (bounds?.maxLabel && Number.isFinite(bounds.max) && value >= bounds.max) {
+		return bounds.maxLabel;
+	}
+
+	const suffix = String(unit ?? "");
+	const separator = suffix && /^[\p{L}]/u.test(suffix) ? " " : "";
+	return `${formatNumber(value, step, displayFractionDigits)}${separator}${suffix}`;
+}
+
+function parameterEventDetail(control, value, extra = {}) {
+	return {
+		parameterID:
+			control.parameterID || control.getAttribute?.("parameter-id") || "",
+		value,
+		kind:
+			control.parameterKind ||
+			control.getAttribute?.("parameter-kind") ||
+			"continuous",
+		source: extra.source ?? "control",
+		cancelled: false,
+		...extra,
+	};
+}
+
+function beginParameterGesture(
+	control,
+	value = control.value,
+	extra = {},
+) {
+	if (control._parameterGestureActive) return;
+	control._parameterGestureActive = true;
+	control._parameterGestureStartValue = value;
+	control.dispatchEvent(
+		new CustomEvent("parameter-begin", {
+			bubbles: true,
+			composed: true,
+			detail: parameterEventDetail(control, value, extra),
+		}),
+	);
+}
+
+function editParameterGesture(
+	control,
+	value = control.value,
+	extra = {},
+) {
+	beginParameterGesture(control, value, extra);
+	control.dispatchEvent(
+		new CustomEvent("parameter-edit", {
+			bubbles: true,
+			composed: true,
+			detail: parameterEventDetail(control, value, extra),
+		}),
+	);
+}
+
+function endParameterGesture(
+	control,
+	value = control.value,
+	extra = {},
+) {
+	if (!control._parameterGestureActive) return;
+	control._parameterGestureActive = false;
+	const cancelled = Boolean(extra.cancelled);
+	const finalValue = cancelled ? control._parameterGestureStartValue : value;
+	delete control._parameterGestureStartValue;
+	if (cancelled) {
+		if (typeof control.setValue === "function")
+			control.setValue(finalValue, false, "cancel");
+		else if ("value" in Object(control)) control.value = finalValue;
+	}
+	control.dispatchEvent(
+		new CustomEvent("parameter-end", {
+			bubbles: true,
+			composed: true,
+			detail: parameterEventDetail(control, finalValue, extra),
+		}),
+	);
+}
+
+ return {defineElement,clamp,numberAttr,snap,rangeDragIncrement,splitValueTextOptions,valueTextOption,fractionDigitsForStep,formatNumber,formatValue,parameterEventDetail,beginParameterGesture,editParameterGesture,endParameterGesture}; })();
+__m['/Users/charlieculbert/Development/char-clap-examples/tide/external/compost/src/components/compost-window.js']=(()=>{ const { clamp, defineElement, numberAttr } = __m['/Users/charlieculbert/Development/char-clap-examples/tide/external/compost/src/utils.js'];
+let nextWindowID = 1;
+let nextStackOrder = 0;
+const connectedWindows = new Set();
+
+function refreshWindowStacking() {
+	const ordered = [...connectedWindows].sort(
+		(a, b) => a.stackOrder - b.stackOrder,
+	);
+	const normal = ordered.filter((window_) => !window_.alwaysOnTop);
+	const pinned = ordered.filter((window_) => window_.alwaysOnTop);
+	for (const [index, window_] of [...normal, ...pinned].entries()) {
+		window_.style.zIndex = String(901 + index);
+	}
+}
+
+/**
+ * Where a window goes when asked to move: the whole frame stays inside the
+ * viewport, so every part of it is always reachable.
+ * @param {{x: number, y: number, width: number, height: number,
+ *   viewportWidth: number, viewportHeight: number}} request
+ */
+function boundedPosition({
+	x,
+	y,
+	width,
+	height,
+	viewportWidth,
+	viewportHeight,
+}) {
+	return {
+		x: clamp(x, 0, Math.max(0, viewportWidth - width)),
+		y: clamp(y, 0, Math.max(0, viewportHeight - height)),
+	};
+}
+
+/**
+ * Rounds a requested content size to one the window allows: inside the
+ * minimum and maximum, inside the viewport, and — when an aspect ratio is
+ * fixed — following whichever edge moved further so the frame tracks the
+ * drag instead of fighting it.
+ * @param {{width: number, height: number, current: {width: number, height: number},
+ *   minWidth: number, minHeight: number, maxWidth: number, maxHeight: number,
+ *   aspectRatio?: number|null, axis?: 'both'|'horizontal'|'vertical'|'none'}} request
+ */
+function constrainedSize({
+	width,
+	height,
+	current,
+	minWidth,
+	minHeight,
+	maxWidth,
+	maxHeight,
+	aspectRatio = null,
+	axis = "both",
+}) {
+	let nextWidth =
+		axis === "vertical" || axis === "none" ? current.width : width;
+	let nextHeight =
+		axis === "horizontal" || axis === "none" ? current.height : height;
+	if (aspectRatio && aspectRatio > 0 && Number.isFinite(aspectRatio)) {
+		if (
+			Math.abs(nextWidth - current.width) >=
+			Math.abs(nextHeight - current.height)
+		) {
+			nextHeight = nextWidth / aspectRatio;
+		} else {
+			nextWidth = nextHeight * aspectRatio;
+		}
+	}
+	const boundedWidth = clamp(nextWidth, minWidth, Math.max(minWidth, maxWidth));
+	const boundedHeight = clamp(
+		nextHeight,
+		minHeight,
+		Math.max(minHeight, maxHeight),
+	);
+	if (aspectRatio && aspectRatio > 0 && Number.isFinite(aspectRatio)) {
+		// a bound on one side pulls the other back into ratio
+		if (boundedWidth !== nextWidth) {
+			return {
+				width: Math.round(boundedWidth),
+				height: Math.round(boundedWidth / aspectRatio),
+			};
+		}
+		if (boundedHeight !== nextHeight) {
+			return {
+				width: Math.round(boundedHeight * aspectRatio),
+				height: Math.round(boundedHeight),
+			};
+		}
+	}
+	return { width: Math.round(boundedWidth), height: Math.round(boundedHeight) };
+}
+
+/** @param {string|null} value */
+function parseAspectRatio(value) {
+	if (value === null || value === "") return null;
+	const text = String(value).trim();
+	if (text.includes("/")) {
+		const [w, h] = text.split("/").map((part) => Number(part.trim()));
+		return w > 0 && h > 0 ? w / h : null;
+	}
+	const number = Number(text);
+	return number > 0 && Number.isFinite(number) ? number : null;
+}
+
+/**
+ * A floating window: a header with a title and a close control, dragged
+ * by the header, resized from a corner grip, and never allowed past the
+ * viewport's edges. The content is whatever is slotted in — a plug-in's own
+ * interface, a keyboard, a panel. `width` and `height` name the content
+ * size, which is what a plug-in negotiates; the frame adds its own chrome.
+ */
+class CompostWindow extends HTMLElement {
+	static get observedAttributes() {
+		return [
+			"open",
+			"heading",
+			"x",
+			"y",
+			"width",
+			"height",
+			"min-width",
+			"min-height",
+			"max-width",
+			"max-height",
+			"aspect-ratio",
+			"resizable",
+			"fullscreen",
+			"sheet",
+			"static",
+			"always-on-top",
+		];
+	}
+
+	constructor() {
+		super();
+
+		this.windowID = `compost-window-${nextWindowID++}`;
+		this.stackOrder = ++nextStackOrder;
+		this.minWidth = 200;
+		this.minHeight = 120;
+		this.maxWidth = Infinity;
+		this.maxHeight = Infinity;
+		/** @type {number|null} */ this.aspectRatio = null;
+		/** @type {{pointerId: number, x: number, y: number, left: number, top: number}|null} */
+		this.drag = null;
+		/** @type {{pointerId: number, x: number, y: number, width: number, height: number}|null} */
+		this.resize = null;
+		this.layoutViewportWidth = window.innerWidth;
+		this.handleViewportResize = this.handleViewportResize.bind(this);
+
+		this.root = this.attachShadow({ mode: "open" });
+		this.root.innerHTML = `
+      <style>
+        :host {
+          --compost-window-bg: Canvas;
+          --compost-window-text: currentColor;
+          --compost-window-muted: color-mix(in srgb, currentColor 65%, transparent);
+          --compost-window-border: color-mix(in srgb, currentColor 30%, transparent);
+          --compost-window-header-height: 2em;
+          --compost-window-header-font-size: .875em;
+          --compost-window-close-color: currentColor;
+          --compost-window-close-hover-color: currentColor;
+          --compost-window-grip-color: color-mix(in srgb, currentColor 65%, transparent);
+          --compost-window-focus: currentColor;
+          --compost-window-z-index: 900;
+          position: fixed;
+          left: 0;
+          top: 0;
+          z-index: var(--compost-window-z-index);
+          box-sizing: border-box;
+          display: none;
+          flex-direction: column;
+          min-width: 0;
+          min-height: 0;
+          max-width: 100vw;
+          max-height: 100vh;
+          background: var(--compost-window-bg);
+          color: var(--compost-window-text);
+          border: 1px solid var(--compost-window-border);
+          font: inherit;
+          outline: none;
+        }
+        :host([open]) { display: flex; }
+        :host(:focus-visible) { outline: 2px solid var(--compost-window-focus); outline-offset: -2px; }
+        header {
+          flex: none;
+          box-sizing: border-box;
+          display: flex;
+          align-items: center;
+          gap: 0.6em;
+          height: var(--compost-window-header-height);
+          padding: 0 0 0 .7em;
+          border-bottom: 1px solid var(--compost-window-border);
+          background: color-mix(in srgb, currentColor 6%, transparent);
+          color: var(--compost-window-muted);
+          font-size: var(--compost-window-header-font-size);
+          cursor: move;
+          touch-action: none;
+          -webkit-user-select: none;
+          user-select: none;
+        }
+        :host([static]) header { cursor: default; }
+        .title {
+          flex: 1 1 auto;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .pin, .close {
+          flex: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-sizing: border-box;
+          min-width: var(--compost-window-control-min, 0px);
+          min-height: 0;
+          width: 2em;
+          height: 100%;
+          padding: 0;
+          border: 0;
+          background: none;
+          color: var(--compost-window-close-color);
+          cursor: pointer;
+          font: inherit;
+        }
+		.pin svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 1.35; }
+		.pin[aria-pressed="true"] { color: var(--compost-window-text); }
+        /* whatever a host slots into the bar is a target too, not just the close box */
+        ::slotted([slot="controls"]) {
+          min-height: var(--compost-window-control-min, 0px);
+          display: flex;
+          align-items: center;
+        }
+        .pin:hover, .close:hover { background: color-mix(in srgb, currentColor 10%, transparent); color: var(--compost-window-close-hover-color); }
+        .pin:focus-visible, .close:focus-visible { outline: 2px solid var(--compost-window-focus); outline-offset: -2px; }
+        .content {
+          flex: 1 1 auto;
+          min-width: 0;
+          min-height: 0;
+          position: relative;
+          overflow: hidden;
+        }
+        .grip {
+          position: absolute;
+          right: 0;
+          bottom: 0;
+          width: 1.2em;
+          height: 1.2em;
+          cursor: nwse-resize;
+          touch-action: none;
+          z-index: 2;
+        }
+        .grip::after {
+          content: "";
+          position: absolute;
+          right: 0.25em;
+          bottom: 0.25em;
+          width: 0.55em;
+          height: 0.55em;
+          border-right: 1px solid var(--compost-window-grip-color);
+          border-bottom: 1px solid var(--compost-window-grip-color);
+          opacity: 0.7;
+        }
+        :host([resizable="none"]) .grip, :host([fullscreen]) .grip { display: none; }
+        :host([resizable="horizontal"]) .grip { cursor: ew-resize; }
+        :host([resizable="vertical"]) .grip { cursor: ns-resize; }
+        /* on a small screen the window takes the screen, less nothing */
+        :host([fullscreen]) {
+          left: 0 !important;
+          top: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          max-width: none;
+          max-height: none;
+        }
+        :host([fullscreen]) header, :host([sheet]) header { cursor: default; }
+        /* a sheet keeps the bottom of the screen and grows upward: for a phone
+           keyboard or a picker, where taking the whole screen buys nothing */
+        :host([sheet]) {
+          left: 0 !important;
+          right: 0;
+          top: auto !important;
+          bottom: 0;
+          width: 100vw !important;
+          height: auto;
+          max-width: none;
+        }
+        :host([sheet]) .grip { display: none; }
+        /* the bar clears the notch when the frame owns an edge of the screen */
+        :host([fullscreen]) header, :host([sheet]) header {
+          height: calc(var(--compost-window-header-height) + env(safe-area-inset-top, 0px));
+          min-height: var(--compost-window-control-min, 0px);
+          padding-top: env(safe-area-inset-top, 0px);
+        }
+		:host([fullscreen]) .pin, :host([fullscreen]) .close,
+		:host([sheet]) .pin, :host([sheet]) .close {
+			min-height: var(--compost-window-control-min, 0px);
+		}
+        :host([sheet]) header {
+          height: var(--compost-window-header-height);
+          padding-top: 0;
+        }
+        :host([sheet]) .content { padding-bottom: env(safe-area-inset-bottom, 0px); }
+      </style>
+      <header part="header">
+        <slot name="title"><span class="title" part="title"></span></slot>
+        <slot name="controls"></slot>
+		<button class="pin" part="pin" type="button" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2.5h5M6.5 2.5v4l-2 2v1h7v-1l-2-2v-4M8 9.5v4"/></svg></button>
+        <button class="close" part="close" type="button" aria-label="Close">&times;</button>
+      </header>
+      <div class="content" part="content"><slot></slot></div>
+      <div class="grip" part="grip" aria-hidden="true"></div>`;
+
+		this.header = /** @type {HTMLElement} */ (
+			this.root.querySelector("header")
+		);
+		this.titleElement = /** @type {HTMLElement} */ (
+			this.root.querySelector(".title")
+		);
+		this.closeButton = /** @type {HTMLButtonElement} */ (
+			this.root.querySelector(".close")
+		);
+		this.pinButton = /** @type {HTMLButtonElement} */ (
+			this.root.querySelector(".pin")
+		);
+		this.content = /** @type {HTMLElement} */ (
+			this.root.querySelector(".content")
+		);
+		this.grip = /** @type {HTMLElement} */ (this.root.querySelector(".grip"));
+
+		this.closeButton.addEventListener("click", (event) => {
+			event.stopPropagation();
+			this.requestClose("button");
+		});
+		this.pinButton.addEventListener("click", (event) => {
+			event.stopPropagation();
+			this.alwaysOnTop = !this.alwaysOnTop;
+			this.raise();
+			this.dispatchEvent(
+				new CustomEvent("window-pin", {
+					bubbles: true,
+					composed: true,
+					detail: { pinned: this.alwaysOnTop },
+				}),
+			);
+		});
+		this.header.addEventListener("pointerdown", (event) =>
+			this.beginDrag(event),
+		);
+		this.header.addEventListener("pointermove", (event) =>
+			this.moveDrag(event),
+		);
+		this.header.addEventListener("pointerup", (event) => this.endDrag(event));
+		this.header.addEventListener("pointercancel", (event) =>
+			this.endDrag(event),
+		);
+		this.grip.addEventListener("pointerdown", (event) =>
+			this.beginResize(event),
+		);
+		this.grip.addEventListener("pointermove", (event) =>
+			this.moveResize(event),
+		);
+		this.grip.addEventListener("pointerup", (event) => this.endResize(event));
+		this.grip.addEventListener("pointercancel", (event) =>
+			this.endResize(event),
+		);
+		this.addEventListener("pointerdown", () => this.raise());
+		this.addEventListener("focusin", () => this.raise());
+	}
+
+	connectedCallback() {
+		connectedWindows.add(this);
+		if (!this.hasAttribute("tabindex")) this.tabIndex = -1;
+		this.setAttribute("role", "dialog");
+		this.readAttributes();
+		this.refresh();
+		this.layoutViewportWidth = window.innerWidth;
+		window.addEventListener("resize", this.handleViewportResize);
+		if (this.hasAttribute("open")) this.raise();
+	}
+
+	disconnectedCallback() {
+		connectedWindows.delete(this);
+		refreshWindowStacking();
+		window.removeEventListener("resize", this.handleViewportResize);
+	}
+
+	/** @param {string} name */
+	attributeChangedCallback(name) {
+		if (!this.isConnected) return;
+		this.readAttributes();
+		if (name === "open" && this.hasAttribute("open")) {
+			this.raise();
+			this.dispatchEvent(
+				new CustomEvent("window-open", { bubbles: true, composed: true }),
+			);
+		}
+		if (name === "always-on-top") refreshWindowStacking();
+		this.refresh();
+	}
+
+	readAttributes() {
+		this.minWidth = Math.max(0, numberAttr(this, "min-width", 200));
+		this.minHeight = Math.max(0, numberAttr(this, "min-height", 120));
+		this.maxWidth = numberAttr(this, "max-width", Infinity);
+		this.maxHeight = numberAttr(this, "max-height", Infinity);
+		this.aspectRatio = parseAspectRatio(this.getAttribute("aspect-ratio"));
+	}
+
+	get open() {
+		return this.hasAttribute("open");
+	}
+
+	set open(value) {
+		this.toggleAttribute("open", Boolean(value));
+	}
+
+	get heading() {
+		return this.getAttribute("heading") ?? "";
+	}
+
+	set heading(value) {
+		this.setAttribute("heading", String(value ?? ""));
+	}
+
+	get alwaysOnTop() {
+		return this.hasAttribute("always-on-top");
+	}
+
+	set alwaysOnTop(value) {
+		this.toggleAttribute("always-on-top", Boolean(value));
+	}
+
+	get resizable() {
+		const value = this.getAttribute("resizable");
+		return value === "horizontal" || value === "vertical" || value === "none"
+			? value
+			: "both";
+	}
+
+	/** Pixels the frame adds around the content: the header, and any border. */
+	chromeSize() {
+		return {
+			width: Math.max(0, this.offsetWidth - this.content.clientWidth),
+			height: Math.max(0, this.offsetHeight - this.content.clientHeight),
+		};
+	}
+
+	/** The content box's size, in CSS pixels. */
+	get contentSize() {
+		return {
+			width: this.content.clientWidth,
+			height: this.content.clientHeight,
+		};
+	}
+
+	// ---- Geometry -----------------------------------------------------------
+
+	/** Sizes the content box, keeping the frame inside the viewport and the bounds. */
+	/** @param {number} width @param {number} height @param {{emit?: boolean}} [options] */
+	setContentSize(width, height, { emit = false } = {}) {
+		const chrome = this.chromeSize();
+		const size = constrainedSize({
+			width,
+			height,
+			current: this.contentSize,
+			minWidth: this.minWidth,
+			minHeight: this.minHeight,
+			maxWidth: Math.min(this.maxWidth, window.innerWidth - chrome.width),
+			maxHeight: Math.min(this.maxHeight, window.innerHeight - chrome.height),
+			aspectRatio: this.aspectRatio,
+			axis: "both",
+		});
+		this.style.width = `${size.width + chrome.width}px`;
+		this.style.height = `${size.height + chrome.height}px`;
+		if (String(size.width) !== this.getAttribute("width"))
+			this.setAttribute("width", String(size.width));
+		if (String(size.height) !== this.getAttribute("height"))
+			this.setAttribute("height", String(size.height));
+		this.keepInView();
+		if (emit) {
+			this.dispatchEvent(
+				new CustomEvent("window-resize", {
+					bubbles: true,
+					composed: true,
+					detail: { width: size.width, height: size.height, resizing: false },
+				}),
+			);
+		}
+		return size;
+	}
+
+	/** Moves the frame, bounded to the viewport. */
+	/** @param {number} x @param {number} y @param {{emit?: boolean}} [options] */
+	moveTo(x, y, { emit = false } = {}) {
+		const position = boundedPosition({
+			x,
+			y,
+			width: this.offsetWidth || 200,
+			height: this.offsetHeight || 120,
+			viewportWidth: window.innerWidth,
+			viewportHeight: window.innerHeight,
+		});
+		this.style.left = `${position.x}px`;
+		this.style.top = `${position.y}px`;
+		if (String(position.x) !== this.getAttribute("x"))
+			this.setAttribute("x", String(position.x));
+		if (String(position.y) !== this.getAttribute("y"))
+			this.setAttribute("y", String(position.y));
+		if (emit) {
+			this.dispatchEvent(
+				new CustomEvent("window-move", {
+					bubbles: true,
+					composed: true,
+					detail: { x: position.x, y: position.y },
+				}),
+			);
+		}
+		return position;
+	}
+
+	/** Where the frame is, or is asked to be before it has been placed. */
+	currentPosition() {
+		return {
+			x: this.style.left
+				? parseFloat(this.style.left)
+				: numberAttr(this, "x", 0),
+			y: this.style.top ? parseFloat(this.style.top) : numberAttr(this, "y", 0),
+		};
+	}
+
+	keepInView() {
+		if (
+			!this.open ||
+			this.hasAttribute("fullscreen") ||
+			this.hasAttribute("sheet")
+		)
+			return;
+		const position = this.currentPosition();
+		this.moveTo(position.x, position.y);
+	}
+
+	handleViewportResize() {
+		const widthChanged = this.layoutViewportWidth !== window.innerWidth;
+		this.layoutViewportWidth = window.innerWidth;
+		// Mobile browser chrome and keyboards change height without a layout rotation.
+		// Desktop height-only resizes must still bring windows back into view.
+		if (
+			!widthChanged &&
+			window.matchMedia("(hover: none) and (pointer: coarse)").matches
+		)
+			return;
+		if (
+			!this.open ||
+			this.hasAttribute("fullscreen") ||
+			this.hasAttribute("sheet")
+		)
+			return;
+		// shrinking the viewport must not strand a window outside it, or make it larger than the screen
+		const size = this.contentSize;
+		this.setContentSize(size.width, size.height);
+	}
+
+	/** Brings the window above every other compost-window. */
+	raise() {
+		this.stackOrder = ++nextStackOrder;
+		refreshWindowStacking();
+		if (!this.hasAttribute("data-raised")) this.setAttribute("data-raised", "");
+		this.dispatchEvent(
+			new CustomEvent("window-focus", { bubbles: true, composed: true }),
+		);
+	}
+
+	/** @param {string} reason */
+	requestClose(reason) {
+		const event = new CustomEvent("window-close", {
+			bubbles: true,
+			composed: true,
+			cancelable: true,
+			detail: { reason },
+		});
+		if (this.dispatchEvent(event)) this.removeAttribute("open");
+	}
+
+	close() {
+		this.requestClose("close");
+	}
+
+	refresh() {
+		if (!this.header) return;
+		this.titleElement.textContent = this.heading;
+		this.setAttribute("aria-label", this.heading || "Window");
+		this.closeButton.setAttribute(
+			"aria-label",
+			this.heading ? `Close ${this.heading}` : "Close",
+		);
+		this.pinButton.setAttribute("aria-pressed", String(this.alwaysOnTop));
+		this.pinButton.setAttribute(
+			"aria-label",
+			this.alwaysOnTop
+				? `Stop keeping ${this.heading || "window"} on top`
+				: `Keep ${this.heading || "window"} on top`,
+		);
+		this.pinButton.title = this.alwaysOnTop ? "Unpin window" : "Keep on top";
+		this.closeButton.title = "close";
+		if (!this.open) return;
+		const width = numberAttr(this, "width", NaN);
+		const height = numberAttr(this, "height", NaN);
+		if (this.hasAttribute("sheet")) {
+			this.style.width = "";
+			this.style.height = "";
+		} else if (Number.isFinite(width) && Number.isFinite(height)) {
+			const current = this.contentSize;
+			if (
+				Math.abs(current.width - width) > 0.5 ||
+				Math.abs(current.height - height) > 0.5 ||
+				!this.style.width
+			)
+				this.setContentSize(width, height);
+		}
+		if (!this.hasAttribute("fullscreen") && !this.hasAttribute("sheet")) {
+			const position = this.currentPosition();
+			this.moveTo(
+				numberAttr(this, "x", position.x),
+				numberAttr(this, "y", position.y),
+			);
+		}
+	}
+
+	// ---- Dragging -----------------------------------------------------------
+
+	/** @param {PointerEvent} event */
+	beginDrag(event) {
+		if (
+			event.button !== 0 ||
+			this.hasAttribute("static") ||
+			this.hasAttribute("fullscreen") ||
+			this.hasAttribute("sheet")
+		)
+			return;
+		// controls in the bar own their own press
+		if (
+			event
+				.composedPath()
+				.some(
+					(node) =>
+						node instanceof Element &&
+						node !== this.header &&
+						(node === this.closeButton ||
+							node === this.pinButton ||
+							node.closest?.('[slot="controls"]') ||
+							(node instanceof HTMLElement &&
+								node.tagName.includes("-") &&
+								node !== this)),
+				)
+		)
+			return;
+		event.preventDefault();
+		this.drag = {
+			pointerId: event.pointerId,
+			x: event.clientX,
+			y: event.clientY,
+			left: this.offsetLeft,
+			top: this.offsetTop,
+		};
+		this.header.setPointerCapture(event.pointerId);
+	}
+
+	/** @param {PointerEvent} event */
+	moveDrag(event) {
+		if (!this.drag || event.pointerId !== this.drag.pointerId) return;
+		this.moveTo(
+			this.drag.left + event.clientX - this.drag.x,
+			this.drag.top + event.clientY - this.drag.y,
+		);
+	}
+
+	/** @param {PointerEvent} event */
+	endDrag(event) {
+		if (!this.drag || event.pointerId !== this.drag.pointerId) return;
+		this.drag = null;
+		this.moveTo(this.offsetLeft, this.offsetTop, { emit: true });
+	}
+
+	// ---- Resizing -----------------------------------------------------------
+
+	/** @param {PointerEvent} event */
+	beginResize(event) {
+		if (event.button !== 0 || this.resizable === "none") return;
+		event.preventDefault();
+		event.stopPropagation();
+		const size = this.contentSize;
+		this.resize = {
+			pointerId: event.pointerId,
+			x: event.clientX,
+			y: event.clientY,
+			width: size.width,
+			height: size.height,
+		};
+		this.grip.setPointerCapture(event.pointerId);
+		this.setAttribute("data-resizing", "");
+	}
+
+	/** @param {PointerEvent} event */
+	moveResize(event) {
+		if (!this.resize || event.pointerId !== this.resize.pointerId) return;
+		const chrome = this.chromeSize();
+		const size = constrainedSize({
+			width: this.resize.width + event.clientX - this.resize.x,
+			height: this.resize.height + event.clientY - this.resize.y,
+			// Keep the aspect-ratio comparison in the same pointerdown-relative frame
+			// as the requested dimensions; the rendered size may already be constrained.
+			current: { width: this.resize.width, height: this.resize.height },
+			minWidth: this.minWidth,
+			minHeight: this.minHeight,
+			maxWidth: Math.min(
+				this.maxWidth,
+				window.innerWidth - this.offsetLeft - chrome.width,
+			),
+			maxHeight: Math.min(
+				this.maxHeight,
+				window.innerHeight - this.offsetTop - chrome.height,
+			),
+			aspectRatio: this.aspectRatio,
+			axis: this.resizable,
+		});
+		this.style.width = `${size.width + chrome.width}px`;
+		this.style.height = `${size.height + chrome.height}px`;
+		this.dispatchEvent(
+			new CustomEvent("window-resize", {
+				bubbles: true,
+				composed: true,
+				detail: { ...size, resizing: true },
+			}),
+		);
+	}
+
+	/** @param {PointerEvent} event */
+	endResize(event) {
+		if (!this.resize || event.pointerId !== this.resize.pointerId) return;
+		this.resize = null;
+		this.removeAttribute("data-resizing");
+		const size = this.contentSize;
+		this.setContentSize(size.width, size.height, { emit: true });
+	}
+}
+
+defineElement("compost-window", CompostWindow);
+
+ return {boundedPosition,constrainedSize,CompostWindow}; })();
+// Slide engine as an AudioWorklet processor, mirroring ../Engine.h.
+// ENGINE_SRC is the processor source (loaded via a blob URL); WOB holds the medium recipes.
+// Parameters arrive over the port as one object: tl, tr (ms), fb, bleed, inL, inR, tone, hpf,
+// early, diff, mix, shape ('exp' loop or a chain), gains[], tap (false|'R'|'L'), hold, autoHold, wob{}.
+const ENGINE_SRC = String.raw`
+const MAXMS=2100, STAGES=64;
+class AP{ constructor(ms){ this.b=ms.map(m=>new Float32Array(Math.max(4,Math.round(m*0.001*sampleRate)))); this.i=ms.map(()=>0); this.g=0; }
+  run(v){ const g=this.g; if(g<=0) return v; for(let s=0;s<this.b.length;s++){ const b=this.b[s]; let i=this.i[s]; const d=b[i]; const st=v+g*d; b[i]=st; i++; if(i===b.length) i=0; this.i[s]=i; v=d-g*st; } return v; }
+  clear(){ for(const b of this.b) b.fill(0); } }
+class Rng{ constructor(seed){ this.x=(seed*2147483647|0)||1; } next(){ this.x=(this.x*48271)%2147483647; return this.x/2147483647*2-1; } }
+class E extends AudioWorkletProcessor{
+  constructor(){ super(); const N=Math.ceil(MAXMS*0.001*sampleRate)+8; this.N=N;
+    this.buf=[[],[]]; for(let c=0;c<2;c++) for(let k=0;k<STAGES;k++) this.buf[c].push(new Float32Array(N));
+    this.w=0;
+    const eT=[[2.3,5.1,9.7,15.3],[2.9,6.1,11.3,17.9]], lT=[[4.7,7.9,13.1,19.7],[5.3,8.9,14.9,22.3]];
+    this.early=[new AP(eT[0]),new AP(eT[1])]; this.diff=[[],[]]; for(let c=0;c<2;c++) for(let k=0;k<STAGES;k++) this.diff[c].push(new AP(lT[c]));
+    this.lp=[new Float32Array(STAGES),new Float32Array(STAGES)]; this.lp2=[new Float32Array(STAGES),new Float32Array(STAGES)]; this.hp=[new Float32Array(STAGES),new Float32Array(STAGES)];
+    this.ph=[0,0.25]; this.rng=[new Rng(0.37),new Rng(0.71)]; this.rnd=[0,0]; this.rnd2=[0,0]; this.tide=[0,0];
+    this.p={tl:350,tr:350,fb:0.46,bleed:0.15,inL:1,inR:1,tone:4200,hpf:20,early:0,diff:0.1,mix:0.5,shape:'exp',gains:[1],tap:false,hold:false,
+            wob:{sine:0,sineHz:0,rand:0,randHz:0,lp:20000,lpTime:false,bits:0,hiss:0},clear:false,autoHold:false};
+    this.env=0; this.peak=0.002; this.quiet=0; this.aHold=false;
+    this.s={tl:350,tr:350,fb:0.46,tone:4200,mix:0.5,inL:1,inR:1}; // smoothed
+    this.crush=0; this.hissRng=new Rng(0.9);
+    this.port.onmessage=e=>{ Object.assign(this.p,e.data); if(!this.got){ this.got=true; const p=this.p; Object.assign(this.s,{tl:p.tl,tr:p.tr,fb:p.fb,tone:p.tone,mix:p.mix,inL:p.inL,inR:p.inR}); } if(this.p.clear){ this.clearAll(); this.p.clear=false; } }; }
+  clearAll(){ for(const c of this.buf) for(const b of c) b.fill(0); for(const a of this.early) a.clear(); for(const c of this.diff) for(const a of c) a.clear(); for(const l of this.lp) l.fill(0); }
+  read(buf, delaySamples){ const N=this.N; let r=this.w-delaySamples; while(r<0) r+=N; if(r>=N) r-=N; let i=r|0; if(i>=N) i=N-1; const f=r-i; const a=buf[i], b=buf[i+1>=N?0:i+1]; return a+(b-a)*f; }
+  process(inputs,outputs){ const inp=inputs[0], out=outputs[0]; if(!out||!out[0]) return true;
+    const xL=inp&&inp[0]?inp[0]:null, xR=inp&&inp[1]?inp[1]:xL; const n=out[0].length;
+    const p=this.p, s=this.s, sr=sampleRate, kS=1-Math.exp(-1/(0.02*sr));
+    const holdNow=p.hold||(p.autoHold&&this.aHold); const fb=holdNow?1:p.fb, toneT=holdNow?20000:p.tone;
+    const W=p.wob; const bits=W.bits, q=bits?Math.pow(2,bits-1):0;
+    const finite=p.shape!=='exp'&&!holdNow; const S=finite?Math.min(STAGES,p.gains.length):1;
+    const th=Math.asin(Math.min(1,p.tap?0:p.bleed)), cb=Math.cos(th), sb=Math.sin(th);   // bleed is a rotation, so it never loses energy
+    const eg=p.early*0.62, dg=p.diff*0.62; for(const a of this.early) a.g=eg; for(const c of this.diff) for(const a of c) a.g=dg;
+    const drift=[0,0];
+    for(let i=0;i<n;i++){
+      s.tl+=(p.tl-s.tl)*kS; s.tr+=(p.tr-s.tr)*kS; s.fb+=(fb-s.fb)*kS; s.tone+=(toneT-s.tone)*kS; s.mix+=(p.mix-s.mix)*kS; s.inL+=(p.inL-s.inL)*kS; s.inR+=(p.inR-s.inR)*kS;
+      // wobble per side: sine + filtered seeded noise, depth relative to time up to 250 ms
+      for(let c=0;c<2;c++){ const T=c?s.tr:s.tl; const ref=Math.min(400,Math.max(40,T));
+        this.ph[c]+=W.sineHz/sr; if(this.ph[c]>=1) this.ph[c]-=1;
+        const kr=1-Math.exp(-2*Math.PI*Math.max(0.05,W.randHz)/sr); this.rnd[c]+=(this.rng[c].next()-this.rnd[c])*kr; this.rnd2[c]+=(this.rnd[c]-this.rnd2[c])*kr;
+        let m=W.sine*Math.sin(2*Math.PI*this.ph[c])+W.rand*6*this.rnd2[c];
+        if(W.tide){ const f=W.sineHz; const t=this.tide[c]+=1/sr; m=W.sine*(Math.sin(2*Math.PI*f*t+c*1.57)+0.6*Math.sin(2*Math.PI*f*1.0355*t+0.4)+0.35*Math.sin(2*Math.PI*f*0.518*t+1.9))/1.95; }
+        drift[c]=m*ref; }
+      const dL=Math.max(1,(s.tl+drift[0])*0.001*sr), dR=Math.max(1,(s.tr+drift[1])*0.001*sr);
+      // read every stage
+      let yL=0,yR=0; const rd=this.rd||(this.rd=[new Float32Array(STAGES),new Float32Array(STAGES)]);
+      for(let k=0;k<S;k++){ const gk=finite?p.gains[k]:1; const a=this.read(this.buf[0][k],dL); rd[0][k]=a; yL+=gk*a;
+        if(p.tap==='L'){ const b=this.read(this.buf[1][k],dL); rd[0][k]=0; yL=yL-gk*a+gk*b; const bb=this.read(this.buf[1][k],dR); rd[1][k]=bb; yR+=gk*bb; }
+        else if(p.tap){ const b=this.read(this.buf[0][k],dR); rd[1][k]=0; yR+=gk*b; } else { const b=this.read(this.buf[1][k],dR); rd[1][k]=b; yR+=gk*b; } }
+      // tone + loss filters
+      const kT=s.tone>=19000?1:1-Math.exp(-2*Math.PI*s.tone/sr); const kH=p.hpf<=20?0:1-Math.exp(-2*Math.PI*p.hpf/sr);
+      const lpL=W.lpTime?Math.min(W.lp,Math.max(1200,W.lp*Math.sqrt(60/s.tl))):W.lp, lpR=W.lpTime?Math.min(W.lp,Math.max(1200,W.lp*Math.sqrt(60/s.tr))):W.lp;
+      const kL=lpL>=19000?1:1-Math.exp(-2*Math.PI*lpL/sr), kR=lpR>=19000?1:1-Math.exp(-2*Math.PI*lpR/sr);
+      // process each stage's read on its way onward: diffuse, tone, loss, clip, crush
+      const pr=this.pr||(this.pr=[new Float32Array(STAGES),new Float32Array(STAGES)]);
+      for(let k=0;k<S;k++) for(let c=0;c<2;c++){ if((p.tap==='L'&&c===0)||(p.tap&&p.tap!=='L'&&c===1)){ pr[c][k]=0; continue; } let v=this.diff[c][k].run(rd[c][k]);
+        this.lp[c][k]+=(v-this.lp[c][k])*kT; v=this.lp[c][k]; if(kH){ this.hp[c][k]+=(v-this.hp[c][k])*kH; v=v-this.hp[c][k]; } this.lp2[c][k]+=(v-this.lp2[c][k])*(c?kR:kL); v=this.lp2[c][k];
+        { const a=Math.abs(v); if(a>0.5) v=Math.sign(v)*(0.5+Math.tanh((a-0.5)*2)*0.5); } if(q) v=Math.trunc(v*q)/q; pr[c][k]=v; }
+      // inputs
+      const hiss=W.hiss*this.hissRng.next();
+      const xl=(xL?xL[i]:0), xr=(xR?xR[i]:0);
+      { const lvl=Math.max(Math.abs(xl),Math.abs(xr)); this.env = lvl>this.env? lvl : this.env*(1-1/(0.05*sr));
+        // adaptive threshold: 30 dB under the loudest thing in the last ~4 s, never below the noise floor
+        this.peak = lvl>this.peak? lvl : Math.max(0.002, this.peak*(1-1/(4*sr)));
+        const gate=Math.max(0.0015, this.peak*0.0316);
+        if(this.env<gate){ this.quiet++; if(this.quiet>0.25*sr&&!this.aHold){ this.aHold=true; if(p.autoHold) this.port.postMessage({aHold:true}); } }
+        else if(this.env>gate*2){ this.quiet=0; if(this.aHold){ this.aHold=false; if(p.autoHold) this.port.postMessage({aHold:false}); } } }
+      const eL=this.early[0].run(xl*s.inL)+hiss, eR=this.early[1].run(xr*s.inR)+hiss;
+            // write stage inputs
+      for(let k=0;k<S;k++){ let inL,inR;
+        if(k===0){ if(finite){ inL=eL; inR=eR; } else { inL=eL+s.fb*(cb*pr[0][0]+sb*pr[1][0]); inR=eR+s.fb*(cb*pr[1][0]-sb*pr[0][0]); } }
+        else { inL=cb*pr[0][k-1]+sb*pr[1][k-1]; inR=cb*pr[1][k-1]-sb*pr[0][k-1]; }
+        if(p.tap==='L') inL=0; else if(p.tap) inR=0;
+        this.buf[0][k][this.w]=inL; this.buf[1][k][this.w]=inR; }
+      this.w++; if(this.w>=this.N) this.w=0;
+      const a=s.mix*Math.PI/2, gd=Math.cos(a), gw=Math.sin(a);
+      out[0][i]=gd*xl+gw*yL; if(out[1]) out[1][i]=gd*xr+gw*yR;   // dry is the input as it arrived; the inL/inR routing only feeds the lines
+    }
+    return true; } }
+registerProcessor('tide-engine',E);`;
+const WOB={
+  sine:{sine:0.004, sineHz:0.7, rand:0,     randHz:0,  lp:20000,lpTime:false,bits:0, hiss:0},
+  tape:{sine:0.0025,sineHz:0.7, rand:0.0012,randHz:6,  lp:9000, lpTime:false,bits:0, hiss:0.0003},
+  oil: {sine:0.005, sineHz:2.3, rand:0.015, randHz:1.4,lp:2600, lpTime:false,bits:10,hiss:0.0004},
+  bbd: {sine:0,     sineHz:0,   rand:0.0008,randHz:20, lp:8000, lpTime:true, bits:0, hiss:0.0005},
+  tide:{sine:0.006, sineHz:0.3, rand:0,     randHz:0,  lp:20000,lpTime:false,bits:0, hiss:0, tide:true},
+  clean:{sine:0,sineHz:0,rand:0,randHz:0,lp:20000,lpTime:false,bits:0,hiss:0},
+};
+
+
+
+
+
+const MOBILE=innerWidth<700 || (matchMedia('(pointer:coarse)').matches && innerWidth<900);
+if(MOBILE){ document.querySelectorAll('compost-window').forEach(w=>{ const panel=document.createElement('section'); panel.className='mobile-panel'; const body=document.createElement('div'); body.className='body'; body.style.setProperty('--h', Math.round(innerHeight*0.78)+'px'); while(w.firstChild) body.appendChild(w.firstChild); panel.append(body); w.replaceWith(panel); }); }
+const root=document.documentElement; const sb=document.getElementById('scheme'); const $=id=>document.getElementById(id);
+const setScheme=d=>{ root.dataset.colorScheme=d?'dark':'light'; sb.textContent=d?'light mode':'dark mode'; themeDirty=true; if(typeof invalidate==='function') invalidate(); };
+root.dataset.colorScheme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; sb.textContent=root.dataset.colorScheme==='dark'?'light mode':'dark mode'; sb.addEventListener('click',()=>setScheme(root.dataset.colorScheme!=='dark'));
+
+const T={}; let themeDirty=true; const readTheme=()=>{ if(!themeDirty) return; const s=getComputedStyle(root); for(const k of ['panel','band','ink','ink2','dim','hair','track','acc','bg']) T[k]=s.getPropertyValue('--'+k).trim(); themeDirty=false; };
+let RECT=null;
+const MONO='"IBM Plex Mono", ui-monospace, monospace', SANS='"IBM Plex Sans", system-ui, sans-serif';
+const cur=svg=>`url("data:image/svg+xml,${encodeURIComponent(svg)}") 12 12, ns-resize`;
+const CUR={ wash: cur('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g stroke="#111" fill="none" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M8 6l4-3 4 3M8 18l4 3 4-3"/><g opacity=".35" stroke-width="3"><line x1="4" y1="9" x2="20" y2="9"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="4" y1="15" x2="20" y2="15"/></g></g></svg>'),
+  shape: cur('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g stroke="#111" fill="none" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M8 6l4-3 4 3M8 18l4 3 4-3"/><path d="M3 17q6 0 9-9t9-2" opacity=".6"/></g></svg>') };
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const fmtMs=v=> v<1000? `${v<10?v.toFixed(2):v<100?v.toFixed(1):v.toFixed(0)} ms` : `${(v/1000).toFixed(v<10000?2:1)} s`;
+const dB=a=>20*Math.log10(Math.max(1e-6,a));
+const media=['tape','oil','bbd','tide','clean']; const MEDIA_NAME={tape:'Tape',oil:'Oil can',bbd:'Bucket',tide:'Tide',clean:'Clean'};
+const NICE=[0.5,2/3,0.75,1,1.25,4/3,1.5,1.6180339887,2,3];
+const TMIN=1;
+const ratioName=r=>Math.abs(r-1.6180339887)<0.002?'φ':Math.abs(r-2/3)<0.002?'2:3':Math.abs(r-4/3)<0.002?'4:3':Math.abs(r-1.5)<0.002?'3:2':Math.abs(r-1)<0.002?'1:1':Math.abs(r-2)<0.002?'2:1':Math.abs(r-0.5)<0.002?'1:2':r.toFixed(2)+'×';
+// ---- state
+const P={tl:350, tr:525, link:'ratio', ratio:1.5, offset:175, pp:false, tap:false, sync:false, medium:0, count:8, shape:-0.6, wash:0.2, tone:0, strength:0.35, mix:0.5, hold:false, held:null};
+let BPM=120; const DIVS=[['1/128',1/32],['1/64',1/16],['1/32',.125],['1/16',.25],['1/8',.5],['1/4',1],['1/2',2],['1/1',4]];
+function grid(){ const q=60000/BPM; const out=[]; for(const [n,m] of DIVS){ out.push({name:n,ms:q*m,kind:'plain'}); out.push({name:n+'.',ms:q*m*1.5,kind:'dot'}); out.push({name:n+'T',ms:q*m*2/3,kind:'trip'}); } return out.filter(d=>d.ms>=1&&d.ms<=2000).sort((a,b)=>a.ms-b.ms); }
+function snapT(ms){ if(!P.sync) return ms; let best=null; for(const d of grid()){ const e=Math.abs(Math.log(d.ms/ms)); if(!best||e<best.e) best={e,d}; } return best?best.d.ms:ms; }
+function divOf(ms){ const d=grid().find(d=>Math.abs(d.ms-ms)<0.01); return d?d.name:null; }
+function msOf(name){ const d=grid().find(d=>d.name===name); return d?d.ms:null; }
+function nameT(ms){ if(!P.sync) return fmtMs(ms); const d=grid().find(d=>Math.abs(d.ms-ms)<0.01); return d?d.name:fmtMs(ms); }
+function snapRatio(raw){ if(P.sync){ P.held=null; return raw; } if(P.held!=null && Math.abs(Math.log(raw/P.held))<0.025) return P.held; P.held=null; for(const r of NICE){ if(Math.abs(Math.log(raw/r))<0.012){ P.held=r; return r; } } return raw; }
+const applyLink=()=>{ if(P.link==='ratio') P.tr=clamp(P.tl*P.ratio,TMIN,2000); else if(P.link==='offset') P.tr=clamp(P.tl+P.offset,TMIN,2000); if(P.sync){ P.tl=snapT(P.tl); P.tr=snapT(P.tr); } };
+// decay envelope, continuous: shape -1 fade, 0 flat, +1 swell. -60 dB span at the extremes.
+const nMax=()=>64;
+const gains=()=>{ const N=P.count, out=[]; for(let k=0;k<N;k++){ const u=N>1?k/(N-1):1; out.push(P.shape<0? Math.exp(-6.9*(-P.shape)*u) : Math.exp(-6.9*P.shape*(1-u))); } return out; };
+let NOW=0; let LVL={in:0,out:0};
+const rnd=(i)=>{ let x=(i*9301+49297)%233280; return x/233280*2-1; };
+function drift(n, side){ // fraction of a decade per lap of accumulated timing wobble at this instant
+  const m=media[P.medium]; const t=NOW; const amt=Math.pow(P.strength,1.8)*5; if(m==='clean'||amt<=0||drag) return 0;
+  const ph=side?1.57:0; let w=0;
+  if(m==='tape') w=0.35*Math.sin(2*Math.PI*0.7*t+ph)+0.15*Math.sin(2*Math.PI*6.1*t+n+ph);
+  else if(m==='oil') w=0.6*Math.sin(2*Math.PI*2.3*t+ph)+0.9*Math.sin(2*Math.PI*0.33*t+rnd(n)*3+ph)*rnd(n*7+side);
+  else if(m==='bbd') w=0.25*rnd(Math.floor(t*20)+n*13+side);
+  else if(m==='tide') w=0.5*(Math.sin(2*Math.PI*0.3*t+ph)+0.6*Math.sin(2*Math.PI*0.311*t+0.4)+0.35*Math.sin(2*Math.PI*0.155*t+1.9))/1.95;
+  return w*amt*0.035*Math.sqrt(n); }
+const derive=()=>{ const w=P.wash, t=P.tone; const washLp=9000*Math.pow(2,-w*3.3); const toneLp=t<0? 12000*Math.pow(2,t*5.5) : 20000; const hpf=t>0? 20*Math.pow(2,t*7) : 20; return {diff:Math.min(1,w*1.15), early:Math.pow(Math.max(0,(w-0.3)/0.7),1.3), tone:clamp(Math.min(washLp,toneLp),200,20000), hpf:clamp(hpf,20,2500)}; };
+const tailMs=()=> P.hold? 100000 : P.tap==='R'? P.count*P.tl+P.tr : P.tap==='L'? P.count*P.tr+P.tl : P.count*Math.max(P.tl,P.tr);
+function repeats(){ const out=[]; const G=gains(), N=G.length; const th=Math.asin(P.pp?1:0.15), sk=Math.cos(th), lk=Math.sin(th); const TL=P.tl, TR=P.tr; const FLOOR=-66;
+  if(P.hold){ for(let k=0;k<400;k++){ const t=P.tap==='L'?k*TR+TL:(k+1)*TL; if(t<=100000) out.push({t,side:0,a:Math.SQRT1_2,n:k+1}); const t2=P.tap==='R'?k*TL+TR:(k+1)*TR; if(t2<=100000) out.push({t:t2,side:1,a:Math.SQRT1_2,n:k+1}); if(t>100000&&t2>100000) break; } return out; }
+  if(P.tap==='R'){ for(let k=0;k<N;k++){ out.push({t:(k+1)*TL,side:0,a:G[k],n:k+1}); out.push({t:k*TL+TR,side:1,a:G[k],n:k+1}); } return out; }
+  if(P.tap==='L'){ for(let k=0;k<N;k++){ out.push({t:k*TR+TL,side:0,a:G[k],n:k+1}); out.push({t:(k+1)*TR,side:1,a:G[k],n:k+1}); } return out; }
+  const heap=[], key=new Map(); const K=e=>e.side+':'+Math.round(Math.log10(e.t)*300)+':'+e.n;
+  const push=e=>{ const k=K(e); const ex=key.get(k); if(ex){ ex.a=Math.hypot(ex.a,e.a); return; } key.set(k,e); heap.push(e); let i=heap.length-1; while(i>0){ const p=(i-1)>>1; if(heap[p].t<=heap[i].t) break; [heap[p],heap[i]]=[heap[i],heap[p]]; i=p; } };
+  const pop=()=>{ const top=heap[0], last=heap.pop(); if(heap.length){ heap[0]=last; let i=0; for(;;){ const l=2*i+1, r=l+1; let m=i; if(l<heap.length&&heap[l].t<heap[m].t) m=l; if(r<heap.length&&heap[r].t<heap[m].t) m=r; if(m===i) break; [heap[m],heap[i]]=[heap[i],heap[m]]; i=m; } } key.delete(K(top)); return top; };
+  push({t:TL,side:0,a:Math.SQRT1_2,n:1}); push({t:TR,side:1,a:Math.SQRT1_2,n:1});
+  while(heap.length&&out.length<4000){ const e=pop(); if(e.t>100000||e.n>N) continue; out.push({t:e.t,side:e.side,a:e.a*G[e.n-1],n:e.n}); if(e.n>=N) continue; push({t:e.t+[TL,TR][e.side],side:e.side,a:e.a*sk,n:e.n+1}); push({t:e.t+[TL,TR][1-e.side],side:1-e.side,a:e.a*lk,n:e.n+1}); }
+  return out; }
+
+// ---- drawing
+const c=document.querySelector('canvas.pic'), g=c.getContext('2d');
+let hover=null, drag=null, chips=[], geo=null;
+function layout(){ const r=RECT||(RECT=c.getBoundingClientRect()); const dpr=Math.min(2,devicePixelRatio||1); const W=Math.max(320,Math.round(r.width*dpr)), H=Math.max(240,Math.round(r.height*dpr)); if(c.width!==W||c.height!==H){ c.width=W; c.height=H; }
+  const narrow=W/dpr<720; const u=dpr; const top=(narrow?92:60)*u; const railH=26*u, railGap=4*u; const rails=3; const bottom=H-(rails*(railH+railGap))-12*u; const axisY=bottom-4*u;
+  const X0=(narrow?52:68)*u, X1=W-(narrow?116:140)*u; const Y=top+(axisY-top)/2-6*u; const HMAX=(axisY-top)/2-30*u;
+  return {W,H,dpr:u,narrow,top,axisY,X0,X1,Y,HMAX,railH,railGap,railY:k=>bottom+8*u+k*(railH+railGap), vx:{wash:X1+(narrow?26:34)*u, shape:X1+(narrow?62:74)*u, tone:X1+(narrow?98:114)*u}, vTop:Y-HMAX, vBot:Y+HMAX, XD:v=>X0+Math.log10(v)/5*(X1-X0), perDec:(X1-X0)/5}; }
+const txt=(s,x,y,size,col,align='center',base='alphabetic',font=MONO,weight=400)=>{ g.fillStyle=col; g.font=`${weight} ${size}px ${font}`; g.textAlign=align; g.textBaseline=base; g.fillText(s,x,y); };
+const line=(x1,y1,x2,y2,col,w=1,a=1)=>{ g.strokeStyle=col; g.lineWidth=w; g.globalAlpha=a; g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke(); g.globalAlpha=1; };
+function chip(x,y,label,on,key,align,acc){ const {dpr}=geo; g.font=`500 ${Math.round(11*dpr)}px ${MONO}`; const w=g.measureText(label).width+16*dpr, h=22*dpr; const X=align==='right'?x-w:x; const hot=hover===key&&!drag; g.fillStyle=on?T.ink:hot?T.ink:T.dim; g.textAlign='left'; g.textBaseline='middle'; g.fillText(label,X+8*dpr,y+h/2+1); if(on||hot){ g.fillStyle=on?(acc?T.acc:T.ink):T.hair; g.fillRect(X+8*dpr,y+h-3*dpr,w-16*dpr,(on?2:1)*dpr); } chips.push({x:X,y,w,h,key}); return X; }
+// a rail with slide-rule ticks. ticks: [{x,len,label?,major}] already in pixels. handle at hx.
+function rail(y,name,ticks,hx,handleCol,active,label,idx){ const {X0,X1,dpr,railH}=geo; const a=active?1:0.55; line(X0,y+railH*0.55,X1,y+railH*0.55,T.hair,1,a);
+  for(const t of ticks){ if(t.x<X0-1||t.x>X1+1) continue; line(t.x,y+railH*0.55,t.x,y+railH*0.55-(t.major?9:t.mid?6:3.5)*dpr,t.major?T.ink2:T.dim,t.major?1:0.7,a*(t.major?1:.7)); if(t.label!=null) txt(t.label,t.x,y+railH*0.55-11*dpr,Math.round(8.5*dpr),T.dim,'center','bottom'); }
+  txt(name,X0-8*dpr,y+railH*0.55,Math.round(9*dpr),active?T.ink:T.dim,'right','middle');
+  if(idx!=null){ line(idx,y+railH*0.55-12*dpr,idx,y+railH*0.55+3*dpr,T.dim,1,a*.8); txt('1',idx,y+railH*0.55+5*dpr,Math.round(8*dpr),T.dim,'center','top'); }
+  // handle: a hairline cursor with a small foot, like a slide rule cursor
+  line(hx,y+railH*0.55-11*dpr,hx,y+railH-1*dpr,handleCol,active?2:1.2,1); g.fillStyle=handleCol; g.beginPath(); g.moveTo(hx-5.5*dpr,y+railH-1*dpr); g.lineTo(hx+5.5*dpr,y+railH-1*dpr); g.lineTo(hx,y+railH-7*dpr); g.closePath(); g.fill();
+  if(label){ txt(label,X1+8*dpr,y+railH*0.55,Math.round(9.5*dpr),active?T.ink:T.dim,'left','middle'); } }
+function logTicks(X,lo,hi,labels=true){ const out=[]; for(let d=Math.floor(Math.log10(lo)); d<=Math.ceil(Math.log10(hi)); d++){ const b=Math.pow(10,d); for(let m=1;m<10;m++){ const v=b*m; if(v<lo*0.999||v>hi*1.001) continue; const major=m===1, mid=m===2||m===5; out.push({x:X(v),major,mid,label:(labels&&(major||(!geo.narrow&&mid&&v>=10)))?(v<1000?v:(v/1000)+'s'):null}); const steps=m<3?10:5; for(let s=1;s<steps;s++){ const vv=v+b*s/steps; if(vv>hi) break; out.push({x:X(vv)}); } } } return out; }
+function render(){ geo=layout(); readTheme(); chips=[]; const {W,H,dpr,top,axisY,X0,X1,Y,HMAX,XD,narrow}=geo; g.clearRect(0,0,W,H);
+  const D=derive(); const tail=tailMs(), xTail=XD(Math.min(tail,100000)); const which=drag?drag.which:hover;
+  // ---- top band
+  txt('S L I D E',16*dpr,22*dpr,Math.round(12*dpr),T.ink,'left','middle',MONO,500);
+  const yc=11*dpr, y2=narrow?40*dpr:yc; let X=chip(92*dpr,yc,P.link==='ratio'?'Link ratio':P.link==='offset'?'Link difference':'Link off',P.link!=='off','link','left'); X=X+chips[chips.length-1].w+6*dpr; X=chip(X,yc,P.pp?'Ping pong':P.tap==='R'?'R is a tap':P.tap==='L'?'L is a tap':'Stereo',P.pp||!!P.tap,'mode','left');
+  X=narrow?16*dpr:X+chips[chips.length-1].w+22*dpr; X=chip(X,y2,'Sync',P.sync,'sync','left'); X=X+chips[chips.length-1].w+6*dpr; const mx0=chip(X,y2,MEDIA_NAME[media[P.medium]],false,'medium','left'); { const ch=chips[chips.length-1]; const bw=(narrow?56:80)*dpr, bx=mx0+ch.w+6*dpr, by=y2+ch.h/2+1; const on=which==='mediumBar'; line(bx,by,bx+bw,by,T.hair,1,on?1:.55); for(let i=0;i<=8;i++) line(bx+bw*i/8,by,bx+bw*i/8,by-(i%4?2.5:5)*dpr,T.dim,0.8,.7); const hx=bx+bw*P.strength; line(hx,by-7*dpr,hx,by+5*dpr,media[P.medium]==='clean'?T.dim:T.ink,on?2.2:1.4); if(on) txt(`${Math.round(P.strength*100)}`,bx+bw+6*dpr,by,Math.round(9*dpr),T.dim,'left','middle'); chips.push({x:bx-6*dpr,y:by-12*dpr,w:bw+12*dpr,h:24*dpr,key:'mediumBar',rail:{x0:bx,w:bw}}); }
+  let xr=W-16*dpr;
+  // mix: a tiny rail in the band, left of hold
+  { const mw=(narrow?80:120)*dpr, mx=xr-mw-24*dpr, my=y2+11*dpr; line(mx,my,mx+mw,my,T.hair,1,which==='mix'?1:.55); for(let i=0;i<=10;i++) line(mx+mw*i/10,my,mx+mw*i/10,my-(i%5?2.5:5)*dpr,T.dim,0.8,.7); const hx=mx+mw*P.mix; line(hx,my-7*dpr,hx,my+5*dpr,T.ink,which==='mix'?2.2:1.4); txt('Mix',mx-6*dpr,my,Math.round(9*dpr),T.dim,'right','middle'); chips.push({x:mx-8*dpr,y:my-12*dpr,w:mw+16*dpr,h:24*dpr,key:'mix',rail:{x0:mx,w:mw}}); }
+  // ---- axis
+  line(X0,axisY,X1,axisY,T.hair);
+  if(P.sync){ for(const d of grid()){ const x=XD(d.ms); const plain=d.kind==='plain'; const show=narrow? (plain&&['1/64','1/16','1/4','1/1'].includes(d.name)) : true; line(x,axisY,x,axisY+(plain?7:4)*dpr,plain?T.ink2:T.dim,1,plain?1:.6); line(x,top+6*dpr,x,axisY,T.hair,1,plain?.5:.2); if(show) txt(d.name,x,axisY+(plain?8:20)*dpr,Math.round((plain?10:8.5)*dpr),plain?T.dim:T.hair,'center','top'); }
+    for(const v of [5000,10000,20000,50000,100000]){ const x=XD(v); line(x,axisY,x,axisY+5*dpr,T.dim,1,.6); txt((v/1000)+' s',x,axisY+8*dpr,Math.round(10*dpr),T.dim,'center','top'); } }
+  else for(const t of logTicks(XD,1,100000)){ if(t.major||t.mid) line(t.x,axisY,t.x,axisY+(t.major?7:4)*dpr,t.major?T.ink2:T.dim,1,t.major?1:.6); else line(t.x,axisY,t.x,axisY+2*dpr,T.dim,.7,.4); if(t.label!=null) txt(String(t.label).replace('s',' s')+(t.label===1?' ms':''),t.x,axisY+8*dpr,Math.round(10*dpr),T.dim,'center','top'); }
+  // ---- picture
+  line(X0,Y,X1,Y,T.hair);
+  const xFirst=XD(Math.min(P.tl,P.tr)); g.fillStyle=T.band; g.globalAlpha=.5; g.fillRect(xFirst,Y-HMAX,Math.max(0,xTail-xFirst),2*HMAX); g.globalAlpha=1;
+  if(which==='field'||which==='all'){ g.globalAlpha=.1; g.fillStyle=T.acc; g.fillRect(xFirst,Y-HMAX,Math.max(0,xTail-xFirst),2*HMAX); g.globalAlpha=1; }
+  const toneK=Math.pow(clamp((Math.log10(D.tone)-Math.log10(200))/2,0,1),0.6); const thin=P.tone>0?1-P.tone*0.6:1; const mW=1, mD=1;
+  for(const q of repeats()){ const x=XD(q.t)+drift(q.n,q.side)*geo.perDec; if(x>X1) continue; const frac=clamp((dB(q.a*mW)+66)/66,0,1); if(frac<=0) continue; const h=HMAX*frac; const lv=Math.pow(frac,0.7); const fade=(1-(1-toneK)*Math.min(1,q.n/6))*lv; const smear=(D.early*18+D.diff*(3+q.n*2.2))*dpr*0.5;
+    for(let s=-smear;s<=smear;s+=Math.max(1,smear/6)){ const a=(smear>0?(1-Math.abs(s)/(smear+1))/(1+smear/8):1)*(0.25+0.75*fade); line(x+s,Y,x+s,q.side===0?Y-h:Y+h,T.ink,1.5*dpr*thin,a); if(smear===0) break; } }
+  const nh=HMAX*clamp((dB(Math.SQRT1_2*mD)+66)/66,0,1); line(X0+2,Y-nh,X0+2,Y+nh,T.ink,2.5*dpr); if(LVL.in>0.001){ const lh=HMAX*clamp((dB(LVL.in)+60)/60,0,1); line(X0+2,Y-lh,X0+2,Y+lh,T.acc,4*dpr,.9); } if(LVL.out>0.001){ g.globalAlpha=clamp((dB(LVL.out)+60)/60,0,1)*0.22; g.fillStyle=T.acc; g.fillRect(xFirst,Y-HMAX,Math.max(0,xTail-xFirst),2*HMAX); g.globalAlpha=1; }
+  const hot=k=>which===k;
+  const bracket=(x,up,key,label)=>{ const on=hot(key); const y=up?Y-HMAX-2:Y+HMAX+2; if(on){ g.globalAlpha=.16; g.fillStyle=T.acc; g.fillRect(x-14*dpr,up?top:Y,28*dpr,up?Y-top:axisY-Y); g.globalAlpha=1; } line(x-5*dpr,y,x,up?y-5*dpr:y+5*dpr,on?T.acc:T.ink,(on?2:1.2)*dpr); line(x,up?y-5*dpr:y+5*dpr,x+5*dpr,y,on?T.acc:T.ink,(on?2:1.2)*dpr); if(label&&(on||drag)) txt(label,x,up?y-8*dpr:y+8*dpr,Math.round(11*dpr),T.ink,'center',up?'bottom':'top',SANS,500); };
+  const rl=P.sync?nameT(P.tr):P.link==='ratio'?ratioName(P.tr/P.tl):P.link==='offset'?`${P.tr-P.tl>=0?'+':'−'}${fmtMs(Math.abs(P.tr-P.tl))}`:fmtMs(P.tr);
+  bracket(XD(P.tl),true,'time',(P.tap==='L'?'tap ':'')+nameT(P.tl)); bracket(XD(P.tr),false,'tr',(P.tap==='R'?'tap ':'')+rl);
+  { const on=hot('rep'); if(on){ g.globalAlpha=.16; g.fillStyle=T.acc; g.fillRect(xTail-14*dpr,Y-HMAX-2,28*dpr,axisY-(Y-HMAX-2)); g.globalAlpha=1; } line(xTail,Y-HMAX-2,xTail,axisY,T.acc,(on?2.5:1)*dpr); g.fillStyle=T.acc; g.beginPath(); g.moveTo(xTail-5*dpr,Y-HMAX-2); g.lineTo(xTail+5*dpr,Y-HMAX-2); g.lineTo(xTail,Y-HMAX+5*dpr); g.closePath(); g.fill(); if(on||drag) txt(P.hold?'holding':`${P.count} × · ${fmtMs(tail)}`,xTail+(xTail>W*0.8?-6:6)*dpr,Y+HMAX+2,Math.round(11*dpr),T.acc,xTail>W*0.8?'right':'left','top',SANS,500); }
+  if(which==='wash'||which==='shapeM'){ const mid=(xFirst+xTail)/2; g.globalAlpha=.08; g.fillStyle=T.acc; if(which==='wash') g.fillRect(X0,Y-HMAX,mid-X0,2*HMAX); else g.fillRect(mid,Y-HMAX,X1-mid,2*HMAX); g.globalAlpha=1; txt(which==='wash'?`Wash ${Math.round(P.wash*100)} · ↕`:`Shape · ↕`,which==='wash'?(X0+mid)/2:(mid+X1)/2,Y-HMAX-4*dpr,Math.round(11*dpr),T.dim,'center','bottom'); }
+  // ---- rails under the axis, slide-rule style
+  const rL=geo.railY(0), rR=geo.railY(1), rN=geo.railY(2); const perDec=geo.perDec;
+  rail(rL,'Left',logTicks(XD,1,2000,false),XD(P.tl),T.ink,hot('time')||hot('all'),nameT(P.tl));
+  // R rail: a ratio scale whose index sits under L, and slides with it
+  { const XR=r=>XD(P.tl)+Math.log10(r)*perDec; const ticks=[]; for(const [r,lab,maj] of [[0.5,'½',1],[2/3,'',0],[0.75,'',0],[1,'',1],[1.25,'',0],[4/3,'',0],[1.5,'3:2',1],[1.618,'',0],[2,'2',1],[3,'3',1],[4,'4',0]]) ticks.push({x:XR(r),major:!!maj,mid:!maj,label:lab||null}); for(let r=0.5;r<=4;r*=1.0594) ticks.push({x:XR(r)}); rail(rR,'Right',ticks,XD(P.tr),T.ink,hot('tr')||hot('all'),rl,XR(1)); }
+  // N rail: a count scale whose index sits under the later of L and R
+  { const base=P.tap==='R'?P.tl:P.tap==='L'?P.tr:Math.max(P.tl,P.tr); const XN=n=>XD(base*n); const ticks=[]; const NM=nMax(); for(let n=1;n<=NM;n++) ticks.push({x:XN(n),major:[1,2,4,8,16,32,64].includes(n),mid:[3,6,12,24,48,96].includes(n),label:(geo.narrow?[1,2,4,8,16,32,64]:[1,2,3,4,6,8,12,16,24,32,48,64,96]).includes(n)?String(n):null}); txt('∞',Math.min(X1-4*dpr,XN(NM)+16*dpr),rN+geo.railH*0.55-11*dpr,Math.round(9*dpr),P.hold?T.acc:T.dim,'center','bottom'); rail(rN,'Repeats',ticks,P.hold?Math.min(X1-4*dpr,XN(NM)+16*dpr):XN(P.count),T.acc,hot('rep'),P.hold?'Hold':`${P.count} ×`,null); }
+  // ---- vertical rails: wash as a blur strip, shape as fade/flat/swell
+  const {vx,vTop,vBot}=geo; const vh=vBot-vTop;
+  { const x=vx.wash; const on=hot('wash'); // the track is the effect: hairlines that smear as they rise
+    const m=media[P.medium];
+    for(let i=0;i<=24;i++){ const u=i/24; const y=vBot-u*vh; const sm=u*u*10*dpr; const n=1+Math.round(sm/1.2);
+      for(let s=0;s<n;s++){ let off=n>1?(s/(n-1)-0.5)*sm*2:0; let x0=x-9*dpr, x1=x+9*dpr; let al=(on?1:.55)*(0.9/n+0.1);
+        if(m==='oil'){ off+=rnd(i*31+s)*sm*0.8; x0+=rnd(i*17+s)*3*dpr*u; x1+=rnd(i*23+s)*3*dpr*u; }
+        else if(m==='bbd'){ off=Math.round(off/(2.5*dpr))*(2.5*dpr); al*=0.85; }
+        else if(m==='tide'){ off+=Math.sin(u*9+s)*sm*0.3; }
+        else if(m==='tape'){ x0-=u*2*dpr; x1+=u*2*dpr; }
+        line(x0,y+off,x1,y+off,T.ink2,0.9,al); } }
+    const hy=vBot-P.wash*vh; line(x-13*dpr,hy,x+13*dpr,hy,T.ink,on?2.2:1.4); txt('Sharp',x,vBot+8*dpr,Math.round(8.5*dpr),on?T.ink:T.dim,'center','top'); txt('Blur',x,vTop-6*dpr,Math.round(8.5*dpr),on?T.ink:T.dim,'center','bottom'); if(on||drag) txt(String(Math.round(P.wash*100)),x+14*dpr,vBot-P.wash*vh,Math.round(9*dpr),T.ink,'left','middle'); chips.push({x:x-17*dpr,y:vTop-4*dpr,w:34*dpr,h:vh+8*dpr,key:'wash'}); }
+  { const x=vx.shape; const on=hot('shape'); line(x,vTop,x,vBot,T.hair,1,on?1:.55); for(let i=0;i<=20;i++){ const y=vBot-i/20*vh; const maj=i%10===0, mid=i%5===0; line(x-(maj?7:mid?5:3)*dpr,y,x+(maj?7:mid?5:3)*dpr,y,T.dim,maj?1:.7,(on?1:.55)*(maj?1:.7)); }
+    txt('Swell',x,vTop-6*dpr,Math.round(8.5*dpr),on?T.ink:T.dim,'center','bottom'); txt('Fade',x,vBot+8*dpr,Math.round(8.5*dpr),on?T.ink:T.dim,'center','top'); if(on) txt('Flat',x+11*dpr,(vTop+vBot)/2,Math.round(8.5*dpr),T.dim,'left','middle');
+    const hy=vBot-(P.shape+1)/2*vh; line(x-11*dpr,hy,x+11*dpr,hy,T.acc,on?2.2:1.4); chips.push({x:x-17*dpr,y:vTop-4*dpr,w:34*dpr,h:vh+8*dpr,key:'shape'}); }
+  { const x=vx.tone; const on=hot('tone'); line(x,vTop,x,vBot,T.hair,1,on?1:.55); for(let i=0;i<=20;i++){ const y=vBot-i/20*vh; const maj=i%10===0, mid=i%5===0; line(x-(maj?7:mid?5:3)*dpr,y,x+(maj?7:mid?5:3)*dpr,y,T.dim,maj?1:.7,(on?1:.55)*(maj?1:.7)); }
+    txt('Thin',x,vTop-6*dpr,Math.round(8.5*dpr),on?T.ink:T.dim,'center','bottom'); txt('Dark',x,vBot+8*dpr,Math.round(8.5*dpr),on?T.ink:T.dim,'center','top'); if(on) txt('Full',x+11*dpr,(vTop+vBot)/2,Math.round(8.5*dpr),T.dim,'left','middle');
+    const hy=vBot-(P.tone+1)/2*vh; line(x-11*dpr,hy,x+11*dpr,hy,T.ink,on?2.2:1.4); chips.push({x:x-17*dpr,y:vTop-4*dpr,w:34*dpr,h:vh+8*dpr,key:'tone'}); }
+  // ---- the cursor: a hairline joining the handle in use to the thing it moves
+  if(drag){ const w=drag.which; g.setLineDash([3*dpr,3*dpr]);
+    if(w==='time'||w==='all'){ line(XD(P.tl),top,XD(P.tl),rL+geo.railH,T.acc,1,.7); }
+    if(w==='tr'||w==='all'){ line(XD(P.tr),top,XD(P.tr),rR+geo.railH,T.acc,1,.7); }
+    if(w==='rep'){ line(xTail,top,xTail,rN+geo.railH,T.acc,1,.7); }
+    if(w==='wash'){ const hy=vBot-P.wash*vh; line(xFirst,hy,vx.wash-13*dpr,hy,T.acc,1,.7); }
+    if(w==='shape'||w==='shapeM'){ const hy=vBot-(P.shape+1)/2*vh; line(xTail,hy,vx.shape-11*dpr,hy,T.acc,1,.7); }
+    if(w==='tone'){ const hy=vBot-(P.tone+1)/2*vh; line(xTail,hy,vx.tone-11*dpr,hy,T.acc,1,.7); }
+    g.setLineDash([]); }
+}
+
+// ---- hit testing and gestures
+const pt=e=>{ const r=RECT||(RECT=c.getBoundingClientRect()); return {x:(e.clientX-r.left)/r.width*c.width, y:(e.clientY-r.top)/r.height*c.height}; };
+const hitChip=p=>chips.find(h=>p.x>=h.x&&p.x<=h.x+h.w&&p.y>=h.y&&p.y<=h.y+h.h);
+function pick(p){ const {X0,X1,Y,HMAX,top,axisY,XD,dpr,railH}=geo; const h=hitChip(p); if(h) return h.key;
+  for(const [k,i] of [['time',0],['tr',1],['rep',2]]){ const y=geo.railY(i); if(p.y>=y&&p.y<=y+railH&&p.x>=X0-30*dpr&&p.x<=X1+60*dpr) return k; }
+  if(p.y<top||p.y>axisY||p.x<X0-10*dpr||p.x>X1+10*dpr) return null;
+  if(Math.abs(p.x-XD(Math.min(tailMs(),100000)))<14*dpr) return 'rep';
+  const nearL=Math.abs(p.x-XD(P.tl))<24*dpr, nearR=Math.abs(p.x-XD(P.tr))<24*dpr; const inBand=p.x>XD(Math.min(P.tl,P.tr))&&p.x<XD(Math.min(100000,tailMs()))&&Math.abs(p.y-Y)<HMAX;
+  if(!nearL&&!nearR&&inBand) return 'field'; if(!nearL&&!nearR){ return p.x < (XD(Math.min(P.tl,P.tr))+XD(Math.min(100000,tailMs())))/2 ? 'wash':'shapeM'; } return p.y<Y?'time':'tr'; }
+c.addEventListener('pointermove',e=>{ const p=pt(e); if(drag){ move(p); return; } const h=pick(p); if(h!==hover){ hover=h; invalidate(); c.style.cursor= h==='wash'?CUR.wash: h==='shape'||h==='shapeM'?CUR.shape: h==='tone'?'ns-resize': h==='rep'?'col-resize': h==='field'?'move': ['link','mode','sync','medium'].includes(h)?'pointer': h==='mediumBar'?'ew-resize': h?'ew-resize':'default'; } });
+c.addEventListener('pointerleave',()=>{ if(!drag&&hover){ hover=null; invalidate(); } });
+c.addEventListener('pointerdown',e=>{ const p=pt(e); const k=pick(p); if(!k) return; c.setPointerCapture(e.pointerId);
+  if(['link','mode','sync','medium'].includes(k)){ act(k); return; }
+  if(k==='mediumBar'){ drag={which:'mediumBar',pending:false,x0:p.x,y0:p.y,st0:P.strength,rail:hitChip(p).rail}; move(p); return; }
+  const half = k==='field' ? (p.x < (geo.XD(Math.min(P.tl,P.tr))+geo.XD(Math.min(100000,tailMs())))/2 ? 'wash':'shapeM') : null; drag={which:k,pending:k==='field'||k==='rep',half,x0:p.x,y0:p.y,tl0:P.tl,tr0:P.tr,c0:P.count,w0:P.wash,s0:P.shape,m0:P.mix,t0:P.tone,mixRail:(hitChip(p)||{}).rail}; invalidate(); });
+const end=()=>{ if(drag){ drag=null; invalidate(); invalidateAudio(); } }; c.addEventListener('pointerup',end); c.addEventListener('pointercancel',end);
+function move(p){ const {dpr,HMAX,perDec}=geo; if(drag.pending){ const dx=Math.abs(p.x-drag.x0), dy=Math.abs(p.y-drag.y0); if(Math.max(dx,dy)<4*dpr) return; if(drag.which==='rep'){ drag.which=dx>=dy?'rep':'shapeM'; } else if(drag.which==='field'){ drag.which=dx>=dy?'all':drag.half; } drag.pending=false; }
+  if(drag.which==='mediumBar'){ const r=drag.rail; P.strength=clamp((p.x-r.x0)/r.w,0,1); invalidate(); invalidateAudio(); return; }
+  const k=Math.pow(10,(p.x-drag.x0)/perDec); const w=drag.which;
+  if(w==='all'){ const kk=clamp(k,TMIN/Math.min(drag.tl0,drag.tr0),2000/Math.max(drag.tl0,drag.tr0)); P.tl=drag.tl0*kk; P.tr=drag.tr0*kk; if(P.sync){ P.tl=snapT(P.tl); P.tr=snapT(P.tr); } }
+  else if(w==='time'){ P.tl=P.sync?snapT(clamp(drag.tl0*k,TMIN,2000)):clamp(drag.tl0*k,TMIN,2000); applyLink(); }
+  else if(w==='tr'){ if(P.link==='ratio'){ P.tl=clamp(drag.tr0*k/P.ratio,TMIN,2000); applyLink(); } else if(P.link==='offset'){ P.tl=clamp(drag.tr0*k-P.offset,TMIN,2000); applyLink(); } else { const raw=clamp(drag.tr0*k,TMIN,2000); P.tr=P.sync?snapT(raw):clamp(P.tl*snapRatio(raw/P.tl),TMIN,2000); } }
+  else if(w==='rep'){ const raw=drag.c0*k; if(raw>nMax()*1.6){ P.hold=true; P.count=nMax(); } else { P.hold=false; P.count=clamp(Math.round(raw),1,nMax()); } }
+  else if(w==='shapeM'){ P.shape=clamp(drag.s0-(p.y-drag.y0)/(HMAX*1.2),-1,1); }
+  else if(w==='wash') P.wash=clamp(drag.w0+(drag.y0-p.y)/(HMAX*2),0,1);
+  else if(w==='shape'){ P.shape=clamp(drag.s0+(drag.y0-p.y)/(HMAX*2)*2,-1,1); }
+  else if(w==='tone'){ P.tone=clamp(drag.t0+(drag.y0-p.y)/(HMAX*2)*2,-1,1); }
+  else if(w==='mix'){ const r=drag.mixRail; P.mix= r? clamp((p.x-r.x0)/r.w,0,1) : clamp(drag.m0+(p.x-drag.x0)/(120*dpr),0,1); }
+  invalidate(); invalidateAudio(); }
+function act(k){ if(k==='sync'){ P.sync=!P.sync; applyLink(); if(P.sync&&P.link==='off'){ P.tl=snapT(P.tl); P.tr=snapT(P.tr); } } else if(k==='medium') P.medium=(P.medium+1)%5; else if(k==='link'){ P.link=P.link==='ratio'?'offset':P.link==='offset'?'off':'ratio'; P.ratio=P.tr/P.tl; P.offset=P.tr-P.tl; } else if(k==='mode'){ if(!P.pp&&!P.tap) P.pp=true; else if(P.pp){ P.pp=false; P.tap='R'; } else if(P.tap==='R') P.tap='L'; else P.tap=false; } invalidate(); invalidateAudio(); }
+window.__slide={render:()=>render(),P}; let dirty=true, audioDirty=false; function invalidate(){ dirty=true; } function invalidateAudio(){ audioDirty=true; }
+new ResizeObserver(()=>{ RECT=null; invalidate(); }).observe(c); window.addEventListener('scroll',()=>{ RECT=null; },true); render();
+
+
+// ---- audio
+const BLEED=0.15; let A=null, building=null;
+function buildAudio(){ if(building) return building; building=(async()=>{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([ENGINE_SRC],{type:'application/javascript'})));
+  const src=ctx.createGain(); const merge=ctx.createChannelMerger(2); src.connect(merge,0,0); src.connect(merge,0,1);
+  const eng=new AudioWorkletNode(ctx,'tide-engine',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],channelCount:2,channelCountMode:'explicit',channelInterpretation:'discrete'});
+  const lim=ctx.createDynamicsCompressor(); lim.threshold.value=-6; lim.knee.value=6; lim.ratio.value=20; lim.attack.value=0.002; lim.release.value=0.15;
+  merge.connect(eng).connect(lim).connect(ctx.destination); const anIn=ctx.createAnalyser(), anOut=ctx.createAnalyser(); anIn.fftSize=anOut.fftSize=1024; src.connect(anIn); eng.connect(anOut); A={ctx,src,eng,anIn,anOut,buf:new Float32Array(1024)}; applyAudio(); })(); return building; }
+function applyAudio(){ if(!A) return; const D=derive(); const w=WOB[media[P.medium]]; const amt=Math.pow(P.strength,1.8)*5; const wob={sine:w.sine*amt,sineHz:w.sineHz,rand:w.rand*amt,randHz:w.randHz,tide:!!w.tide,lp:amt>0?w.lp+(20000-w.lp)*(1-Math.min(1,amt*2)):20000,lpTime:w.lpTime&&amt>0,bits:amt>0.1?w.bits:0,hiss:w.hiss*Math.min(4,amt*0.9)};
+  // shape below -0.5 is a true feedback loop with the same envelope; above it a chain of stages
+  const G=gains(); const loop=P.shape<-0.5; const fb=loop? Math.exp(-6.9*(-P.shape)/Math.max(1,P.count-1)) : 0.5;
+  A.eng.port.postMessage({tl:P.tl,tr:P.tr,fb:clamp(fb,0,0.99),bleed:P.pp?1:BLEED,inL:1,inR:P.pp?0:1,tone:D.tone,hpf:D.hpf,early:D.early,diff:D.diff,mix:P.mix,shape:loop?'exp':'flat',gains:G,tap:P.tap,hold:P.hold,autoHold:false,wob}); }
+function noiseBuf(ctx, seed){ const n=ctx.sampleRate*4, b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0); let x=(seed*2147483647)|0||1; for(let i=0;i<n;i++){ x=(x*48271)%2147483647; d[i]=x/2147483647*2-1; } return b; }
+const voices=new Map();
+async function ensure(){ if(!A) await buildAudio(); if(A.ctx.state!=='running') A.ctx.resume(); return A.ctx; }
+async function noteOn(freq=220, vel=0.8, id='btn'){ const ctx=await ensure(), t=ctx.currentTime, v=$('voice').value; noteOff(id);
+  if(v==='click'){ const nz=ctx.createBufferSource(); nz.buffer=noiseBuf(ctx,0.31); const f=ctx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq*6; f.Q.value=1.2; const e=ctx.createGain(); e.gain.setValueAtTime(0.0001,t); e.gain.exponentialRampToValueAtTime(0.8*vel,t+0.001); e.gain.exponentialRampToValueAtTime(0.0001,t+0.03); nz.connect(f).connect(e).connect(A.src); nz.start(t); nz.stop(t+0.05); return; }
+  const amp=0.05+0.6*vel*vel; const o=ctx.createOscillator(), o2=ctx.createOscillator(); o.type=o2.type='sawtooth'; o.frequency.value=freq; o2.frequency.value=freq*1.004; const f=ctx.createBiquadFilter(); f.type='lowpass'; const e=ctx.createGain(); o.connect(f); o2.connect(f); f.connect(e).connect(A.src); o.start(t); o2.start(t);
+  if(v==='pad'){ f.frequency.setValueAtTime(freq*(2+8*vel),t); f.Q.value=0.7; e.gain.setValueAtTime(0.0001,t); e.gain.exponentialRampToValueAtTime(amp*0.6,t+0.08); voices.set(id,{stop:()=>{ const tt=ctx.currentTime; e.gain.setTargetAtTime(0.0001,tt,0.12); o.stop(tt+0.8); o2.stop(tt+0.8); }}); }
+  else { f.frequency.setValueAtTime(freq*(4+12*vel),t); f.frequency.exponentialRampToValueAtTime(freq*1.5,t+0.12); e.gain.setValueAtTime(0.0001,t); e.gain.exponentialRampToValueAtTime(amp,t+0.004); e.gain.exponentialRampToValueAtTime(0.0001,t+0.16); o.stop(t+0.2); o2.stop(t+0.2); } }
+function noteOff(id){ const v=voices.get(id); if(v){ v.stop(); voices.delete(id); } }
+$('play').addEventListener('click',()=>{ noteOn(220,0.8,'btn'); if($('voice').value==='pad') setTimeout(()=>noteOff('btn'),600); });
+let phraseTimer=null; $('phrase').addEventListener('click',async()=>{ if(phraseTimer){ clearInterval(phraseTimer); phraseTimer=null; $('phrase').classList.remove('on'); return; } await ensure(); const seq=[[220,1],[0,0],[220,.25],[220,.25],[330,1],[0,0],[247,.2],[0,0],[220,.25],[196,1],[0,0],[220,.2],[247,.25],[0,0],[330,.9],[0,0]]; let i=0; const step=()=>{ const [f,v]=seq[i%seq.length]; if(f) noteOn(f,v,'ph'); i++; }; step(); phraseTimer=setInterval(step,60000/BPM/2); $('phrase').classList.add('on'); });
+$('bpm').addEventListener('input',()=>{ const v=+$('bpm').value; if(v>=40&&v<=240){ const dl=P.sync?divOf(P.tl):null, dr=P.sync?divOf(P.tr):null; BPM=v; if(dl&&msOf(dl)) P.tl=clamp(msOf(dl),TMIN,2000); if(dr&&msOf(dr)&&P.link==='off') P.tr=clamp(msOf(dr),TMIN,2000); applyLink(); invalidate(); invalidateAudio(); } });
+const KEYS={a:220,s:246.9,d:277.2,f:293.7,g:329.6,h:370,j:415.3,k:440};
+window.addEventListener('keydown',ev=>{ if(ev.target.tagName==='INPUT'||ev.target.tagName==='SELECT'||ev.metaKey||ev.ctrlKey||ev.repeat) return; const f=KEYS[ev.key]; if(f){ ev.preventDefault(); noteOn(f,0.8,'k'+ev.key); } });
+window.addEventListener('keyup',ev=>{ if(KEYS[ev.key]) noteOff('k'+ev.key); });
+$('midi').addEventListener('click',async()=>{ await ensure(); if(!navigator.requestMIDIAccess){ $('midi-st').textContent='no Web MIDI'; return; } try{ const acc=await navigator.requestMIDIAccess(); const wire=()=>{ const names=[]; for(const inp of acc.inputs.values()){ inp.onmidimessage=ev=>{ const [st,n,v]=ev.data; const cmd=st&0xf0; if(cmd===0x90&&v>0) noteOn(440*Math.pow(2,(n-69)/12), v/127, 'm'+n); else if(cmd===0x80||(cmd===0x90&&v===0)) noteOff('m'+n); }; names.push(inp.name); } $('midi-st').textContent=names.join(', ')||'no inputs'; $('midi').classList.toggle('on',names.length>0); }; wire(); acc.onstatechange=wire; } catch(e){ $('midi-st').textContent='midi blocked'; } });
+if(!MOBILE){ const w=document.getElementById('w'); requestAnimationFrame(()=>w.moveTo(24,90)); }
+const PRESETS={
+  'Slap':          {tl:105, ratio:1,    link:'ratio', pp:false, tap:false, sync:false, count:2,  shape:-1,   wash:0.02, tone:0.15, medium:0, strength:0.15, mix:0.32},
+  'Haas Slap':     {tl:95,  offset:23,  link:'offset',pp:false, tap:false, sync:false, count:2,  shape:-1,   wash:0.05, tone:0.1,  medium:0, strength:0.15, mix:0.3},
+  'Eighth Bounce': {tl:250, ratio:1,    link:'ratio', pp:true,  tap:false, sync:true,  count:8,  shape:-0.8, wash:0.1,  tone:0,    medium:0, strength:0.25, mix:0.45},
+  'Dotted Pong':   {tl:375, ratio:2/3,  link:'ratio', pp:true,  tap:false, sync:true,  count:8,  shape:-0.7, wash:0.15, tone:0,    medium:0, strength:0.3,  mix:0.5},
+  'Golden Room':   {tl:280, ratio:1.618,link:'ratio', pp:false, tap:false, sync:false, count:12, shape:-0.6, wash:0.45, tone:-0.2, medium:3, strength:0.35, mix:0.5},
+  'Dotted Wash':   {tl:250, ratio:1.5,  link:'ratio', pp:false, tap:false, sync:true,  count:16, shape:-0.5, wash:0.6,  tone:-0.3, medium:3, strength:0.4,  mix:0.55},
+  'Long Tide':     {tl:700, ratio:1.618,link:'ratio', pp:false, tap:false, sync:false, count:28, shape:-0.5, wash:0.7,  tone:-0.4, medium:3, strength:0.6,  mix:0.6},
+  'Underwater':    {tl:420, ratio:1.618,link:'ratio', pp:false, tap:false, sync:false, count:40, shape:-0.3, wash:1,    tone:-0.8, medium:1, strength:0.6,  mix:0.7},
+  'Flat Four':     {tl:250, ratio:1,    link:'ratio', pp:false, tap:false, sync:true,  count:4,  shape:0,    wash:0,    tone:0.1,  medium:4, strength:0,    mix:0.45},
+  'Swell Eight':   {tl:188, ratio:1,    link:'ratio', pp:false, tap:false, sync:true,  count:8,  shape:1,    wash:0.3,  tone:-0.2, medium:3, strength:0.35, mix:0.5},
+  'Reverse Room':  {tl:120, ratio:1.618,link:'ratio', pp:false, tap:false, sync:false, count:14, shape:0.8,  wash:0.6,  tone:-0.3, medium:3, strength:0.3,  mix:0.6},
+  'Echorec 2+4':   {tl:300, ratio:0.5,  link:'ratio', pp:false, tap:'R',  sync:false, count:10, shape:-0.7, wash:0.15, tone:-0.2, medium:0, strength:0.3,  mix:0.45},
+  'Echorec swell': {tl:220, ratio:1.5,  link:'ratio', pp:false, tap:'R',  sync:false, count:6,  shape:0.9,  wash:0.3,  tone:-0.3, medium:0, strength:0.35, mix:0.5},
+  'RE-201 mode 4': {tl:300, ratio:1.5,  link:'ratio', pp:false, tap:false, sync:false, count:16, shape:-0.6, wash:0.2,  tone:-0.4, medium:0, strength:0.5,  mix:0.5},
+  'Oil can':       {tl:210, ratio:1,    link:'ratio', pp:false, tap:false, sync:false, count:12, shape:-0.7, wash:0.1,  tone:-0.3, medium:1, strength:0.8,  mix:0.5},
+  'Memory Man':    {tl:330, ratio:1,    link:'ratio', pp:false, tap:false, sync:false, count:10, shape:-0.75,wash:0.05, tone:-0.1, medium:2, strength:0.6,  mix:0.45},
+  'Thin Stutter':  {tl:83,  ratio:1,    link:'ratio', pp:false, tap:false, sync:true,  count:6,  shape:0,    wash:0,    tone:0.8,  medium:4, strength:0,    mix:0.5},
+};
+const sel=$('preset'); for(const n in PRESETS){ const o=document.createElement('option'); o.textContent=n; o.value=n; sel.appendChild(o); }
+const stepPreset=d=>{ const n=sel.options.length; sel.selectedIndex=(sel.selectedIndex+d+n)%n; sel.dispatchEvent(new Event('change')); }; $('prev').addEventListener('click',()=>stepPreset(-1)); $('next').addEventListener('click',()=>stepPreset(1));
+sel.addEventListener('change',()=>{ const q=PRESETS[sel.value]; Object.assign(P,{hold:false,offset:0,ratio:1},q); if(q.link==='ratio') P.tr=P.tl*P.ratio; else if(q.link==='offset') P.tr=P.tl+P.offset; applyLink(); invalidate(); invalidateAudio(); });
+function level(an){ an.getFloatTimeDomainData(A.buf); let m=0; for(let i=0;i<A.buf.length;i++){ const v=Math.abs(A.buf[i]); if(v>m) m=v; } return m; }
+(function tick(){ NOW=performance.now()/1000; let live=false; if(A){ const i=level(A.anIn), o=level(A.anOut); LVL.in = i>LVL.in? i : LVL.in*0.85; LVL.out = o>LVL.out? o : LVL.out*0.93; if(LVL.in<0.001) LVL.in=0; if(LVL.out<0.001) LVL.out=0; live=LVL.in>0||LVL.out>0; }
+  const animating=(media[P.medium]!=='clean'&&P.strength>0)||live;
+  if(dirty||animating){ render(); dirty=false; }
+  if(audioDirty){ applyAudio(); audioDirty=false; }
+  requestAnimationFrame(tick); })();
+
+</script>
+</body></html>
