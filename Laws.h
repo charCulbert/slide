@@ -54,6 +54,26 @@ inline double divisionMs(int index, double bpm) noexcept
     return divisionBeats[slot] * 60000.0 / tempo;
 }
 
+/// The division whose time sits closest to this one, measured in log distance — the
+/// prototype's `snapT`. A time that is not a positive number keeps the first slot.
+inline int nearestDivision(double ms, double bpm) noexcept
+{
+    const auto time = finiteOr(ms, 0.0);
+    if (!(time > 0)) return 0;
+    int best = 0;
+    double closest = -1;
+    for (int i = 0; i < static_cast<int>(divisionBeats.size()); ++i)
+    {
+        const auto distance = std::abs(std::log(divisionMs(i, bpm) / time));
+        if (closest < 0 || distance < closest)
+        {
+            closest = distance;
+            best = i;
+        }
+    }
+    return best;
+}
+
 /// The loop topology carries a Fade past half and every hold; everything else is the
 /// finite chain.
 inline bool isLoop(double shape, bool hold) noexcept

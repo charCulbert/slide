@@ -188,13 +188,20 @@ private:
     void refresh() noexcept
     {
         const auto synced = values[sync] != 0;
+        const auto linkage = static_cast<int>(values[link]);
         const auto leftRaw = synced ? laws::divisionMs(static_cast<int>(values[leftDivision]), bpm)
                                     : values[left];
         const auto rightRaw = synced ? laws::divisionMs(static_cast<int>(values[rightDivision]), bpm)
                                      : values[right];
         effectiveLeftMs = std::clamp(leftRaw, laws::minTimeMs, laws::maxTimeMs);
-        effectiveRightMs = laws::linkRight(static_cast<int>(values[link]), effectiveLeftMs,
-                                           values[ratio], values[difference], rightRaw);
+        const auto linked = laws::linkRight(linkage, effectiveLeftMs, values[ratio],
+                                            values[difference], rightRaw);
+        // On the grid a derived Right lands on the grid too, as the prototype's
+        // applyLink does: derive it, then snap it to the nearest division.
+        effectiveRightMs = synced && linkage != 2
+            ? std::clamp(laws::divisionMs(laws::nearestDivision(linked, bpm), bpm),
+                         laws::minTimeMs, laws::maxTimeMs)
+            : linked;
 
         holding = values[hold] != 0;
         repeatCount = std::clamp(static_cast<int>(values[repeats]), 1, stages);

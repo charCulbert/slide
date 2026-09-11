@@ -484,6 +484,15 @@ void lawsByHand()
     CHECK(near(divisionMs(16, 5000), divisionMs(16, 999)));
     CHECK(near(divisionMs(-3, 120), divisionMs(0, 120)) && near(divisionMs(99, 120), divisionMs(23, 120)));
 
+    // The grid snap: nearest in log distance, the prototype's snapT.
+    CHECK(nearestDivision(500, 120) == 16);        // 1/4 on the nose
+    CHECK(nearestDivision(375, 120) == 15);        // 1/8.
+    CHECK(nearestDivision(249, 120) == 13);        // just under 1/8
+    CHECK(nearestDivision(9000, 120) == 23);       // past the top of the grid
+    CHECK(nearestDivision(0.1, 120) == 0);         // and under the bottom
+    CHECK(nearestDivision(0, 120) == 0 && nearestDivision(std::nan(""), 120) == 0);
+    CHECK(near(divisionMs(nearestDivision(375, 120), 120), 375));
+
     // Gain law.
     CHECK(near(gainAt(-1, 8, 0), 1));
     CHECK(near(gainAt(-1, 8, 7), std::exp(-6.9)));
@@ -861,6 +870,22 @@ void linkAndSync()
     telemetry = rig.engine.telemetry();
     CHECK(near(telemetry.leftMs, 500, 1e-4) && near(telemetry.bpm, 120, 1e-4));
 
+    // On the grid a derived Right lands on the grid: 1/8 linked at 1.5 is 1/8 dotted.
+    rig.set(leftDivision, 13); // 1/8, 250 ms
+    rig.set(link, 0);
+    rig.set(ratio, 1.5);
+    (void) run(rig, block);
+    telemetry = rig.engine.telemetry();
+    CHECK(near(telemetry.leftMs, 250, 1e-4) && near(telemetry.rightMs, 375, 1e-4));
+
+    // Link off on the grid takes the right division as it stands.
+    rig.set(link, 2);
+    rig.set(rightDivision, 16);
+    (void) run(rig, block);
+    CHECK(near(rig.engine.telemetry().rightMs, 500, 1e-4));
+    rig.set(sync, 0);
+    rig.set(leftDivision, 13);
+
     // And the tail follows the times it is actually running.
     rig.set(sync, 0);
     rig.set(left, 250);
@@ -1084,6 +1109,14 @@ std::vector<Section> buildFixture()
                 rows.push_back({ { "index", static_cast<double>(i) }, { "bpm", bpm },
                     { "out", divisionMs(i, bpm) } });
         sections.push_back({ "divisionMs", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (double bpm : { 90.0, 120.0 })
+            for (double ms : { 0.5, 10.0, 249.0, 375.0, 376.0, 1000.0, 9000.0 })
+                rows.push_back({ { "ms", ms }, { "bpm", bpm },
+                    { "out", static_cast<double>(nearestDivision(ms, bpm)) } });
+        sections.push_back({ "nearestDivision", std::move(rows) });
     }
     {
         std::vector<Row> rows;
