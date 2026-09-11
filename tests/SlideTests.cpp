@@ -1,9 +1,14 @@
 #include "Plugin.h"
+#include "Parameters.h"
+#include "Laws.h"
 
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <utility>
 #include <vector>
 
 #define CHECK(...) do { if (!(__VA_ARGS__)) { std::fprintf(stderr, "Failed at %d: %s\n", __LINE__, #__VA_ARGS__); std::abort(); } } while (false)
@@ -75,7 +80,7 @@ void stereoPorts()
         CHECK((info.flags & CLAP_AUDIO_PORT_IS_MAIN) && (info.flags & CLAP_AUDIO_PORT_SUPPORTS_64BITS));
     }
     CHECK(in.in_place_pair == out.id && out.in_place_pair == in.id);
-    CHECK(p.params && p.params->count(p.p) == 0);
+    CHECK(p.params && p.params->count(p.p) == slide::stateValueCount);
 }
 
 void passThrough()
@@ -118,41 +123,276 @@ void doublePassThrough()
     CHECK(outLeft == left && outRight == right);
 }
 
+// ---------------------------------------------------------------- parameters
+
+void parameterTable()
+{
+    using namespace slide;
+    CHECK(parameters.size() == stateValueCount);
+    for (uint32_t i = 0; i < parameters.size(); ++i) CHECK(parameters[i].id == i);
+
+    struct Expected { clap_id id; const char* identifier; const char* name; const char* unit;
+                      double min, max, initial, step, mid; int digits; bool stepped; };
+    const std::array<Expected, stateValueCount> expected {{
+        { left, "left", "Left", "ms", 1, 2000, 350, 0.1, 200, 1, false },
+        { right, "right", "Right", "ms", 1, 2000, 525, 0.1, 200, 1, false },
+        { link, "link", "Link", "", 0, 2, 0, 1, 0, 0, true },
+        { ratio, "ratio", "Ratio", "x", 0.5, 4, 1.5, 0.001, 1, 3, false },
+        { difference, "difference", "Difference", "ms", -2000, 2000, 175, 0.1, 0, 1, false },
+        { sync, "sync", "Sync", "", 0, 1, 0, 1, 0, 0, true },
+        { leftDivision, "left_division", "Left division", "", 0, 23, 13, 1, 0, 0, true },
+        { rightDivision, "right_division", "Right division", "", 0, 23, 15, 1, 0, 0, true },
+        { repeats, "repeats", "Repeats", "", 1, 64, 8, 1, 8, 0, true },
+        { hold, "hold", "Hold", "", 0, 1, 0, 1, 0, 0, true },
+        { shape, "shape", "Shape", "", -1, 1, -0.6, 0.01, 0, 2, false },
+        { blur, "blur", "Blur", "%", 0, 100, 20, 1, 0, 0, false },
+        { tone, "tone", "Tone", "", -100, 100, 0, 1, 0, 0, false },
+        { mix, "mix", "Mix", "%", 0, 100, 50, 1, 0, 0, false },
+        { mode, "mode", "Mode", "", 0, 3, 0, 1, 0, 0, true },
+        { medium, "medium", "Medium", "", 0, 4, 0, 1, 0, 0, true },
+        { wear, "wear", "Wear", "%", 0, 100, 35, 1, 0, 0, false }
+    }};
+    for (size_t i = 0; i < expected.size(); ++i)
+    {
+        const auto& p = parameters[i];
+        const auto& e = expected[i];
+        CHECK(p.id == e.id);
+        CHECK(std::strcmp(p.identifier, e.identifier) == 0);
+        CHECK(std::strcmp(p.name, e.name) == 0);
+        CHECK(std::strcmp(p.unit, e.unit) == 0);
+        CHECK(p.min == e.min && p.max == e.max && p.initial == e.initial && p.step == e.step);
+        CHECK(p.mid == e.mid && p.digits == e.digits && p.stepped == e.stepped);
+        CHECK(p.initial >= p.min && p.initial <= p.max);
+        CHECK(findParameter(e.id) == &p);
+    }
+    CHECK(findParameter(stateValueCount) == nullptr);
+
+    // Only the rails that ask for one carry a log curve.
+    for (const auto& p : parameters)
+        CHECK(isLogarithmic(p) == (p.id == left || p.id == right || p.id == ratio || p.id == repeats));
+
+    CHECK(enumNames(link).count == 3 && std::strcmp(enumNames(link).names[1], "Difference") == 0);
+    CHECK(enumNames(mode).count == 4 && std::strcmp(enumNames(mode).names[3], "Left is a tap") == 0);
+    CHECK(enumNames(medium).count == 5 && std::strcmp(enumNames(medium).names[4], "Digital") == 0);
+    CHECK(enumNames(sync).count == 2 && enumNames(hold).count == 2);
+    CHECK(enumNames(leftDivision).count == 24 && enumNames(rightDivision).count == 24);
+    CHECK(enumNames(repeats).names == nullptr && enumNames(shape).names == nullptr);
+
+    // The division grid: 24 entries, strictly ascending, named for base and variant.
+    CHECK(divisionBeats.size() == 24 && divisionNames.size() == 24);
+    for (size_t i = 1; i < divisionBeats.size(); ++i) CHECK(divisionBeats[i] > divisionBeats[i - 1]);
+    CHECK(std::strcmp(divisionNames[13], "1/8") == 0 && divisionBeats[13] == 0.5);
+    CHECK(std::strcmp(divisionNames[15], "1/8.") == 0 && divisionBeats[15] == 0.75);
+    CHECK(std::strcmp(divisionNames[16], "1/4") == 0 && divisionBeats[16] == 1.0);
+    CHECK(std::strcmp(divisionNames[0], "1/128T") == 0 && std::strcmp(divisionNames[23], "1/1.") == 0);
+    CHECK(divisionBeats[0] == 0.03125 * 2.0 / 3 && divisionBeats[23] == 6.0);
+
+    CHECK(clampParameter(left, 1e9) == 2000 && clampParameter(left, -5) == 1);
+    CHECK(clampParameter(left, std::nan("")) == 350);
+    CHECK(clampParameter(repeats, 8.4) == 8 && clampParameter(repeats, 8.6) == 9);
+    CHECK(clampParameter(shape, -0.333) == -0.333);
+
+    const auto defaults = defaultValues();
+    for (const auto& p : parameters) CHECK(defaults[p.id] == p.initial);
+}
+
+void parameterText()
+{
+    using namespace slide;
+    Plugin plugin;
+    const auto* params = plugin.params;
+    CHECK(params);
+
+    for (uint32_t i = 0; i < params->count(plugin.p); ++i)
+    {
+        clap_param_info_t info {};
+        CHECK(params->get_info(plugin.p, i, &info));
+        const auto& p = parameters[i];
+        CHECK(info.id == p.id && info.min_value == p.min && info.max_value == p.max);
+        CHECK(info.default_value == p.initial);
+        CHECK(std::strcmp(info.name, p.name) == 0);
+        CHECK(info.flags & CLAP_PARAM_IS_AUTOMATABLE);
+        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_STEPPED) == p.stepped);
+        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_MODULATABLE) == !p.stepped);
+        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_ENUM) == (enumNames(p.id).names != nullptr));
+
+        double current = 0;
+        CHECK(params->get_value(plugin.p, p.id, &current) && current == p.initial);
+
+        // 25 points across the range: text and value must agree with each other after
+        // the first round trip, and stay put on every trip after it.
+        for (int step = 0; step <= 24; ++step)
+        {
+            const auto value = p.min + (p.max - p.min) * step / 24.0;
+            char text[64] {};
+            CHECK(params->value_to_text(plugin.p, p.id, value, text, sizeof(text)));
+            double first = 0;
+            CHECK(params->text_to_value(plugin.p, p.id, text, &first));
+            char again[64] {};
+            CHECK(params->value_to_text(plugin.p, p.id, first, again, sizeof(again)));
+            CHECK(std::strcmp(text, again) == 0);
+            double second = 0;
+            CHECK(params->text_to_value(plugin.p, p.id, again, &second));
+            CHECK(second == first);
+            CHECK(first >= p.min && first <= p.max);
+            if (p.stepped) CHECK(first == std::round(first));
+        }
+
+        // Garbage is refused; a value out of range is pulled back in.
+        double parsed = 0;
+        CHECK(!params->text_to_value(plugin.p, p.id, "wobble", &parsed));
+        CHECK(!params->text_to_value(plugin.p, p.id, "12 bananas", &parsed));
+        CHECK(!params->text_to_value(plugin.p, p.id, "", &parsed));
+        CHECK(!params->text_to_value(plugin.p, p.id, "nan", &parsed));
+        CHECK(!params->text_to_value(plugin.p, p.id, "inf", &parsed));
+        CHECK(params->text_to_value(plugin.p, p.id, "99999", &parsed) && parsed == p.max);
+        CHECK(params->text_to_value(plugin.p, p.id, "-99999", &parsed) && parsed == p.min);
+    }
+
+    // The formats themselves.
+    struct Case { clap_id id; double value; const char* text; };
+    const std::array<Case, 10> cases {{
+        { left, 350, "350.0 ms" }, { difference, -175.2, "-175.2 ms" },
+        { ratio, 1.5, "1.500 x" }, { shape, -0.6, "-0.60" },
+        { blur, 20, "20%" }, { tone, -40, "-40" }, { mix, 50, "50%" },
+        { repeats, 8, "8" }, { medium, 2, "Bucket" }, { leftDivision, 15, "1/8." }
+    }};
+    for (const auto& c : cases)
+    {
+        char text[64] {};
+        CHECK(params->value_to_text(plugin.p, c.id, c.value, text, sizeof(text)));
+        CHECK(std::strcmp(text, c.text) == 0);
+        double value = 0;
+        CHECK(params->text_to_value(plugin.p, c.id, c.text, &value));
+        CHECK(std::abs(value - c.value) < 0.05);
+    }
+
+    // Enum names parse, whole and by index; unknown names do not.
+    for (const auto& p : parameters)
+    {
+        const auto names = enumNames(p.id);
+        for (size_t i = 0; i < names.count; ++i)
+        {
+            double value = 0;
+            CHECK(params->text_to_value(plugin.p, p.id, names.names[i], &value));
+            CHECK(value == static_cast<double>(i));
+        }
+    }
+    double value = 0;
+    CHECK(!params->text_to_value(plugin.p, slide::mode, "Quadrophonic", &value));
+    CHECK(params->text_to_value(plugin.p, slide::mode, "2", &value) && value == 2);
+
+    // An id out of the table is not a parameter at all. (Asking the extension about
+    // one is host misbehaviour, which clap-helpers turns into a hard stop, so the
+    // question is asked of the table.)
+    CHECK(findParameter(99) == nullptr && clampParameter(99, 1) == 0);
+}
+
+// -------------------------------------------------------------------- state
+
+struct Blob
+{
+    std::vector<char> data;
+    size_t offset = 0;
+};
+
+int64_t writeBlob(const clap_ostream_t* s, const void* bytes, uint64_t size)
+{
+    auto& out = static_cast<Blob*>(s->ctx)->data;
+    const auto* first = static_cast<const char*>(bytes);
+    out.insert(out.end(), first, first + size);
+    return static_cast<int64_t>(size);
+}
+
+int64_t readBlob(const clap_istream_t* s, void* bytes, uint64_t size)
+{
+    auto& blob = *static_cast<Blob*>(s->ctx);
+    const auto n = std::min<size_t>(size, blob.data.size() - blob.offset);
+    std::memcpy(bytes, blob.data.data() + blob.offset, n);
+    blob.offset += n;
+    return static_cast<int64_t>(n);
+}
+
+std::vector<double> readValues(const Plugin& plugin)
+{
+    std::vector<double> result;
+    for (const auto& p : slide::parameters)
+    {
+        double value = 0;
+        CHECK(plugin.params->get_value(plugin.p, p.id, &value));
+        result.push_back(value);
+    }
+    return result;
+}
+
 void stateRoundTrip()
 {
+    using namespace slide;
     Plugin p;
     CHECK(p.state);
-    std::vector<char> data;
-    const clap_ostream_t writer { &data, [](const clap_ostream_t* s, const void* bytes, uint64_t size) -> int64_t {
-        auto& out = *static_cast<std::vector<char>*>(s->ctx);
-        const auto* first = static_cast<const char*>(bytes);
-        out.insert(out.end(), first, first + size);
-        return static_cast<int64_t>(size);
-    } };
+
+    // Move every parameter off its default, then save.
+    Input input;
+    std::vector<clap_event_param_value_t> events;
+    events.reserve(parameters.size());
+    for (const auto& info : parameters)
+    {
+        // A quarter of the way up, or the top when that lands on the default.
+        auto value = clampParameter(info.id, info.min + (info.max - info.min) * 0.25);
+        if (value == info.initial) value = info.max;
+        events.push_back({ { sizeof(clap_event_param_value_t), 0, CLAP_CORE_EVENT_SPACE_ID,
+            CLAP_EVENT_PARAM_VALUE, 0 }, info.id, nullptr, -1, -1, -1, -1, value });
+    }
+    for (const auto& e : events) input.events.push_back(&e.header);
+    Output output;
+    const auto* paramsExt = p.params;
+    paramsExt->flush(p.p, &input.list, &output.list);
+    const auto moved = readValues(p);
+    for (size_t i = 0; i < parameters.size(); ++i) CHECK(moved[i] != parameters[i].initial);
+
+    Blob blob;
+    const clap_ostream_t writer { &blob, writeBlob };
     CHECK(p.state->save(p.p, &writer));
-    CHECK(data.size() == 2 * sizeof(uint32_t));
+    CHECK(blob.data.size() == 2 * sizeof(uint32_t) + stateValueCount * sizeof(double));
     uint32_t magic = 0, version = 0;
-    std::memcpy(&magic, data.data(), sizeof(magic));
-    std::memcpy(&version, data.data() + sizeof(magic), sizeof(version));
-    CHECK(magic == slide::stateMagic && version == slide::stateVersion);
+    std::memcpy(&magic, blob.data.data(), sizeof(magic));
+    std::memcpy(&version, blob.data.data() + sizeof(magic), sizeof(version));
+    CHECK(magic == stateMagic && version == stateVersion);
 
-    struct Read { std::vector<char>& data; size_t offset = 0; } read { data };
-    const clap_istream_t reader { &read, [](const clap_istream_t* s, void* bytes, uint64_t size) -> int64_t {
-        auto& r = *static_cast<Read*>(s->ctx);
-        const auto n = std::min<size_t>(size, r.data.size() - r.offset);
-        std::memcpy(bytes, r.data.data() + r.offset, n);
-        r.offset += n;
-        return static_cast<int64_t>(n);
-    } };
+    // Back to the defaults, then load: every value returns.
+    Input reset;
+    std::vector<clap_event_param_value_t> resets;
+    resets.reserve(parameters.size());
+    for (const auto& info : parameters)
+        resets.push_back({ { sizeof(clap_event_param_value_t), 0, CLAP_CORE_EVENT_SPACE_ID,
+            CLAP_EVENT_PARAM_VALUE, 0 }, info.id, nullptr, -1, -1, -1, -1, info.initial });
+    for (const auto& e : resets) reset.events.push_back(&e.header);
+    paramsExt->flush(p.p, &reset.list, &output.list);
+
+    const clap_istream_t reader { &blob, readBlob };
+    blob.offset = 0;
     CHECK(p.state->load(p.p, &reader));
+    CHECK(readValues(p) == moved);
 
-    read.offset = 0; data[0] = 0;
-    CHECK(!p.state->load(p.p, &reader));
-
-    std::vector<char> truncated { data.begin(), data.begin() + 3 };
-    Read shortRead { truncated };
-    const clap_istream_t shortReader { &shortRead, reader.read };
-    CHECK(!p.state->load(p.p, &shortReader));
+    const auto refuse = [&](std::vector<char> bytes) {
+        Blob bad { std::move(bytes), 0 };
+        const clap_istream_t badReader { &bad, readBlob };
+        CHECK(!p.state->load(p.p, &badReader));
+        CHECK(readValues(p) == moved); // a refused load changes nothing
+    };
+    refuse({});
+    refuse({ blob.data.begin(), blob.data.begin() + 3 });
+    refuse({ blob.data.begin(), blob.data.end() - 1 });
+    auto corrupt = blob.data;
+    corrupt[0] = 0;
+    refuse(corrupt);
+    corrupt = blob.data;
+    corrupt[4] = 9; // an unknown version
+    refuse(corrupt);
+    corrupt = blob.data;
+    const auto notANumber = std::nan("");
+    std::memcpy(corrupt.data() + 2 * sizeof(uint32_t) + 3 * sizeof(double), &notANumber, sizeof(double));
+    refuse(corrupt);
 }
 
 void descriptorIdentity()
@@ -166,16 +406,356 @@ void descriptorIdentity()
     CHECK(std::strcmp(d.features[2], CLAP_PLUGIN_FEATURE_STEREO) == 0);
     CHECK(d.features[3] == nullptr);
 }
+
+// --------------------------------------------------------------------- laws
+
+bool near(double a, double b, double tolerance = 1e-9)
+{
+    return std::abs(a - b) <= tolerance * std::max(1.0, std::abs(b));
+}
+
+void lawsByHand()
+{
+    using namespace slide;
+    using namespace slide::laws;
+
+    // Link.
+    CHECK(near(linkRight(0, 350, 1.5, 175, 0), 525));
+    CHECK(near(linkRight(1, 350, 1.5, 175, 0), 525));
+    CHECK(near(linkRight(1, 350, 1.5, -600, 0), 1));       // clamped at the floor
+    CHECK(near(linkRight(0, 1500, 4, 0, 0), 2000));        // clamped at the ceiling
+    CHECK(near(linkRight(2, 350, 1.5, 175, 900), 900));    // Off passes Right through
+    CHECK(near(linkRight(2, 350, 1.5, 175, std::nan("")), 350));
+    CHECK(near(linkRight(0, 350, std::nan(""), 0, 0), 350));
+
+    // Divisions.
+    CHECK(near(divisionMs(16, 120), 500));                 // 1/4 at 120 bpm
+    CHECK(near(divisionMs(13, 120), 250));                 // 1/8
+    CHECK(near(divisionMs(15, 120), 375));                 // 1/8.
+    CHECK(near(divisionMs(11, 120), 500.0 / 3));           // 1/8T
+    CHECK(near(divisionMs(22, 60), 4000));                 // 1/1 at 60 bpm
+    CHECK(near(divisionMs(16, 0), divisionMs(16, 10)));    // bpm clamps at 10
+    CHECK(near(divisionMs(16, 5000), divisionMs(16, 999)));
+    CHECK(near(divisionMs(-3, 120), divisionMs(0, 120)) && near(divisionMs(99, 120), divisionMs(23, 120)));
+
+    // Gain law.
+    CHECK(near(gainAt(-1, 8, 0), 1));
+    CHECK(near(gainAt(-1, 8, 7), std::exp(-6.9)));
+    CHECK(std::abs(gainAt(-1, 8, 7) - 1e-3) < 1e-5);
+    for (int k = 0; k < 8; ++k) CHECK(near(gainAt(0, 8, k), 1));
+    CHECK(near(gainAt(1, 8, 0), std::exp(-6.9)) && near(gainAt(1, 8, 7), 1));
+    CHECK(near(gainAt(-0.5, 8, 4), std::exp(-6.9 * 0.5 * 4.0 / 7)));
+    CHECK(near(gainAt(-1, 1, 0), 1));                      // one repeat has no slope
+    CHECK(near(gainAt(-1, 8, 99), gainAt(-1, 8, 7)));      // k clamps
+
+    // Topology and lap gain.
+    CHECK(!isLoop(0, false) && !isLoop(-0.5, false) && isLoop(-0.51, false));
+    CHECK(isLoop(0.9, true));
+    CHECK(near(lapGain(-1, 8, false), std::exp(-6.9 / 7)));
+    CHECK(near(lapGain(-1, 8, true), 1));
+    CHECK(near(lapGain(0, 16, false), 1));
+    CHECK(near(lapGain(-1, 1, false), std::exp(-6.9)));
+
+    // Tone.
+    auto t = toneLaw(0, 0, false);
+    CHECK(near(t.highCutHz, 9000) && near(t.lowCutHz, 20));
+    CHECK(near(t.diffusion, 0) && near(t.early, 0));
+    t = toneLaw(0, 0, true);
+    CHECK(near(t.highCutHz, 20000));
+    t = toneLaw(1, 0, false);
+    CHECK(near(t.highCutHz, 9000 * std::pow(2.0, -3.3)));
+    CHECK(near(t.diffusion, 0.62) && near(t.early, std::pow(1.0, 1.3) * 0.62));
+    t = toneLaw(0, -1, false);
+    CHECK(near(t.highCutHz, std::max(200.0, 12000 * std::pow(2.0, -5.5))));
+    t = toneLaw(0, 1, false);
+    CHECK(near(t.lowCutHz, 2500) && near(t.highCutHz, 9000));
+    t = toneLaw(0.3, 0, false);
+    CHECK(near(t.early, 0));
+
+    // Media.
+    for (int m = 0; m <= 4; ++m)
+    {
+        const auto clean = recipeAt(m, 0);
+        CHECK(clean.sine == 0 && clean.rand == 0 && clean.hiss == 0 && clean.bits == 0);
+        CHECK(clean.decimateHz == 0 && !clean.lossTracksTime && near(clean.lossHz, 20000));
+    }
+    const auto tape = recipeAt(0, 0.5);
+    const auto amt = std::pow(0.5, 1.8) * 5;
+    CHECK(near(tape.sine, 0.0025 * amt) && near(tape.sineHz, 0.7));
+    CHECK(near(tape.rand, 0.0012 * amt) && near(tape.randHz, 6));
+    CHECK(near(tape.hiss, 0.0003 * std::min(4.0, 0.9 * amt)));
+    CHECK(near(tape.lossHz, 9000) && tape.bits == 0); // amt > 0.5, so the loss is full
+    CHECK(recipeAt(1, 1).bits == 10 && near(recipeAt(1, 1).lossHz, 2600));
+    CHECK(recipeAt(1, 0.05).bits == 0);               // crush only past amt 0.1
+    CHECK(recipeAt(2, 1).lossTracksTime && near(recipeAt(2, 1).lossHz, 8000));
+    CHECK(recipeAt(3, 1).tidePartials && near(recipeAt(3, 1).lossHz, 20000));
+    const auto digital = recipeAt(4, 1);
+    CHECK(digital.bits == 8 && near(digital.decimateHz, 8000) && near(digital.lossHz, 20000));
+    CHECK(digital.sine == 0 && digital.rand == 0 && digital.hiss == 0);
+    CHECK(recipeAt(4, 0.5).bits == 12);
+    CHECK(recipeAt(9, 1).lossHz == 20000 && recipeAt(9, 1).bits == 0);
+
+    // Tail.
+    CHECK(near(tailMs(0, 350, 525, 8, false), 8 * 525));
+    CHECK(near(tailMs(1, 350, 525, 8, false), 8 * 525));
+    CHECK(near(tailMs(2, 350, 525, 8, false), 8 * 350 + 525));
+    CHECK(near(tailMs(3, 350, 525, 8, false), 8 * 525 + 350));
+    CHECK(near(tailMs(0, 350, 525, 8, true), 100000));
+    CHECK(near(tailMs(0, 350, 525, 0, false), 350 * 0 + 525)); // repeats clamp to 1
+
+    // Snap lock: capture at 1.2 %, release at 2.5 %, in log ratio.
+    double held = 0;
+    CHECK(near(nearestNiceRatio(1.5, 0, held), 1.5) && held == 1.5);
+    CHECK(near(nearestNiceRatio(1.5 * std::exp(0.02), 1.5, held), 1.5) && held == 1.5); // still held
+    const auto released = nearestNiceRatio(1.5 * std::exp(0.03), 1.5, held);
+    CHECK(near(released, 1.5 * std::exp(0.03)) && held == 0);
+    CHECK(near(nearestNiceRatio(1.5 * std::exp(0.02), 0, held), 1.5 * std::exp(0.02)) && held == 0);
+    CHECK(near(nearestNiceRatio(1.5 * std::exp(0.01), 0, held), 1.5) && held == 1.5); // captured
+    held = 0;
+    CHECK(near(nearestNiceRatio(2.5, 0, held), 2.5) && held == 0);
+    CHECK(niceRatios.size() == 10 && near(niceRatios[7], 1.6180339887498949));
+
+    // Wobble reference and the bucket's loss.
+    CHECK(near(wobbleReferenceMs(10), 40) && near(wobbleReferenceMs(2000), 400));
+    CHECK(near(wobbleReferenceMs(120), 120));
+    CHECK(near(bucketLossHz(8000, 60), 8000));
+    CHECK(near(bucketLossHz(8000, 240), 4000));
+    CHECK(near(bucketLossHz(8000, 2000), 1385.6406460551018));
+    CHECK(near(bucketLossHz(1300, 2000), 1200));  // the floor holds at 1200 Hz
+    CHECK(near(bucketLossHz(1000, 2000), 1000));  // but never above the medium's own loss
+}
+
+// ------------------------------------------------------------------ fixture
+
+// One row of the fixture: named numbers, inputs first, then outputs. Booleans travel
+// as 0 and 1 so both languages read one kind of value.
+using Row = std::vector<std::pair<const char*, double>>;
+struct Section { const char* name; std::vector<Row> rows; };
+
+std::vector<Section> buildFixture()
+{
+    using namespace slide::laws;
+    std::vector<Section> sections;
+
+    {
+        std::vector<Row> rows;
+        for (int link = 0; link <= 2; ++link)
+            for (double left : { 1.0, 120.0, 350.0, 1800.0 })
+                for (auto pair : { std::pair<double, double> { 0.5, -600 },
+                                   { 1.5, 175 }, { 4.0, 1200 } })
+                    rows.push_back({ { "link", static_cast<double>(link) }, { "left", left },
+                        { "ratio", pair.first }, { "difference", pair.second }, { "right", 525 },
+                        { "out", linkRight(link, left, pair.first, pair.second, 525) } });
+        sections.push_back({ "linkRight", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (int i = 0; i < 24; ++i)
+            rows.push_back({ { "index", static_cast<double>(i) }, { "bpm", 120 },
+                { "out", divisionMs(i, 120) } });
+        for (double bpm : { 10.0, 90.0, 174.0, 999.0 })
+            for (int i : { 0, 13, 23 })
+                rows.push_back({ { "index", static_cast<double>(i) }, { "bpm", bpm },
+                    { "out", divisionMs(i, bpm) } });
+        sections.push_back({ "divisionMs", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (double shape : { -1.0, -0.6, -0.25, 0.0, 0.4, 1.0 })
+            for (int repeats : { 1, 4, 16 })
+                for (int k : { 0, 1, 3 })
+                {
+                    if (k >= repeats) continue;
+                    rows.push_back({ { "shape", shape }, { "repeats", static_cast<double>(repeats) },
+                        { "k", static_cast<double>(k) }, { "out", gainAt(shape, repeats, k) } });
+                }
+        sections.push_back({ "gainAt", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (double shape : { -1.0, -0.6, -0.5, 0.0, 0.8 })
+            for (int repeats : { 1, 8, 64 })
+                for (int hold : { 0, 1 })
+                    rows.push_back({ { "shape", shape }, { "repeats", static_cast<double>(repeats) },
+                        { "hold", static_cast<double>(hold) },
+                        { "lapGain", lapGain(shape, repeats, hold != 0) },
+                        { "isLoop", isLoop(shape, hold != 0) ? 1.0 : 0.0 } });
+        sections.push_back({ "lapGain", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (double blur : { 0.0, 0.3, 0.55, 1.0 })
+            for (double tone : { -1.0, -0.4, 0.0, 0.35, 1.0 })
+                for (int hold : { 0, 1 })
+                {
+                    const auto law = toneLaw(blur, tone, hold != 0);
+                    rows.push_back({ { "blur", blur }, { "tone", tone },
+                        { "hold", static_cast<double>(hold) }, { "diffusion", law.diffusion },
+                        { "early", law.early }, { "highCutHz", law.highCutHz },
+                        { "lowCutHz", law.lowCutHz } });
+                }
+        sections.push_back({ "toneLaw", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (int medium = 0; medium <= 4; ++medium)
+            for (double wear : { 0.0, 0.1, 0.35, 0.7, 1.0 })
+            {
+                const auto r = recipeAt(medium, wear);
+                rows.push_back({ { "medium", static_cast<double>(medium) }, { "wear", wear },
+                    { "sine", r.sine }, { "sineHz", r.sineHz }, { "rand", r.rand },
+                    { "randHz", r.randHz }, { "lossHz", r.lossHz },
+                    { "lossTracksTime", r.lossTracksTime ? 1.0 : 0.0 },
+                    { "bits", static_cast<double>(r.bits) }, { "decimateHz", r.decimateHz },
+                    { "hiss", r.hiss }, { "tidePartials", r.tidePartials ? 1.0 : 0.0 } });
+            }
+        sections.push_back({ "recipeAt", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (int mode = 0; mode <= 3; ++mode)
+            for (auto times : { std::pair<double, double> { 1, 1 }, { 350, 525 }, { 900, 120 } })
+                for (int repeats : { 1, 8 })
+                    rows.push_back({ { "mode", static_cast<double>(mode) }, { "left", times.first },
+                        { "right", times.second }, { "repeats", static_cast<double>(repeats) },
+                        { "hold", 0 }, { "out", tailMs(mode, times.first, times.second, repeats, false) } });
+        rows.push_back({ { "mode", 0 }, { "left", 350 }, { "right", 525 }, { "repeats", 8 },
+            { "hold", 1 }, { "out", tailMs(0, 350, 525, 8, true) } });
+        sections.push_back({ "tailMs", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (double held : { 0.0, 1.0, 1.5 })
+            for (double raw : { 0.5, 0.995, 1.0, 1.008, 1.02, 1.04, 1.49, 1.5, 1.53, 1.56, 2.0, 3.1 })
+            {
+                double newHeld = 0;
+                const auto out = nearestNiceRatio(raw, held, newHeld);
+                rows.push_back({ { "raw", raw }, { "held", held }, { "out", out },
+                    { "newHeld", newHeld } });
+            }
+        sections.push_back({ "nearestNiceRatio", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (double time : { 1.0, 40.0, 60.0, 150.0, 400.0, 2000.0 })
+            for (double loss : { 1000.0, 8000.0 })
+                rows.push_back({ { "lossHz", loss }, { "timeMs", time },
+                    { "wobbleReferenceMs", wobbleReferenceMs(time) },
+                    { "bucketLossHz", bucketLossHz(loss, time) } });
+        sections.push_back({ "wobble", std::move(rows) });
+    }
+    return sections;
+}
+
+std::string fixturePath()
+{
+    return std::string(SLIDE_SOURCE_DIR) + "/tests/laws-fixture.json";
+}
+
+bool writeFixture(const char* path)
+{
+    auto* file = std::fopen(path, "w");
+    if (!file) return false;
+    const auto sections = buildFixture();
+    std::fputs("{\n", file);
+    for (size_t s = 0; s < sections.size(); ++s)
+    {
+        std::fprintf(file, "  \"%s\": [\n", sections[s].name);
+        for (size_t r = 0; r < sections[s].rows.size(); ++r)
+        {
+            std::fputs("    {", file);
+            const auto& row = sections[s].rows[r];
+            for (size_t i = 0; i < row.size(); ++i)
+                std::fprintf(file, "%s\"%s\": %.15g", i ? ", " : "", row[i].first, row[i].second);
+            std::fprintf(file, "}%s\n", r + 1 < sections[s].rows.size() ? "," : "");
+        }
+        std::fprintf(file, "  ]%s\n", s + 1 < sections.size() ? "," : "");
+    }
+    std::fputs("}\n", file);
+    return std::fclose(file) == 0;
+}
+
+// A scanner rather than a parser: the fixture is written by the function above, so
+// the shape is known and only the numbers have to come back.
+struct Scanner
+{
+    std::string text;
+    size_t pos = 0;
+
+    bool seek(const std::string& needle)
+    {
+        const auto found = text.find(needle, pos);
+        if (found == std::string::npos) return false;
+        pos = found + needle.size();
+        return true;
+    }
+};
+
+void checkFixture()
+{
+    const auto path = fixturePath();
+    auto* file = std::fopen(path.c_str(), "rb");
+    CHECK(file);
+    Scanner scanner;
+    char buffer[4096];
+    size_t read = 0;
+    while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0) scanner.text.append(buffer, read);
+    std::fclose(file);
+
+    size_t rowCount = 0;
+    for (const auto& section : buildFixture())
+    {
+        CHECK(scanner.seek(std::string("\"") + section.name + "\": ["));
+        for (const auto& row : section.rows)
+        {
+            const auto open = scanner.text.find('{', scanner.pos);
+            const auto close = scanner.text.find('}', scanner.pos);
+            CHECK(open != std::string::npos && close != std::string::npos && open < close);
+            size_t cursor = open + 1;
+            for (const auto& field : row)
+            {
+                const auto quote = scanner.text.find('"', cursor);
+                CHECK(quote != std::string::npos && quote < close);
+                const auto end = scanner.text.find('"', quote + 1);
+                CHECK(end != std::string::npos && end < close);
+                CHECK(scanner.text.compare(quote + 1, end - quote - 1, field.first) == 0);
+                const auto colon = scanner.text.find(':', end);
+                CHECK(colon != std::string::npos && colon < close);
+                char* stop = nullptr;
+                const auto stored = std::strtod(scanner.text.c_str() + colon + 1, &stop);
+                CHECK(stop != scanner.text.c_str() + colon + 1);
+                CHECK(std::abs(stored - field.second) <= 1e-9);
+                cursor = static_cast<size_t>(stop - scanner.text.c_str());
+            }
+            // Nothing in the row beyond the fields the laws produce.
+            CHECK(scanner.text.find_first_not_of(" \t", cursor) == close);
+            scanner.pos = close + 1;
+            ++rowCount;
+        }
+    }
+    CHECK(rowCount >= 100 && rowCount <= 400);
+    std::printf("fixture: %zu rows, %zu bytes\n", rowCount, scanner.text.size());
+}
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc == 3 && std::strcmp(argv[1], "--write-fixture") == 0)
+    {
+        CHECK(writeFixture(argv[2]));
+        std::printf("wrote %s\n", argv[2]);
+        return 0;
+    }
     CHECK(slide::entryInit("."));
     stereoPorts();
     passThrough();
     doublePassThrough();
+    parameterTable();
+    parameterText();
     stateRoundTrip();
     descriptorIdentity();
+    lawsByHand();
+    checkFixture();
     slide::entryDeinit();
-    std::puts("PASS: stereo ports, float and double pass-through, in place, zero frames, state, descriptor");
+    std::puts("PASS: ports, pass-through, parameter table, text round trip, state, laws, fixture");
 }

@@ -132,5 +132,8 @@ include(CTest)
 if(BUILD_TESTING AND NOT ANY_WASM_TOOLCHAIN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     add_executable(slide-tests tests/SlideTests.cpp)
     target_link_libraries(slide-tests PRIVATE slide-impl)
+    # The laws fixture lives with the sources, not with the build.
+    target_compile_definitions(slide-tests PRIVATE
+        SLIDE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME slide-tests COMMAND slide-tests)
 endif()

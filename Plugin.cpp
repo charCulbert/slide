@@ -1,14 +1,19 @@
 #include "Plugin.h"
+#include "Parameters.h"
 
 #include "char_clap_utils/Process.h"
 #include "char_clap_utils/Streams.h"
 #include "char_clap_utils/WebUI.h"
 
+#include <clap/helpers/param-queue.hh>
 #include <clap/helpers/plugin.hh>
 #include <clap/helpers/plugin.hxx>
 
 #include <algorithm>
+#include <atomic>
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <string_view>
@@ -17,6 +22,9 @@ namespace slide
 {
 namespace
 {
+
+enum class EditType { begin, value, end };
+struct Edit { EditType type; clap_id id; double value; };
 
 class SlidePlugin final : public clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate,
                                                        clap::helpers::CheckingLevel::Minimal>
@@ -29,10 +37,17 @@ public:
         : Base(&descriptor(), h), host(h),
           ui(h, [this](std::string_view text) { return receiveUI(text); })
     {
+        const auto initial = defaultValues();
+        for (std::size_t i = 0; i < initial.size(); ++i) values[i].store(initial[i]);
     }
 
 protected:
-    bool init() noexcept override { return true; }
+    bool init() noexcept override
+    {
+        hostParams = static_cast<const clap_host_params_t*>(host->get_extension(host, CLAP_EXT_PARAMS));
+        hostState = static_cast<const clap_host_state_t*>(host->get_extension(host, CLAP_EXT_STATE));
+        return true;
+    }
 
     bool activate(double sr, uint32_t, uint32_t) noexcept override
     {
@@ -51,8 +66,11 @@ protected:
         if (block->audio_inputs_count == 0 || block->audio_outputs_count == 0)
             return CLAP_PROCESS_ERROR;
 
+        emitEdits(block->out_events);
+        applyParameters(block->in_events);
+
         const char_clap::ProcessView view { *block };
-        // No parameters and no DSP yet (A1): the effect passes its input through.
+        // No DSP yet (A2): the effect passes its input through.
         if (view.audioOutput<float>(0).channel(0) != nullptr) render<float>(view);
         else render<double>(view);
         return CLAP_PROCESS_CONTINUE;
@@ -75,12 +93,84 @@ protected:
     }
 
     bool implementsParams() const noexcept override { return true; }
-    uint32_t paramsCount() const noexcept override { return 0; }
-    bool paramsInfo(uint32_t, clap_param_info_t*) const noexcept override { return false; }
-    bool paramsValue(clap_id, double*) noexcept override { return false; }
-    bool paramsValueToText(clap_id, double, char*, uint32_t) noexcept override { return false; }
-    bool paramsTextToValue(clap_id, const char*, double*) noexcept override { return false; }
-    void paramsFlush(const clap_input_events_t*, const clap_output_events_t*) noexcept override {}
+    uint32_t paramsCount() const noexcept override { return static_cast<uint32_t>(parameters.size()); }
+
+    bool paramsInfo(uint32_t index, clap_param_info_t* info) const noexcept override
+    {
+        if (!info || index >= parameters.size()) return false;
+        const auto& p = parameters[index];
+        *info = {};
+        info->id = p.id;
+        info->flags = CLAP_PARAM_IS_AUTOMATABLE;
+        if (p.stepped) info->flags |= CLAP_PARAM_IS_STEPPED;
+        else info->flags |= CLAP_PARAM_IS_MODULATABLE;
+        if (enumNames(p.id).names) info->flags |= CLAP_PARAM_IS_ENUM;
+        info->min_value = p.min;
+        info->max_value = p.max;
+        info->default_value = p.initial;
+        std::snprintf(info->name, sizeof(info->name), "%s", p.name);
+        return true;
+    }
+
+    bool paramsValue(clap_id id, double* result) noexcept override
+    {
+        if (!findParameter(id) || !result) return false;
+        *result = values[id].load(std::memory_order_relaxed);
+        return true;
+    }
+
+    bool paramsValueToText(clap_id id, double value, char* text, uint32_t size) noexcept override
+    {
+        const auto* p = findParameter(id);
+        if (!p || !text || !size) return false;
+        value = clampParameter(id, value);
+        const auto options = enumNames(id);
+        int written;
+        if (options.names)
+            written = std::snprintf(text, size, "%s", options.names[static_cast<std::size_t>(value)]);
+        else if (std::strcmp(p->unit, "ms") == 0)
+            written = std::snprintf(text, size, "%.*f ms", p->digits, value);
+        else if (std::strcmp(p->unit, "x") == 0)
+            written = std::snprintf(text, size, "%.*f x", p->digits, value);
+        else if (std::strcmp(p->unit, "%") == 0)
+            written = std::snprintf(text, size, "%.*f%%", p->digits, value);
+        else if (p->stepped)
+            written = std::snprintf(text, size, "%d", static_cast<int>(value));
+        else
+            written = std::snprintf(text, size, "%.*f", p->digits, value);
+        return written >= 0 && static_cast<uint32_t>(written) < size;
+    }
+
+    bool paramsTextToValue(clap_id id, const char* text, double* value) noexcept override
+    {
+        const auto* p = findParameter(id);
+        if (!p || !text || !value) return false;
+        const auto options = enumNames(id);
+        for (std::size_t i = 0; i < options.count; ++i)
+            if (std::strcmp(options.names[i], text) == 0)
+            {
+                *value = static_cast<double>(i);
+                return true;
+            }
+        char* end = nullptr;
+        const auto parsed = std::strtod(text, &end);
+        if (end == text || !std::isfinite(parsed)) return false;
+        while (*end == ' ') ++end;
+        if (std::strcmp(p->unit, "ms") == 0 && (end[0] == 'm' || end[0] == 'M')
+            && (end[1] == 's' || end[1] == 'S')) end += 2;
+        else if (std::strcmp(p->unit, "x") == 0 && (*end == 'x' || *end == 'X')) ++end;
+        else if (std::strcmp(p->unit, "%") == 0 && *end == '%') ++end;
+        while (*end == ' ') ++end;
+        if (*end != 0) return false;
+        *value = clampParameter(id, parsed);
+        return true;
+    }
+
+    void paramsFlush(const clap_input_events_t* input, const clap_output_events_t* output) noexcept override
+    {
+        emitEdits(output);
+        applyParameters(input);
+    }
 
     bool implementsLatency() const noexcept override { return true; }
     uint32_t latencyGet() const noexcept override { return 0; }
@@ -91,15 +181,22 @@ protected:
 
     bool stateSave(const clap_ostream_t* stream) noexcept override
     {
-        const State state {};
+        State state {};
+        for (const auto& p : parameters) state.values[p.id] = values[p.id].load(std::memory_order_relaxed);
         return stream && char_clap::writeComplete(*stream, &state, sizeof(state));
     }
 
     bool stateLoad(const clap_istream_t* stream) noexcept override
     {
         State state {};
-        return stream && char_clap::readComplete(*stream, &state, sizeof(state))
-            && state.magic == stateMagic && state.version == stateVersion;
+        if (!stream || !char_clap::readComplete(*stream, &state, sizeof(state))
+            || state.magic != stateMagic || state.version != stateVersion) return false;
+        // Nothing is applied until the whole blob is known good, so a corrupt state
+        // leaves the plug-in exactly as it was.
+        for (auto value : state.values) if (!std::isfinite(value)) return false;
+        for (const auto& p : parameters) setValue(p.id, state.values[p.id]);
+        notifyValuesChanged();
+        return true;
     }
 
     // Presets arrive with the parameter table (A7); until then the plug-in has
@@ -141,7 +238,11 @@ protected:
         return ui.guiCreate(api, floating, defaultWidth, defaultHeight);
     }
 
-    void guiDestroy() noexcept override { ui.guiDestroy(); }
+    void guiDestroy() noexcept override
+    {
+        uiReady.store(false, std::memory_order_release);
+        ui.guiDestroy();
+    }
     bool guiShow() noexcept override { return ui.guiShow(); }
     bool guiHide() noexcept override { return ui.guiHide(); }
 
@@ -178,13 +279,20 @@ protected:
         return ui.guiSetParent(window);
     }
 
+    void onMainThread() noexcept override
+    {
+        if (valuesDirty.exchange(false, std::memory_order_acq_rel)
+            && uiReady.load(std::memory_order_acquire)) sendValues();
+    }
+
 private:
     static constexpr clap_id inputPortId = 0x53494e00;  // "SIN\0"
     static constexpr clap_id outputPortId = 0x534f5554; // "SOUT"
     static constexpr uint32_t defaultWidth = 960, defaultHeight = 560;
     static constexpr uint32_t minimumWidth = 560, minimumHeight = 320;
 
-    struct State { uint32_t magic = stateMagic, version = stateVersion; };
+    struct State { uint32_t magic = stateMagic, version = stateVersion; Values values {}; };
+    static_assert(sizeof(State) == 2 * sizeof(uint32_t) + stateValueCount * sizeof(double));
 
     template <typename Sample>
     void render(const char_clap::ProcessView& view) noexcept
@@ -202,16 +310,139 @@ private:
         }
     }
 
+    void setValue(clap_id id, double value) noexcept
+    {
+        values[id].store(clampParameter(id, value), std::memory_order_relaxed);
+    }
+
+    void applyParameters(const clap_input_events_t* input) noexcept
+    {
+        const auto count = input ? input->size(input) : 0;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const auto* e = input->get(input, i);
+            if (!e || e->space_id != CLAP_CORE_EVENT_SPACE_ID || e->type != CLAP_EVENT_PARAM_VALUE
+                || e->size < sizeof(clap_event_param_value_t)) continue;
+            const auto& p = reinterpret_cast<const clap_event_param_value_t&>(*e);
+            if (!findParameter(p.param_id) || p.note_id >= 0 || p.port_index >= 0
+                || p.channel >= 0 || p.key >= 0) continue;
+            setValue(p.param_id, p.value);
+            if (!valuesDirty.exchange(true, std::memory_order_acq_rel)) host->request_callback(host);
+        }
+    }
+
+    void notifyValuesChanged() noexcept
+    {
+        if (!valuesDirty.exchange(true, std::memory_order_acq_rel)) host->request_callback(host);
+        if (hostParams) hostParams->rescan(host, CLAP_PARAM_RESCAN_VALUES);
+        if (hostState) hostState->mark_dirty(host);
+        host->request_process(host);
+    }
+
+    bool queueEdit(const Edit& edit)
+    {
+        if (!findParameter(edit.id) || !edits.tryPush(edit)) return false;
+        if (hostParams) hostParams->request_flush(host);
+        host->request_process(host);
+        return true;
+    }
+
+    void emitEdits(const clap_output_events_t* output) noexcept
+    {
+        if (!output) return;
+        Edit edit;
+        while (edits.tryPeek(edit))
+        {
+            bool sent;
+            if (edit.type == EditType::value)
+            {
+                const clap_event_param_value_t e { { sizeof(e), 0, CLAP_CORE_EVENT_SPACE_ID,
+                    CLAP_EVENT_PARAM_VALUE, CLAP_EVENT_IS_LIVE },
+                    edit.id, nullptr, -1, -1, -1, -1, edit.value };
+                sent = output->try_push(output, &e.header);
+            }
+            else
+            {
+                const clap_event_param_gesture_t e { { sizeof(e), 0, CLAP_CORE_EVENT_SPACE_ID,
+                    static_cast<uint16_t>(edit.type == EditType::begin ? CLAP_EVENT_PARAM_GESTURE_BEGIN
+                                                                      : CLAP_EVENT_PARAM_GESTURE_END),
+                    CLAP_EVENT_IS_LIVE }, edit.id };
+                sent = output->try_push(output, &e.header);
+            }
+            if (!sent) break;
+            edits.consume();
+        }
+    }
+
     bool receiveUI(std::string_view message)
     {
-        // No parameters yet (A2); the face still expects an answer to `ready`.
-        if (message == "ready") { ui.send("values:"); return true; }
+        if (message == "ready")
+        {
+            uiReady.store(true, std::memory_order_release);
+            sendMetadata();
+            sendValues();
+            return true;
+        }
+        const std::string text(message);
+        unsigned id = 0;
+        double value = 0;
+        if (std::sscanf(text.c_str(), "value:%u:%lf", &id, &value) == 2)
+        {
+            if (!findParameter(id) || !std::isfinite(value)) return false;
+            value = clampParameter(id, value);
+            if (!queueEdit({ EditType::value, id, value })) return false;
+            setValue(id, value);
+            notifyValuesChanged();
+            return true;
+        }
+        if (std::sscanf(text.c_str(), "begin:%u", &id) == 1) return queueEdit({ EditType::begin, id, 0 });
+        if (std::sscanf(text.c_str(), "end:%u", &id) == 1) return queueEdit({ EditType::end, id, 0 });
         return false;
     }
 
+    // D10: the face hard-codes no ranges, so the table travels to it whole.
+    void sendMetadata() const
+    {
+        for (const auto& p : parameters)
+        {
+            std::string options;
+            const auto names = enumNames(p.id);
+            for (std::size_t i = 0; i < names.count; ++i)
+            {
+                if (i) options += '|';
+                options += names.names[i];
+            }
+            char line[512];
+            std::snprintf(line, sizeof(line),
+                "parameter\t%u\t%s\t%s\t%s\t%.9g\t%.9g\t%.9g\t%.9g\t%d\t%.9g\t%s\t%s",
+                p.id, p.identifier, p.name, p.unit, p.min, p.max, p.initial, p.step,
+                p.digits, p.mid, isLogarithmic(p) ? "log" : "linear", options.c_str());
+            ui.send(line);
+        }
+        ui.send("metadata-end");
+    }
+
+    void sendValues() const
+    {
+        std::string text = "values:";
+        for (const auto& p : parameters)
+        {
+            char pair[48];
+            std::snprintf(pair, sizeof(pair), "%u=%.9g;", p.id,
+                values[p.id].load(std::memory_order_relaxed));
+            text += pair;
+        }
+        ui.send(text);
+    }
+
     const clap_host_t* host;
+    const clap_host_params_t* hostParams = nullptr;
+    const clap_host_state_t* hostState = nullptr;
     char_clap::WebUI ui;
     double sampleRate = 48000;
+    std::array<std::atomic<double>, stateValueCount> values;
+    clap::helpers::ParamQueue<Edit, 128> edits;
+    std::atomic<bool> uiReady { false }, valuesDirty { false };
 };
 
 uint32_t pluginCount(const clap_plugin_factory_t*) { return 1; }
