@@ -1,0 +1,40 @@
+<!doctype html>
+<!--
+  Development harness. Mounts the real ../index.html against a fake bridge that
+  answers the metadata handshake from a hand copy of Parameters.h and runs the
+  prototype's Web Audio engine, so the plug-in's face can be driven and compared
+  with prototype/slide.html side by side.
+
+    python3 -m http.server 8765     # from the repo root
+    http://localhost:8765/ui/dev/
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slide — dev</title>
+<script type="importmap">
+{ "imports": {
+  "/ui/compost/value-control.js": "/external/compost/src/value-control.js",
+  "/ui/compost/parameter-controller.js": "/external/compost/src/parameter-controller.js",
+  "/ui/compost/components/compost-button.js": "/external/compost/src/components/compost-button.js",
+  "/ui/compost/components/compost-window.js": "/external/compost/src/components/compost-window.js"
+} }
+</script>
+<style>
+#dev-bar{position:fixed;right:10px;top:6px;z-index:99;display:flex;gap:6px;
+  font:11px "IBM Plex Mono",ui-monospace,monospace}
+#dev-bar button{font:inherit;color:var(--ink,#222);background:none;
+  border:1px solid var(--hair,#999);padding:3px 8px;cursor:pointer;letter-spacing:.1em;
+  text-transform:uppercase}
+</style>
+</head>
+<body>
+<div id="dev-bar">
+  <button id="dev-play" type="button">play</button>
+  <button id="dev-phrase" type="button">phrase</button>
+  <button id="dev-scheme" type="button">dark mode</button>
+</div>
+<script type="module" src="./harness.js"></script>
+</body>
+</html>

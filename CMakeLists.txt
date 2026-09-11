@@ -65,7 +65,26 @@ include("${CHAR_CLAP_UTILS_ROOT}/cmake/CharClapWebUI.cmake")
 char_clap_stage_web_ui(slide
     SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/ui"
     COMPOST_ROOT "${COMPOST_ROOT}"
-    COMPONENTS button)
+    COMPONENTS button window)
+
+# char_clap_stage_web_ui stages utils.js, parameter-scale.js, internal/ and the named
+# components; it has no hook for extra files. The face is built on compost's value
+# controls (D11), so stage those two modules beside them. This runs on every build of
+# slide-resources, which also carries ui/face.js and ui/laws.js across after an edit
+# to either — the staging function's own stamp watches only index.html and main.js.
+add_custom_command(TARGET slide-resources POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${COMPOST_ROOT}/src/value-control.js"
+        "${COMPOST_ROOT}/src/parameter-controller.js"
+        "${slide_RESOURCE_DIRECTORY}/ui/compost/"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/face.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/ui/laws.js"
+        "${slide_RESOURCE_DIRECTORY}/ui/"
+    # the development harness is not part of the plug-in
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${slide_RESOURCE_DIRECTORY}/ui/dev"
+    COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CURRENT_BINARY_DIR}/slide-resources.stamp"
+    VERBATIM)
 
 add_library(slide-impl STATIC Plugin.cpp)
 target_include_directories(slide-impl PUBLIC
