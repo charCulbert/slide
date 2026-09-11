@@ -110,7 +110,7 @@ export class SlideFace extends HTMLElement {
     this.markTheme = () => { this.themeDirty = true; this.invalidate(); };
   }
 
-  connectedCallback() {
+  wire() {
     const c = this.canvas;
     c.addEventListener('pointermove', this.onPointerMove);
     c.addEventListener('pointerdown', this.onPointerDown);
@@ -119,19 +119,33 @@ export class SlideFace extends HTMLElement {
     c.addEventListener('pointerleave', () => {
       if (!this.drag && this.hover) { this.hover = null; this.invalidate(); }
     });
+    addEventListener('scroll', () => { this.rect = null; }, true);
+    this.wired = true;
+  }
+
+  // Moving the face from one frame to another — the page reframes it when the host
+  // window crosses the phone width — disconnects and reconnects it. Both callbacks
+  // must therefore be reversible: they start and stop the clock and the observers,
+  // and never touch the value controls, whose ARIA and gesture state have to survive
+  // the move. The canvas's own listeners are wired once, in wire().
+  connectedCallback() {
+    if (!this.wired) this.wire();
     this.resizeObserver = new ResizeObserver(() => { this.rect = null; this.invalidate(); });
-    this.resizeObserver.observe(c);
+    this.resizeObserver.observe(this.canvas);
     this.themeObserver = new MutationObserver(this.markTheme);
     this.themeObserver.observe(document.documentElement,
       {attributes: true, attributeFilter: ['data-color-scheme', 'class', 'style']});
     this.scheme = matchMedia('(prefers-color-scheme: dark)');
     this.scheme.addEventListener('change', this.markTheme);
-    addEventListener('scroll', () => { this.rect = null; }, true);
+    this.rect = null;
+    this.themeDirty = true;
+    this.invalidate();
     const tick = () => {
       this.raf = requestAnimationFrame(tick);
       this.now = performance.now() / 1000;
       this.easeLevels();
-      if (this.dirty || this.animating()) { this.render(); this.dirty = false; }
+      // render() reports false while the view has no box; stay dirty until it does.
+      if (this.dirty || this.animating()) this.dirty = !this.render();
     };
     this.raf = requestAnimationFrame(tick);
   }
@@ -141,7 +155,14 @@ export class SlideFace extends HTMLElement {
     this.resizeObserver?.disconnect();
     this.themeObserver?.disconnect();
     this.scheme?.removeEventListener('change', this.markTheme);
+  }
+
+  /** Tears the face down for good; a move is not a teardown, so nothing calls this
+   * except a page that is finished with the element. */
+  dispose() {
+    this.disconnectedCallback();
     for (const control of this.controls.values()) control.dispose();
+    this.controls.clear();
   }
 
   invalidate() { this.dirty = true; }
@@ -630,8 +651,13 @@ export class SlideFace extends HTMLElement {
     return d ? d.name : fmtMs(ms);
   }
 
+  /** Draws the face, and reports whether it could. A plug-in window starts with no
+   * size at all, so a view with no box is not drawn: the bitmap would not match what
+   * is on screen, and the ResizeObserver asks again the moment there is a box. */
   render() {
-    if (!this.meta.size) return;
+    if (!this.meta.size) return false;
+    const box = this.rect || (this.rect = this.canvas.getBoundingClientRect());
+    if (!(box.width > 0 && box.height > 0)) return false;
     this.geo = this.layout();
     this.readTheme();
     const g = this.g, T = this.theme;
@@ -887,6 +913,7 @@ export class SlideFace extends HTMLElement {
       if (w === 'tone') { const hy = vBot - (tone + 1) / 2 * vh; this.line(xTail, hy, vx.tone - 11 * dpr, hy, T.acc, 1, 0.7); }
       g.setLineDash([]);
     }
+    return true;
   }
 
   /** The zone a keyboard focus lights up, so the invisible semantic elements still

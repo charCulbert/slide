@@ -20,10 +20,12 @@
 html,body{width:100%;height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--compost-ui-font);font-size:13px;min-height:100vh;padding:0}
 compost-window{--compost-window-bg:var(--panel);--compost-window-text:var(--ink);--compost-window-border:var(--band);--compost-window-muted:var(--dim);--compost-window-header-height:26px;--compost-window-header-font-size:11px;--compost-window-close-color:var(--dim);--compost-window-close-hover-color:var(--ink);--compost-window-grip-color:var(--hair);--compost-window-focus:var(--acc)}
+#face-host{height:100%}
 .full{position:relative;height:100%;min-width:0}
-.mobile-panel{background:var(--panel);border:1px solid var(--band);margin:0 0 14px;display:flex;flex-direction:column}
-.mobile-panel>.body{position:relative;height:var(--h,520px)}
-@media(max-width:700px){ body{padding:12px 10px} }
+/* The panel is the whole plug-in window, so it fills it rather than stacking in a
+   scrolling page as the prototype's phone layout does. */
+.mobile-panel{background:var(--panel);border:1px solid var(--band);margin:0;height:100%;display:flex;flex-direction:column}
+.mobile-panel>.body{position:relative;flex:1;min-height:0}
 </style>
 </head>
 <body>

@@ -42,6 +42,34 @@ try {
 
   const frame = page.frames().find(f => f.url().includes('/_wclap/resource/'));
   assert(frame, 'Slide resource frame was not created');
+
+  // The chips are ordinary DOM and appear even when the canvas never draws, so the
+  // picture is checked by counting pixels that differ from the cleared corner.
+  const face = () => frame.evaluate(() => {
+    const element = document.querySelector('slide-face');
+    const canvas = element?.shadowRoot?.querySelector('canvas');
+    const box = canvas?.getBoundingClientRect();
+    if (!canvas?.width || !canvas?.height) return {drawn: 0, box: null};
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    const [r, g, b] = data;
+    let drawn = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.abs(data[i] - r) + Math.abs(data[i + 1] - g) + Math.abs(data[i + 2] - b) > 12)
+        drawn++;
+    }
+    return {drawn, box: {x: box.x, y: box.y, width: box.width, height: box.height}};
+  });
+  await frame.waitForFunction(() => {
+    const canvas = document.querySelector('slide-face')?.shadowRoot?.querySelector('canvas');
+    return canvas?.width > 0 && canvas.getBoundingClientRect().height > 0;
+  }, null, {timeout: 15000});
+  const picture = await face();
+  assert(picture.box.width > 0 && picture.box.height > 0,
+    `Face has no box: ${JSON.stringify(picture.box)}`);
+  assert(picture.drawn > 500,
+    `Face canvas drew ${picture.drawn} pixels; the picture is missing`);
+  console.log('PICTURE', picture.drawn, 'pixels in',
+    Math.round(picture.box.width), '×', Math.round(picture.box.height));
   await frame.evaluate(() => {
     window.slideTest = {values: {}, sent: []};
     addEventListener('message', ({data}) => {
@@ -71,6 +99,28 @@ try {
     ['0', after], {timeout: 10000});
   assert.equal(await value(0), after, 'Left did not round-trip through the bridge');
 
+  // A drag on the picture itself: the Left bracket above the line, which is the
+  // gesture the face hit-tests and hands to the Left control.
+  const iframe = await page.locator('iframe[title="Slide interface"]').boundingBox();
+  const grab = await frame.evaluate(() => {
+    const element = document.querySelector('slide-face');
+    const canvas = element.shadowRoot.querySelector('canvas');
+    const box = canvas.getBoundingClientRect();
+    const {XD, Y, dpr} = element.geo;
+    return {x: box.x + XD(element.times().left) / dpr, y: box.y + (Y - 60) / dpr,
+            perDecade: element.geo.perDec / dpr};
+  });
+  const before2 = await value(0);
+  await page.mouse.move(iframe.x + grab.x, iframe.y + grab.y);
+  await page.mouse.down();
+  await page.mouse.move(iframe.x + grab.x + grab.perDecade * 0.15, iframe.y + grab.y, {steps: 8});
+  await page.mouse.up();
+  await frame.waitForFunction(previous => window.slideTest.values['0'] !== previous,
+    before2, {timeout: 10000});
+  const dragged = await value(0);
+  assert(dragged > before2, `Dragging the picture did not raise Left: ${before2} -> ${dragged}`);
+  console.log('DRAG Left', before2, '->', dragged);
+
   // Sync is a compost-button switch; the plugin must see the 1.
   await ui.getByRole('button', {name: 'Sync', exact: true}).click();
   await frame.waitForFunction(() => window.slideTest.values['5'] === 1, null, {timeout: 10000});
@@ -78,9 +128,10 @@ try {
 
   await page.locator('iframe[title="Slide interface"]').screenshot({path: `${artifacts}/slide.png`});
   await writeFile(`${artifacts}/report.json`, JSON.stringify(
-    {verified: ['face appears', 'Left round-trips', 'Sync toggles'],
-     left: {before, after}, errors}, null, 2));
-  console.log('VERIFIED face, Left', before, '->', after, ', Sync on');
+    {verified: ['face appears', 'picture draws', 'Left round-trips', 'picture drag',
+                'Sync toggles'],
+     pixels: picture.drawn, left: {before, after, dragged}, errors}, null, 2));
+  console.log('VERIFIED face, Left', before, '->', after, ', drag ->', dragged, ', Sync on');
   assert.equal(errors.length, 0, errors.join('\n'));
 } catch (e) {
   await page.screenshot({path: `${artifacts}/failure.png`}).catch(() => {});
