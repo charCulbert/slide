@@ -1,4 +1,5 @@
 #include "Plugin.h"
+#include "Engine.h"
 #include "Parameters.h"
 #include "Laws.h"
 
@@ -66,6 +67,16 @@ struct Plugin
         block.audio_outputs_count = out ? 1 : 0;
         CHECK(p->process(p, &block) == CLAP_PROCESS_CONTINUE);
     }
+
+    void set(clap_id id, double value)
+    {
+        Input input; Output output;
+        const clap_event_param_value_t e { { sizeof(clap_event_param_value_t), 0,
+            CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 },
+            id, nullptr, -1, -1, -1, -1, value };
+        input.events.push_back(&e.header);
+        params->flush(p, &input.list, &output.list);
+    }
 };
 
 void stereoPorts()
@@ -83,9 +94,12 @@ void stereoPorts()
     CHECK(p.params && p.params->count(p.p) == slide::stateValueCount);
 }
 
+// Mix 0 is the dry signal alone, so the adapter's plumbing can still be checked
+// sample for sample with the delay running underneath it.
 void passThrough()
 {
     Plugin p;
+    p.set(slide::mix, 0);
     std::array<float, 64> left {}, right {}, outLeft {}, outRight {};
     for (size_t i = 0; i < left.size(); ++i)
     {
@@ -113,6 +127,7 @@ void passThrough()
 void doublePassThrough()
 {
     Plugin p;
+    p.set(slide::mix, 0);
     std::array<double, 32> left {}, right {}, outLeft {}, outRight {};
     for (size_t i = 0; i < left.size(); ++i) { left[i] = 0.5 - i * 0.03; right[i] = i * 0.02; }
     std::array<double*, 2> inChannels { left.data(), right.data() };
@@ -121,6 +136,37 @@ void doublePassThrough()
     clap_audio_buffer_t out { nullptr, outChannels.data(), 2, 0, 0 };
     p.run(static_cast<uint32_t>(left.size()), &in, &out);
     CHECK(outLeft == left && outRight == right);
+}
+
+// A block through the whole adapter: the engine is prepared, the parameters reach
+// it, and the audio comes back late.
+void pluginDelays()
+{
+    using namespace slide;
+    Plugin p;
+    p.set(mix, 100);
+    p.set(left, 10);
+    p.set(link, 2);
+    p.set(right, 10);
+    p.set(blur, 0);
+    p.set(wear, 0);
+    p.set(repeats, 1);
+    p.set(shape, 0);
+
+    std::vector<float> inL(1024), inR(1024), outL(1024), outR(1024);
+    inL[0] = inR[0] = 1;
+    std::array<float*, 2> inChannels { inL.data(), inR.data() };
+    std::array<float*, 2> outChannels { outL.data(), outR.data() };
+    clap_audio_buffer_t in { inChannels.data(), nullptr, 2, 0, 0 };
+    clap_audio_buffer_t out { outChannels.data(), nullptr, 2, 0, 0 };
+    p.run(1024, &in, &out);
+
+    const size_t expected = 480; // 10 ms at 48 kHz
+    for (size_t i = 0; i < expected; ++i) CHECK(std::abs(outL[i]) < 1e-6 && std::abs(outR[i]) < 1e-6);
+    CHECK(std::abs(outL[expected] - 1) < 1e-5 && std::abs(outR[expected] - 1) < 1e-5);
+
+    const auto* tail = static_cast<const clap_plugin_tail_t*>(p.p->get_extension(p.p, CLAP_EXT_TAIL));
+    CHECK(tail && tail->get(p.p) == 480); // one repeat of 10 ms
 }
 
 // ---------------------------------------------------------------- parameters
@@ -525,6 +571,486 @@ void lawsByHand()
     CHECK(near(bucketLossHz(1000, 2000), 1000));  // but never above the medium's own loss
 }
 
+// ------------------------------------------------------------------- engine
+
+// The engine driven through its own interface: prepare, set, process. Every test
+// starts from a bed with no colour at all — no blur, no wear, all wet — and says
+// what it needs on top of that.
+struct Rig
+{
+    slide::Engine engine;
+    double rate;
+
+    explicit Rig(double sampleRate = 48000)
+        : rate(sampleRate)
+    {
+        engine.prepare(sampleRate);
+        set(slide::mix, 100);
+        set(slide::blur, 0);
+        set(slide::wear, 0);
+        set(slide::tone, 0);
+        set(slide::link, 2); // Off, so Left and Right are what the test says
+        set(slide::shape, 0);
+        set(slide::repeats, 1);
+        set(slide::left, 100);
+        set(slide::right, 100);
+    }
+
+    void set(slide::Parameter id, double value)
+    {
+        engine.set(id, slide::clampParameter(id, value));
+    }
+
+    size_t samples(double milliseconds) const
+    {
+        return static_cast<size_t>(std::lround(milliseconds * rate / 1000.0));
+    }
+};
+
+struct Block
+{
+    std::vector<float> l, r;
+    explicit Block(size_t frames = 0) : l(frames, 0.f), r(frames, 0.f) {}
+    size_t size() const { return l.size(); }
+};
+
+Block run(Rig& rig, const Block& input)
+{
+    Block output(input.size());
+    rig.engine.process(input.l.data(), input.r.data(), output.l.data(), output.r.data(),
+                       static_cast<uint32_t>(input.size()));
+    return output;
+}
+
+Block impulse(size_t frames, float amplitude, bool leftOnly = false)
+{
+    Block block(frames);
+    block.l[0] = amplitude;
+    if (!leftOnly) block.r[0] = amplitude;
+    return block;
+}
+
+Block noise(size_t frames, float amplitude, uint32_t seed = 12345)
+{
+    Block block(frames);
+    uint32_t state = seed;
+    const auto next = [&state] {
+        state = state * 1664525u + 1013904223u;
+        return static_cast<float>(static_cast<int32_t>(state)) / 2147483648.0f;
+    };
+    for (size_t i = 0; i < frames; ++i)
+    {
+        block.l[i] = next() * amplitude;
+        block.r[i] = next() * amplitude;
+    }
+    return block;
+}
+
+// The bleed is a rotation, so a repeat keeps its size but moves between the
+// channels: the length of the (left, right) pair is what survives.
+double repeatSize(const Block& out, size_t centre, size_t width)
+{
+    const auto begin = centre > width / 2 ? centre - width / 2 : 0;
+    const auto end = std::min(out.size(), begin + width);
+    double sumL = 0, sumR = 0;
+    for (size_t i = begin; i < end; ++i) { sumL += out.l[i]; sumR += out.r[i]; }
+    return std::sqrt(sumL * sumL + sumR * sumR);
+}
+
+double energy(const Block& out, size_t begin, size_t end)
+{
+    double sum = 0;
+    for (size_t i = begin; i < std::min(end, out.size()); ++i)
+        sum += out.l[i] * out.l[i] + out.r[i] * out.r[i];
+    return std::sqrt(sum / std::max<size_t>(1, end - begin));
+}
+
+bool finite(const Block& out)
+{
+    for (size_t i = 0; i < out.size(); ++i)
+        if (!std::isfinite(out.l[i]) || !std::isfinite(out.r[i])) return false;
+    return true;
+}
+
+double peak(const Block& out)
+{
+    double top = 0;
+    for (size_t i = 0; i < out.size(); ++i)
+        top = std::max(top, static_cast<double>(std::max(std::abs(out.l[i]), std::abs(out.r[i]))));
+    return top;
+}
+
+void integerDelay()
+{
+    Rig rig;
+    rig.set(slide::left, 10);
+    rig.set(slide::right, 20);
+    const auto out = run(rig, impulse(4800, 0.5f));
+    const auto expectedL = rig.samples(10), expectedR = rig.samples(20);
+    for (size_t i = 0; i < expectedL; ++i) CHECK(std::abs(out.l[i]) < 1e-9);
+    CHECK(std::abs(out.l[expectedL] - 0.5f) < 1e-6);
+    CHECK(std::abs(out.r[expectedR] - 0.5f) < 1e-6);
+    // Nothing either side of it: an integer delay is one sample, not a smear.
+    CHECK(std::abs(out.l[expectedL - 1]) < 1e-9 && std::abs(out.l[expectedL + 1]) < 1e-9);
+
+    // What the face will draw.
+    const auto telemetry = rig.engine.telemetry();
+    CHECK(near(telemetry.inPeakL, 0.5, 1e-6) && near(telemetry.inPeakR, 0.5, 1e-6));
+    CHECK(near(telemetry.wetPeakL, 0.5, 1e-5) && near(telemetry.wetPeakR, 0.5, 1e-5));
+    CHECK(near(telemetry.leftMs, 10, 1e-5) && near(telemetry.rightMs, 20, 1e-5));
+    CHECK(!telemetry.hold && near(telemetry.bpm, 120, 1e-5));
+}
+
+void fractionalDelay()
+{
+    Rig rig;
+    const auto wanted = 480.5 * 1000.0 / 48000.0; // half a sample past 480
+    rig.set(slide::left, wanted);
+    rig.set(slide::right, wanted);
+    // The line has to be older than the delay before its whole interpolation window
+    // exists, so the impulse arrives once it is running.
+    Block input(4800);
+    input.l[1000] = input.r[1000] = 0.5f;
+    const auto out = run(rig, input);
+    double sum = 0, top = 0;
+    for (size_t i = 1470; i < 1495; ++i)
+    {
+        sum += out.l[i];
+        top = std::max(top, static_cast<double>(std::abs(out.l[i])));
+    }
+    CHECK(std::abs(sum - 0.5) < 1e-4); // the interpolation is unity at DC
+    CHECK(top > 0.26 && top < 0.32);   // and the peak lands between the two samples
+    CHECK(std::abs(out.l[1480] - out.l[1481]) < 1e-6);
+}
+
+void loopDecay()
+{
+    using namespace slide;
+    Rig rig;
+    rig.set(shape, -1);   // past −0.5, so the loop carries it
+    rig.set(repeats, 8);
+    const auto expected = laws::lapGain(-1, 8, false);
+    const auto out = run(rig, impulse(rig.samples(1200), 0.2f, true));
+    const auto step = rig.samples(100);
+    double previous = 0;
+    for (int lap = 1; lap <= 8; ++lap)
+    {
+        const auto size = repeatSize(out, lap * step, step);
+        if (lap > 1) CHECK(std::abs(size / previous - expected) < 0.01 * expected);
+        previous = size;
+    }
+}
+
+void chainRepeats()
+{
+    using namespace slide;
+    Rig rig;
+    rig.set(shape, 0); // flat: every repeat the same size
+    rig.set(repeats, 6);
+    const auto out = run(rig, impulse(rig.samples(900), 0.2f, true));
+    const auto step = rig.samples(100);
+    const auto first = repeatSize(out, step, step);
+    CHECK(std::abs(first - 0.2) < 0.002);
+    for (int k = 2; k <= 6; ++k)
+        CHECK(std::abs(repeatSize(out, k * step, step) - first) < 0.01 * first);
+
+    // Repeats beyond the count are not there at all.
+    CHECK(repeatSize(out, 7 * step, step) < 1e-6);
+
+    // Swell: the same chain rises instead of falling.
+    Rig swell;
+    swell.set(shape, 1);
+    swell.set(repeats, 4);
+    const auto rising = run(swell, impulse(swell.samples(700), 0.2f, true));
+    double last = 0;
+    for (int k = 1; k <= 4; ++k)
+    {
+        const auto size = repeatSize(rising, k * step, step);
+        CHECK(size > last);
+        CHECK(std::abs(size / 0.2 - laws::gainAt(1, 4, k - 1)) < 0.01);
+        last = size;
+    }
+}
+
+void pingPong()
+{
+    using namespace slide;
+    Rig rig;
+    rig.set(mode, 1);
+    rig.set(repeats, 4);
+    const auto out = run(rig, impulse(rig.samples(700), 0.2f, true));
+    const auto step = rig.samples(100);
+    for (int k = 1; k <= 4; ++k)
+    {
+        double sumL = 0, sumR = 0;
+        for (size_t i = k * step - 50; i < k * step + 50; ++i)
+        {
+            sumL += std::abs(out.l[i]);
+            sumR += std::abs(out.r[i]);
+        }
+        if (k % 2 == 1) CHECK(sumL > 0.1 && sumR < 1e-6); // odd repeats stay left
+        else CHECK(sumR > 0.1 && sumL < 1e-6);            // even ones cross over
+    }
+}
+
+void tapModes()
+{
+    using namespace slide;
+    const auto step = [](Rig& rig, double ms) { return rig.samples(ms); };
+    {
+        Rig rig; // Right is a tap on the left line: left at k·L, right at (k−1)·L + R
+        rig.set(mode, 2);
+        rig.set(repeats, 3);
+        rig.set(left, 300);
+        rig.set(right, 450);
+        const auto out = run(rig, impulse(rig.samples(1400), 0.2f));
+        for (int k = 1; k <= 3; ++k)
+        {
+            CHECK(repeatSize(out, step(rig, k * 300.0), 200) > 0.05);
+            CHECK(repeatSize(out, step(rig, (k - 1) * 300.0 + 450.0), 200) > 0.05);
+        }
+        // The tap does not feed back: the right line is silent, so nothing sits at
+        // a multiple of the right time that the left line does not explain.
+        CHECK(repeatSize(out, step(rig, 900.0), 200) > 0.05);
+        CHECK(repeatSize(out, step(rig, 1350.0), 200) < 1e-5);
+    }
+    {
+        Rig rig; // Left is a tap on the right line: the mirror image
+        rig.set(mode, 3);
+        rig.set(repeats, 3);
+        rig.set(left, 450);
+        rig.set(right, 300);
+        const auto out = run(rig, impulse(rig.samples(1400), 0.2f));
+        for (int k = 1; k <= 3; ++k)
+        {
+            CHECK(repeatSize(out, step(rig, k * 300.0), 200) > 0.05);
+            CHECK(repeatSize(out, step(rig, (k - 1) * 300.0 + 450.0), 200) > 0.05);
+        }
+        CHECK(repeatSize(out, step(rig, 1350.0), 200) < 1e-5);
+    }
+}
+
+void linkAndSync()
+{
+    using namespace slide;
+    Rig rig;
+    const auto block = Block(64);
+    rig.set(link, 0); // Ratio
+    rig.set(ratio, 2);
+    rig.set(left, 200);
+    (void) run(rig, block);
+    auto telemetry = rig.engine.telemetry();
+    CHECK(near(telemetry.leftMs, 200, 1e-4) && near(telemetry.rightMs, 400, 1e-4));
+
+    rig.set(link, 1); // Difference
+    rig.set(difference, -150);
+    (void) run(rig, block);
+    telemetry = rig.engine.telemetry();
+    CHECK(near(telemetry.rightMs, 50, 1e-4));
+
+    rig.set(link, 2); // Off
+    rig.set(right, 900);
+    (void) run(rig, block);
+    CHECK(near(rig.engine.telemetry().rightMs, 900, 1e-4));
+
+    // Sync: 1/4 at 120 bpm is 500 ms.
+    rig.set(sync, 1);
+    rig.set(leftDivision, 16);
+    rig.engine.setTempo(120);
+    (void) run(rig, block);
+    telemetry = rig.engine.telemetry();
+    CHECK(near(telemetry.leftMs, 500, 1e-4) && near(telemetry.bpm, 120, 1e-4));
+
+    // And the tail follows the times it is actually running.
+    rig.set(sync, 0);
+    rig.set(left, 250);
+    rig.set(right, 250);
+    rig.set(repeats, 8);
+    CHECK(near(rig.engine.tailSeconds(), 2.0, 1e-9));
+    rig.set(hold, 1);
+    CHECK(near(rig.engine.tailSeconds(), 100.0, 1e-9));
+}
+
+void holdSustains()
+{
+    using namespace slide;
+    Rig rig;
+    rig.set(blur, 20);
+    rig.set(left, 200);
+    rig.set(right, 200);
+    rig.set(hold, 1);
+    const auto second = rig.samples(1000);
+
+    const auto first = run(rig, noise(second, 0.2f));
+    CHECK(peak(first) > 0.05); // the input still passes while holding
+
+    Block quiet(second);
+    double early = 0, late = 0;
+    for (int i = 0; i < 10; ++i)
+    {
+        const auto out = run(rig, quiet);
+        CHECK(finite(out));
+        if (i == 0) early = energy(out, 0, out.size());
+        if (i == 9) late = energy(out, 0, out.size());
+    }
+    // Ten seconds of unity laps: it neither dies nor grows.
+    CHECK(late > 0.8 * early && late < 1.2 * early);
+}
+
+void wearIsClean()
+{
+    using namespace slide;
+    Block reference;
+    for (int medium = 0; medium <= 4; ++medium)
+    {
+        Rig rig;
+        rig.set(slide::medium, medium);
+        rig.set(wear, 0);
+        rig.set(blur, 35);
+        rig.set(repeats, 4);
+        const auto out = run(rig, noise(20000, 0.2f));
+        if (medium == 0) reference = out;
+        else CHECK(out.l == reference.l && out.r == reference.r);
+    }
+}
+
+void digitalWear()
+{
+    using namespace slide;
+    Rig rig;
+    rig.set(slide::medium, 4); // Digital
+    rig.set(wear, 100);
+    rig.set(mode, 1);          // ping pong: the bleed swaps channels without mixing
+    rig.set(repeats, 2);
+    rig.set(left, 250);
+    rig.set(right, 250);
+    const auto step = rig.samples(250);
+
+    Block input(step * 3);
+    for (size_t i = 0; i < step; ++i)
+        input.l[i] = 0.4f * static_cast<float>(std::sin(2 * M_PI * 220.0 * i / rig.rate));
+    const auto out = run(rig, input);
+
+    // The second repeat has been round the crush and the decimator: 8 bits, and
+    // held in runs at 8 kHz.
+    size_t held = 0, longest = 0;
+    for (size_t i = step * 2 + 10; i < step * 3 - 10; ++i)
+    {
+        const auto v = out.r[i];
+        CHECK(std::abs(v * 128.0f - std::round(v * 128.0f)) < 1e-3);
+        held = v == out.r[i - 1] ? held + 1 : 0;
+        longest = std::max(longest, held);
+    }
+    CHECK(longest >= 5); // 48 kHz held at 8 kHz is six samples to a step
+    CHECK(peak(out) > 0.05);
+}
+
+void extremes()
+{
+    using namespace slide;
+    Rig rig;
+    for (const auto& p : parameters) rig.set(static_cast<Parameter>(p.id), p.max);
+    const auto seconds = rig.samples(1000);
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto out = run(rig, noise(seconds, 1.0f, 7u + static_cast<uint32_t>(i)));
+        CHECK(finite(out));
+        CHECK(peak(out) < 8.0);
+    }
+    // And the other end of every rail.
+    Rig floorRig;
+    for (const auto& p : parameters) floorRig.set(static_cast<Parameter>(p.id), p.min);
+    const auto low = run(floorRig, noise(floorRig.samples(1000), 1.0f));
+    CHECK(finite(low) && peak(low) < 8.0);
+}
+
+void silenceFlushes()
+{
+    using namespace slide;
+    Rig rig;
+    rig.set(blur, 50);
+    rig.set(repeats, 4);
+    rig.set(left, 50);
+    rig.set(right, 50);
+    (void) run(rig, noise(2000, 0.3f));
+    const auto out = run(rig, Block(rig.samples(2000)));
+    const auto tail = out.size() - 1000;
+    for (size_t i = tail; i < out.size(); ++i)
+    {
+        CHECK(out.l[i] == 0.0f && out.r[i] == 0.0f);
+        CHECK(std::fpclassify(out.l[i]) != FP_SUBNORMAL);
+        CHECK(std::fpclassify(out.r[i]) != FP_SUBNORMAL);
+    }
+}
+
+void longestDelayAt44100()
+{
+    using namespace slide;
+    // The prototype turned to NaN here: the longest time at the odd rate, with the
+    // wobble pushing the read past the end of the line.
+    Rig rig { 44100 };
+    rig.set(left, 2000);
+    rig.set(right, 2000);
+    rig.set(slide::medium, 1); // Oil can wobbles hardest
+    rig.set(wear, 100);
+    rig.set(repeats, 8);
+    rig.set(shape, -1);
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto out = run(rig, noise(static_cast<size_t>(rig.rate), 0.5f,
+                                        21u + static_cast<uint32_t>(i)));
+        CHECK(finite(out) && peak(out) < 8.0);
+    }
+}
+
+void topologySwitch()
+{
+    using namespace slide;
+    Rig rig;
+    rig.set(blur, 20);
+    rig.set(repeats, 8);
+    rig.set(left, 300);
+    rig.set(right, 300);
+    rig.set(shape, -0.4); // the chain side of −0.5
+
+    const auto seconds = rig.samples(1000);
+    const auto tone = [&](size_t frames, size_t from) {
+        Block block(frames);
+        for (size_t i = 0; i < frames; ++i)
+            block.l[i] = block.r[i] =
+                0.2f * static_cast<float>(std::sin(2 * M_PI * 200.0 * (from + i) / rig.rate));
+        return block;
+    };
+    auto before = run(rig, tone(seconds, 0));
+    rig.set(shape, -0.6); // R2: over to the loop
+    auto after = run(rig, tone(seconds, seconds));
+
+    double jump = 0;
+    for (size_t i = 1; i < after.size(); ++i)
+        jump = std::max(jump, static_cast<double>(std::abs(after.l[i] - after.l[i - 1])));
+    jump = std::max(jump, static_cast<double>(std::abs(after.l[0] - before.l[before.size() - 1])));
+    CHECK(jump < 0.2);
+    CHECK(finite(after));
+}
+
+void engineByHand()
+{
+    integerDelay();
+    fractionalDelay();
+    loopDecay();
+    chainRepeats();
+    pingPong();
+    tapModes();
+    linkAndSync();
+    holdSustains();
+    wearIsClean();
+    digitalWear();
+    extremes();
+    silenceFlushes();
+    longestDelayAt44100();
+    topologySwitch();
+}
+
 // ------------------------------------------------------------------ fixture
 
 // One row of the fixture: named numbers, inputs first, then outputs. Booleans travel
@@ -750,12 +1276,15 @@ int main(int argc, char** argv)
     stereoPorts();
     passThrough();
     doublePassThrough();
+    pluginDelays();
     parameterTable();
     parameterText();
     stateRoundTrip();
     descriptorIdentity();
     lawsByHand();
+    engineByHand();
     checkFixture();
     slide::entryDeinit();
-    std::puts("PASS: ports, pass-through, parameter table, text round trip, state, laws, fixture");
+    std::puts("PASS: ports, pass-through, parameter table, text round trip, state, laws, "
+              "engine, fixture");
 }

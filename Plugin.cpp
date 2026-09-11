@@ -1,6 +1,8 @@
 #include "Plugin.h"
+#include "Engine.h"
 #include "Parameters.h"
 
+#include "char_clap_utils/EventChunks.h"
 #include "char_clap_utils/Process.h"
 #include "char_clap_utils/Streams.h"
 #include "char_clap_utils/WebUI.h"
@@ -25,6 +27,13 @@ namespace
 
 enum class EditType { begin, value, end };
 struct Edit { EditType type; clap_id id; double value; };
+
+// One telemetry snapshot on its way to the face (DESIGN §4).
+struct Frame
+{
+    float inL = 0, inR = 0, wetL = 0, wetR = 0, leftMs = 0, rightMs = 0, bpm = 120;
+    bool hold = false;
+};
 
 class SlidePlugin final : public clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate,
                                                        clap::helpers::CheckingLevel::Minimal>
@@ -53,10 +62,16 @@ protected:
     {
         if (!(sr > 0)) return false;
         sampleRate = sr;
+        engine.prepare(sr);
+        // ~4 ms of audio at 48 kHz; the face pulls the newest of what lands.
+        visualInterval = 192;
+        visualCountdown = visualInterval;
+        appliedRevision = 0;
+        pushValues();
         return true;
     }
 
-    void reset() noexcept override {}
+    void reset() noexcept override { engine.reset(); }
     bool startProcessing() noexcept override { return true; }
 
     clap_process_status process(const clap_process_t* block) noexcept override
@@ -67,12 +82,18 @@ protected:
             return CLAP_PROCESS_ERROR;
 
         emitEdits(block->out_events);
-        applyParameters(block->in_events);
+        readTempo(block->transport);
+        pushValues(); // D3: UI edits, state and presets reach the engine here
 
         const char_clap::ProcessView view { *block };
-        // No DSP yet (A2): the effect passes its input through.
-        if (view.audioOutput<float>(0).channel(0) != nullptr) render<float>(view);
-        else render<double>(view);
+        const auto asFloat = view.audioOutput<float>(0).channel(0) != nullptr;
+        char_clap::processEventChunks(
+            view.inputEvents(), view.frameCount(),
+            [this](const clap_event_header_t& event) noexcept { applyEvent(event); },
+            [this, &view, asFloat](uint32_t begin, uint32_t end) noexcept {
+                if (asFloat) render<float>(view, begin, end);
+                else render<double>(view, begin, end);
+            });
         return CLAP_PROCESS_CONTINUE;
     }
 
@@ -169,13 +190,23 @@ protected:
     void paramsFlush(const clap_input_events_t* input, const clap_output_events_t* output) noexcept override
     {
         emitEdits(output);
-        applyParameters(input);
+        const auto count = input ? input->size(input) : 0;
+        for (uint32_t i = 0; i < count; ++i)
+            if (const auto* event = input->get(input, i)) applyEvent(*event);
+        pushValues();
     }
 
     bool implementsLatency() const noexcept override { return true; }
     uint32_t latencyGet() const noexcept override { return 0; }
 
-    bool implementsTail() const noexcept override { return false; }
+    bool implementsTail() const noexcept override { return true; }
+
+    uint32_t tailGet() const noexcept override
+    {
+        const auto samples = std::ceil(engine.tailSeconds() * sampleRate);
+        if (!std::isfinite(samples) || samples <= 0) return 0;
+        return static_cast<uint32_t>(std::min(samples, 4294967294.0));
+    }
 
     bool implementsState() const noexcept override { return true; }
 
@@ -295,40 +326,79 @@ private:
     static_assert(sizeof(State) == 2 * sizeof(uint32_t) + stateValueCount * sizeof(double));
 
     template <typename Sample>
-    void render(const char_clap::ProcessView& view) noexcept
+    void render(const char_clap::ProcessView& view, uint32_t begin, uint32_t end) noexcept
     {
+        if (end <= begin) return;
         const auto input = view.audioInput<Sample>(0);
         auto output = view.audioOutput<Sample>(0);
-        const auto frames = view.frameCount();
-        for (uint32_t channel = 0; channel < output.channelCount(); ++channel)
+        const auto* inL = input.channelCount() > 0 ? input.channel(0) : nullptr;
+        const auto* inR = input.channelCount() > 1 ? input.channel(1) : inL;
+        auto* outL = output.channelCount() > 0 ? output.channel(0) : nullptr;
+        auto* outR = output.channelCount() > 1 ? output.channel(1) : nullptr;
+        auto frames = end - begin;
+        auto offset = begin;
+        while (frames > 0)
         {
-            auto* out = output.channel(channel);
-            const auto* in = channel < input.channelCount() ? input.channel(channel) : nullptr;
-            if (!out) continue;
-            if (!in) std::fill_n(out, frames, static_cast<Sample>(0));
-            else if (in != out) std::copy_n(in, frames, out);
+            const auto slice = std::min(frames, visualCountdown);
+            engine.process(inL ? inL + offset : nullptr, inR ? inR + offset : nullptr,
+                           outL ? outL + offset : nullptr, outR ? outR + offset : nullptr, slice);
+            offset += slice;
+            frames -= slice;
+            visualCountdown -= slice;
+            if (visualCountdown == 0)
+            {
+                visualCountdown = visualInterval;
+                const auto telemetry = engine.telemetry();
+                const Frame frame { telemetry.inPeakL, telemetry.inPeakR, telemetry.wetPeakL,
+                                    telemetry.wetPeakR, telemetry.leftMs, telemetry.rightMs,
+                                    telemetry.bpm, telemetry.hold };
+                // A closed or slow face drops frames; audio never waits for it.
+                (void) visualQueue.tryPush(frame);
+            }
         }
     }
 
     void setValue(clap_id id, double value) noexcept
     {
         values[id].store(clampParameter(id, value), std::memory_order_relaxed);
+        revision.fetch_add(1, std::memory_order_release);
     }
 
-    void applyParameters(const clap_input_events_t* input) noexcept
+    // `values` is the one authority; the engine follows it. Events inside a block
+    // take the sample-accurate path in applyEvent, everything else lands here.
+    void pushValues() noexcept
     {
-        const auto count = input ? input->size(input) : 0;
-        for (uint32_t i = 0; i < count; ++i)
+        const auto current = revision.load(std::memory_order_acquire);
+        if (current == appliedRevision) return;
+        appliedRevision = current;
+        for (const auto& p : parameters)
+            engine.set(static_cast<Parameter>(p.id), values[p.id].load(std::memory_order_relaxed));
+    }
+
+    void applyEvent(const clap_event_header_t& event) noexcept
+    {
+        if (event.space_id != CLAP_CORE_EVENT_SPACE_ID) return;
+        if (event.type == CLAP_EVENT_TRANSPORT && event.size >= sizeof(clap_event_transport_t))
         {
-            const auto* e = input->get(input, i);
-            if (!e || e->space_id != CLAP_CORE_EVENT_SPACE_ID || e->type != CLAP_EVENT_PARAM_VALUE
-                || e->size < sizeof(clap_event_param_value_t)) continue;
-            const auto& p = reinterpret_cast<const clap_event_param_value_t&>(*e);
-            if (!findParameter(p.param_id) || p.note_id >= 0 || p.port_index >= 0
-                || p.channel >= 0 || p.key >= 0) continue;
-            setValue(p.param_id, p.value);
-            if (!valuesDirty.exchange(true, std::memory_order_acq_rel)) host->request_callback(host);
+            readTempo(reinterpret_cast<const clap_event_transport_t*>(&event));
+            return;
         }
+        if (event.type != CLAP_EVENT_PARAM_VALUE || event.size < sizeof(clap_event_param_value_t))
+            return;
+        const auto& p = reinterpret_cast<const clap_event_param_value_t&>(event);
+        if (!findParameter(p.param_id) || p.note_id >= 0 || p.port_index >= 0
+            || p.channel >= 0 || p.key >= 0) return;
+        setValue(p.param_id, p.value);
+        appliedRevision = revision.load(std::memory_order_relaxed);
+        engine.set(static_cast<Parameter>(p.param_id),
+                   values[p.param_id].load(std::memory_order_relaxed));
+        if (!valuesDirty.exchange(true, std::memory_order_acq_rel)) host->request_callback(host);
+    }
+
+    void readTempo(const clap_event_transport_t* transport) noexcept
+    {
+        if (!transport || !(transport->flags & CLAP_TRANSPORT_HAS_TEMPO)) return;
+        engine.setTempo(transport->tempo);
     }
 
     void notifyValuesChanged() noexcept
@@ -381,6 +451,23 @@ private:
             uiReady.store(true, std::memory_order_release);
             sendMetadata();
             sendValues();
+            return true;
+        }
+        if (message == "visual")
+        {
+            Frame latest {}, frame {};
+            bool available = false;
+            for (unsigned i = 0; i < 4 && visualQueue.tryPop(frame); ++i)
+            {
+                latest = frame;
+                available = true;
+            }
+            if (!available) return false;
+            char line[160];
+            std::snprintf(line, sizeof(line), "visual:%.4f,%.4f,%.4f,%.4f,%.2f,%.2f,%d,%.2f",
+                          latest.inL, latest.inR, latest.wetL, latest.wetR, latest.leftMs,
+                          latest.rightMs, latest.hold ? 1 : 0, latest.bpm);
+            ui.send(line);
             return true;
         }
         const std::string text(message);
@@ -440,9 +527,14 @@ private:
     const clap_host_state_t* hostState = nullptr;
     char_clap::WebUI ui;
     double sampleRate = 48000;
+    Engine engine;
     std::array<std::atomic<double>, stateValueCount> values;
     clap::helpers::ParamQueue<Edit, 128> edits;
+    clap::helpers::ParamQueue<Frame, 4> visualQueue;
     std::atomic<bool> uiReady { false }, valuesDirty { false };
+    std::atomic<uint64_t> revision { 1 };
+    uint64_t appliedRevision = 0;
+    uint32_t visualInterval = 192, visualCountdown = 192;
 };
 
 uint32_t pluginCount(const clap_plugin_factory_t*) { return 1; }
