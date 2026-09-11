@@ -2,6 +2,10 @@
 #include "Engine.h"
 #include "Parameters.h"
 #include "Laws.h"
+#include "Presets.h"
+
+#include <clap/ext/preset-load.h>
+#include <clap/factory/preset-discovery.h>
 
 #include <array>
 #include <cmath>
@@ -451,6 +455,137 @@ void descriptorIdentity()
     CHECK(std::strcmp(d.features[1], CLAP_PLUGIN_FEATURE_DELAY) == 0);
     CHECK(std::strcmp(d.features[2], CLAP_PLUGIN_FEATURE_STEREO) == 0);
     CHECK(d.features[3] == nullptr);
+}
+
+// ------------------------------------------------------------------- presets
+
+void presetsLoad()
+{
+    using namespace slide;
+    Plugin p;
+    const auto* loader = static_cast<const clap_plugin_preset_load_t*>(
+        p.p->get_extension(p.p, CLAP_EXT_PRESET_LOAD));
+    CHECK(loader);
+
+    for (const auto& preset : presets)
+    {
+        CHECK(loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, preset.key));
+        const auto read = readValues(p);
+        for (size_t i = 0; i < parameters.size(); ++i)
+        {
+            const auto& info = parameters[i];
+            CHECK(read[i] == clampParameter(info.id, preset.values[info.id]));
+            // Nothing in the table is clipped on the way in.
+            CHECK(read[i] == preset.values[info.id]);
+        }
+        // Sync presets carry the nearest division to each time at 120 bpm (D4).
+        const auto left = preset.values[Parameter::leftDivision];
+        const auto right = preset.values[Parameter::rightDivision];
+        CHECK(left >= 0 && left < static_cast<double>(divisionBeats.size()));
+        CHECK(right >= 0 && right < static_cast<double>(divisionBeats.size()));
+        if (preset.values[Parameter::sync] != 0)
+        {
+            CHECK(left == laws::nearestDivision(preset.values[Parameter::left], 120));
+            CHECK(right == laws::nearestDivision(preset.values[Parameter::right], 120));
+        }
+    }
+
+    // An unknown key, a missing key, a location and a foreign kind all refuse, and
+    // the loaded values survive.
+    const auto held = readValues(p);
+    CHECK(!loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, "no-such-preset"));
+    CHECK(!loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, ""));
+    CHECK(!loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, nullptr));
+    CHECK(!loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, "/tmp", "slap"));
+    CHECK(!loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_FILE, "/tmp/slide.preset", "slap"));
+    CHECK(readValues(p) == held);
+}
+
+struct Receiver
+{
+    std::vector<std::pair<std::string, std::string>> found;
+    unsigned plugins = 0, creators = 0, features = 0, flags = 0;
+    clap_preset_discovery_metadata_receiver_t list {
+        this,
+        [](const clap_preset_discovery_metadata_receiver_t*, int32_t, const char*) {},
+        [](const clap_preset_discovery_metadata_receiver_t* r, const char* name, const char* key) {
+            static_cast<Receiver*>(r->receiver_data)->found.emplace_back(name, key);
+            return true;
+        },
+        [](const clap_preset_discovery_metadata_receiver_t* r, const clap_universal_plugin_id_t* id) {
+            CHECK(id && std::strcmp(id->abi, "clap") == 0
+                  && std::strcmp(id->id, slide::pluginId) == 0);
+            ++static_cast<Receiver*>(r->receiver_data)->plugins;
+        },
+        [](const clap_preset_discovery_metadata_receiver_t*, const char*) {},
+        [](const clap_preset_discovery_metadata_receiver_t* r, uint32_t f) {
+            CHECK(f == CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT);
+            ++static_cast<Receiver*>(r->receiver_data)->flags;
+        },
+        [](const clap_preset_discovery_metadata_receiver_t* r, const char* creator) {
+            CHECK(creator && std::strcmp(creator, "Charlie Culbert") == 0);
+            ++static_cast<Receiver*>(r->receiver_data)->creators;
+        },
+        [](const clap_preset_discovery_metadata_receiver_t*, const char*) {},
+        [](const clap_preset_discovery_metadata_receiver_t*, clap_timestamp, clap_timestamp) {},
+        [](const clap_preset_discovery_metadata_receiver_t* r, const char* feature) {
+            CHECK(feature && std::strcmp(feature, CLAP_PLUGIN_FEATURE_DELAY) == 0);
+            ++static_cast<Receiver*>(r->receiver_data)->features;
+        },
+        [](const clap_preset_discovery_metadata_receiver_t*, const char*, const char*) {}
+    };
+};
+
+void presetDiscovery()
+{
+    using namespace slide;
+    const auto* factory = static_cast<const clap_preset_discovery_factory_t*>(
+        entryGetFactory(CLAP_PRESET_DISCOVERY_FACTORY_ID));
+    CHECK(factory && factory->count(factory) == 1);
+    const auto* descriptor = factory->get_descriptor(factory, 0);
+    CHECK(descriptor && std::strcmp(descriptor->id, "com.charlieculbert.slide.presets") == 0);
+    CHECK(std::strcmp(descriptor->vendor, "Charlie Culbert") == 0);
+    CHECK(!factory->get_descriptor(factory, 1));
+    CHECK(!factory->create(factory, nullptr, descriptor->id));
+
+    unsigned locations = 0;
+    struct Indexer { unsigned* locations; };
+    Indexer context { &locations };
+    clap_preset_discovery_indexer_t indexer {
+        CLAP_VERSION, "Slide tests", "", "", "1", &context,
+        [](const clap_preset_discovery_indexer_t*, const clap_preset_discovery_filetype_t*) { return true; },
+        [](const clap_preset_discovery_indexer_t* i, const clap_preset_discovery_location_t* location) {
+            CHECK(location && location->kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN
+                  && location->location == nullptr
+                  && (location->flags & CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT) != 0);
+            ++*static_cast<Indexer*>(i->indexer_data)->locations;
+            return true;
+        },
+        [](const clap_preset_discovery_indexer_t*, const clap_preset_discovery_soundpack_t*) { return true; },
+        [](const clap_preset_discovery_indexer_t*, const char*) -> const void* { return nullptr; }
+    };
+
+    CHECK(!factory->create(factory, &indexer, "com.charlieculbert.slide.wrong"));
+    const auto* provider = factory->create(factory, &indexer, descriptor->id);
+    CHECK(provider && provider->init(provider) && locations == 1);
+
+    Receiver receiver;
+    CHECK(provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr,
+                                 &receiver.list));
+    CHECK(receiver.found.size() == presets.size() && presets.size() == 17);
+    CHECK(receiver.plugins == 17 && receiver.creators == 17 && receiver.features == 17
+          && receiver.flags == 17);
+    for (size_t i = 0; i < presets.size(); ++i)
+    {
+        CHECK(receiver.found[i].first == presets[i].name);
+        CHECK(receiver.found[i].second == presets[i].key);
+    }
+    // A path-shaped location is not ours.
+    Receiver ignored;
+    CHECK(!provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, "/tmp",
+                                  &ignored.list));
+    CHECK(ignored.found.empty());
+    provider->destroy(provider);
 }
 
 // --------------------------------------------------------------------- laws
@@ -1314,10 +1449,12 @@ int main(int argc, char** argv)
     parameterText();
     stateRoundTrip();
     descriptorIdentity();
+    presetsLoad();
+    presetDiscovery();
     lawsByHand();
     engineByHand();
     checkFixture();
     slide::entryDeinit();
     std::puts("PASS: ports, pass-through, parameter table, text round trip, state, laws, "
-              "engine, fixture");
+              "engine, presets, fixture");
 }

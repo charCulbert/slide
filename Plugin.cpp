@@ -1,12 +1,15 @@
 #include "Plugin.h"
 #include "Engine.h"
 #include "Parameters.h"
+#include "Presets.h"
 
 #include "char_clap_utils/EventChunks.h"
 #include "char_clap_utils/Process.h"
 #include "char_clap_utils/Streams.h"
 #include "char_clap_utils/WebUI.h"
 
+#include <clap/ext/preset-load.h>
+#include <clap/factory/preset-discovery.h>
 #include <clap/helpers/param-queue.hh>
 #include <clap/helpers/plugin.hh>
 #include <clap/helpers/plugin.hxx>
@@ -55,6 +58,8 @@ protected:
     {
         hostParams = static_cast<const clap_host_params_t*>(host->get_extension(host, CLAP_EXT_PARAMS));
         hostState = static_cast<const clap_host_state_t*>(host->get_extension(host, CLAP_EXT_STATE));
+        hostPresets = static_cast<const clap_host_preset_load_t*>(
+            host->get_extension(host, CLAP_EXT_PRESET_LOAD));
         return true;
     }
 
@@ -230,9 +235,21 @@ protected:
         return true;
     }
 
-    // Presets arrive with the parameter table (A7); until then the plug-in has
-    // nothing to load.
-    bool implementsPresetLoad() const noexcept override { return false; }
+    bool implementsPresetLoad() const noexcept override { return true; }
+
+    bool presetLoadFromLocation(uint32_t kind, const char* location, const char* key) noexcept override
+    {
+        if (kind != CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN || location || !key) return false;
+        for (const auto& preset : presets)
+            if (std::strcmp(preset.key, key) == 0)
+            {
+                for (const auto& p : parameters) setValue(p.id, preset.values[p.id]);
+                notifyValuesChanged();
+                if (hostPresets) hostPresets->loaded(host, kind, location, key);
+                return true;
+            }
+        return false;
+    }
 
     bool enableDraftExtensions() const noexcept override { return true; }
     bool implementsWebview() const noexcept override { return true; }
@@ -470,6 +487,11 @@ private:
             ui.send(line);
             return true;
         }
+        if (message.substr(0, 7) == "preset:")
+        {
+            const std::string key(message.substr(7));
+            return presetLoadFromLocation(CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, key.c_str());
+        }
         const std::string text(message);
         unsigned id = 0;
         double value = 0;
@@ -525,6 +547,7 @@ private:
     const clap_host_t* host;
     const clap_host_params_t* hostParams = nullptr;
     const clap_host_state_t* hostState = nullptr;
+    const clap_host_preset_load_t* hostPresets = nullptr;
     char_clap::WebUI ui;
     double sampleRate = 48000;
     Engine engine;
@@ -549,6 +572,87 @@ const clap_plugin_t* createPlugin(const clap_plugin_factory_t*, const clap_host_
 {
     if (!host || !id || std::strcmp(id, pluginId) != 0) return nullptr;
     return (new SlidePlugin(host))->clapPlugin();
+}
+
+// The presets ship inside the plug-in, so the provider declares a single
+// factory-content location with no path and hands the indexer the table (D1).
+struct PresetProvider
+{
+    clap_preset_discovery_provider_t provider;
+    const clap_preset_discovery_indexer_t* indexer;
+
+    explicit PresetProvider(const clap_preset_discovery_indexer_t* newIndexer)
+        : provider { &providerDescriptor(), this, init, destroy, metadata, extension },
+          indexer(newIndexer)
+    {}
+
+    static const clap_preset_discovery_provider_descriptor_t& providerDescriptor()
+    {
+        static const clap_preset_discovery_provider_descriptor_t value {
+            CLAP_VERSION, "com.charlieculbert.slide.presets",
+            "Slide Presets", "Charlie Culbert"
+        };
+        return value;
+    }
+
+    static PresetProvider& from(const clap_preset_discovery_provider_t* provider)
+    {
+        return *static_cast<PresetProvider*>(provider->provider_data);
+    }
+
+    static bool init(const clap_preset_discovery_provider_t* provider)
+    {
+        static const clap_preset_discovery_location_t location {
+            CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT, "Factory Presets",
+            CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr
+        };
+        return from(provider).indexer->declare_location(from(provider).indexer, &location);
+    }
+
+    static void destroy(const clap_preset_discovery_provider_t* provider)
+    {
+        delete &from(provider);
+    }
+
+    static bool metadata(const clap_preset_discovery_provider_t*, uint32_t kind,
+                         const char* location,
+                         const clap_preset_discovery_metadata_receiver_t* receiver)
+    {
+        if (kind != CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN || location || !receiver)
+            return false;
+        const clap_universal_plugin_id_t plugin { "clap", pluginId };
+        for (const auto& preset : presets)
+        {
+            if (!receiver->begin_preset(receiver, preset.name, preset.key)) return false;
+            receiver->add_plugin_id(receiver, &plugin);
+            receiver->set_flags(receiver, CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT);
+            receiver->add_creator(receiver, "Charlie Culbert");
+            receiver->add_feature(receiver, CLAP_PLUGIN_FEATURE_DELAY);
+        }
+        return true;
+    }
+
+    static const void* extension(const clap_preset_discovery_provider_t*, const char*)
+    {
+        return nullptr;
+    }
+};
+
+uint32_t presetProviderCount(const clap_preset_discovery_factory_t*) { return 1; }
+
+const clap_preset_discovery_provider_descriptor_t* presetProviderDescriptor(
+    const clap_preset_discovery_factory_t*, uint32_t index)
+{
+    return index == 0 ? &PresetProvider::providerDescriptor() : nullptr;
+}
+
+const clap_preset_discovery_provider_t* createPresetProvider(
+    const clap_preset_discovery_factory_t*, const clap_preset_discovery_indexer_t* indexer,
+    const char* id)
+{
+    if (!indexer || !id || std::strcmp(id, PresetProvider::providerDescriptor().id) != 0)
+        return nullptr;
+    return &(new PresetProvider(indexer))->provider;
 }
 
 } // namespace
@@ -576,6 +680,13 @@ const void* entryGetFactory(const char* factoryId)
     if (std::strcmp(factoryId, CLAP_PLUGIN_FACTORY_ID) == 0)
     {
         static const clap_plugin_factory_t factory { pluginCount, pluginDescriptor, createPlugin };
+        return &factory;
+    }
+    if (std::strcmp(factoryId, CLAP_PRESET_DISCOVERY_FACTORY_ID) == 0)
+    {
+        static const clap_preset_discovery_factory_t factory {
+            presetProviderCount, presetProviderDescriptor, createPresetProvider
+        };
         return &factory;
     }
     return nullptr;

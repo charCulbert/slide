@@ -1,14 +1,29 @@
 # Slide
 
-Slide is a stereo delay whose face is a picture of the repeats, with slide-rule
-rails as the controls. The browser prototype in `prototype/` is the behavioural
-spec; `docs/DESIGN.md` records the vocabulary, the modules and their seams, the
-decisions, and the build order.
+A stereo delay whose face is a picture of the repeats. The picture draws every
+repeat on a log time axis; the controls are slide-rule rails and chips around
+it. Seventeen presets. Available as CLAP, AUv3, and WCLAP.
 
-At this stage the plug-in is a scaffold: one stereo in, one stereo out, and the
-input passed through unchanged. The engine, the parameters and the face follow.
+![Slide in the browser DAW](screenshot.png)
 
-Available as CLAP, AUv3, and WCLAP.
+| Control | Effect |
+| --- | --- |
+| Left | Delay time of the left line, 1–2000 ms. |
+| Right | Delay time of the right line, 1–2000 ms. |
+| Link | How Right follows Left: Ratio, Difference, or Off. |
+| Repeats | How many repeats sound, 1–64; past 64 is Hold, a unity loop with the filters open. |
+| Shape | The decay envelope: Fade, through Flat, to Swell. |
+| Blur | Sharp to Blur: diffusion plus a roof on the repeats. |
+| Tone | Dark below centre, Thin above. |
+| Mix | Dry/wet, equal power. |
+| Mode | Stereo, Ping pong, Right is a tap, Left is a tap. |
+| Medium | Tape, Oil can, Bucket, Tide, or Digital, with Wear for how much of its character; Wear 0 is clean on every medium. |
+| Sync | Left and Right follow tempo divisions rather than milliseconds. |
+
+Drag a rail handle to set its value; drag the tail marker in the picture to set
+Repeats and Shape together. Hold Cmd or Ctrl to bypass snapping. The browser
+prototype in `prototype/` is the behavioural spec; `docs/DESIGN.md` records the
+vocabulary, the modules and their seams, and the decisions.
 
 ## Build
 
