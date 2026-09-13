@@ -5,7 +5,6 @@
 //   plugin -> UI  : parameter<TAB>… lines, metadata-end, values:<id>=<v>;…,
 //                   visual:<inL>,<inR>,<wetL>,<wetR>,<leftMs>,<rightMs>,<hold>,<bpm>
 
-import './compost/components/compost-window.js';
 import './face.js';
 
 const encoder = new TextEncoder();
@@ -18,33 +17,9 @@ const specs = [];
 // gesture the user is in the middle of.
 const editing = new Set();
 
-// A compost-window frames the face, always. A plug-in window is sized by the host
-// after the page loads — often from nothing — so the frame is measured every time the
-// view changes size, never once at startup. The face itself narrows by width, inside
-// its own canvas; nothing here asks what kind of device it is.
-const pad = 20, top = 16, headerHeight = 26;
-
-const frame = document.createElement('compost-window');
-frame.setAttribute('heading', 'Slide');
-frame.setAttribute('static', '');
-frame.setAttribute('open', '');
-const holder = document.createElement('div');
-holder.className = 'full';
-holder.append(face);
-frame.append(holder);
-document.querySelector('#face-host').append(frame);
-
-function reframe() {
-  // The host's window is the plug-in's whole world, so the frame fills it.
-  frame.setAttribute('width', String(Math.max(320, innerWidth - pad * 2)));
-  frame.setAttribute('height', String(Math.max(240, innerHeight - top * 2 - headerHeight)));
-  frame.moveTo?.(pad, top);
-}
-
-// `resize` alone misses a webview that is given its size before the first frame.
-new ResizeObserver(reframe).observe(document.documentElement);
-addEventListener('resize', reframe);
-reframe();
+// The face is the plug-in window's whole world: no frame, no chrome. The host sizes
+// the window after the page loads; the face narrows by width inside its own canvas.
+document.querySelector('#face-host').append(face);
 
 // ---- UI -> plugin -----------------------------------------------------------
 

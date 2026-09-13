@@ -65,7 +65,7 @@ include("${CHAR_CLAP_UTILS_ROOT}/cmake/CharClapWebUI.cmake")
 char_clap_stage_web_ui(slide
     SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/ui"
     COMPOST_ROOT "${COMPOST_ROOT}"
-    COMPONENTS button window)
+    COMPONENTS button)
 
 # char_clap_stage_web_ui stages utils.js, parameter-scale.js, internal/ and the named
 # components; it has no hook for extra files. The face is built on compost's value
