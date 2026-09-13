@@ -123,9 +123,8 @@ export class SlideFace extends HTMLElement {
     this.wired = true;
   }
 
-  // Moving the face from one frame to another — the page reframes it when the host
-  // window crosses the phone width — disconnects and reconnects it. Both callbacks
-  // must therefore be reversible: they start and stop the clock and the observers,
+  // Moving the face from one parent to another disconnects and reconnects it. Both
+  // callbacks must therefore be reversible: they start and stop the clock and the observers,
   // and never touch the value controls, whose ARIA and gesture state have to survive
   // the move. The canvas's own listeners are wired once, in wire().
   connectedCallback() {

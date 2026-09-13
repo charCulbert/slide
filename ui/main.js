@@ -18,54 +18,29 @@ const specs = [];
 // gesture the user is in the middle of.
 const editing = new Set();
 
-// The prototype's mobile branch: a compost-window frames the face on desktop, and it
-// stacks as a plain panel on phones. A plug-in window is sized by the host after the
-// page loads — often from nothing — so the branch is a live media query and the frame
-// is measured every time the view changes size, never once at startup.
-const host = document.querySelector('#face-host');
-const phone = matchMedia('(max-width: 699px), (pointer: coarse) and (max-width: 899px)');
+// A compost-window frames the face, always. A plug-in window is sized by the host
+// after the page loads — often from nothing — so the frame is measured every time the
+// view changes size, never once at startup. The face itself narrows by width, inside
+// its own canvas; nothing here asks what kind of device it is.
 const pad = 20, top = 16, headerHeight = 26;
 
-let panel = null, frame = null, shape = null;
+const frame = document.createElement('compost-window');
+frame.setAttribute('heading', 'Slide');
+frame.setAttribute('static', '');
+frame.setAttribute('open', '');
+const holder = document.createElement('div');
+holder.className = 'full';
+holder.append(face);
+frame.append(holder);
+document.querySelector('#face-host').append(frame);
 
 function reframe() {
-  const next = phone.matches ? 'panel' : 'window';
-  if (next !== shape) {
-    shape = next;
-    if (next === 'panel') {
-      panel ??= (() => {
-        const section = document.createElement('section');
-        section.className = 'mobile-panel';
-        const body = document.createElement('div');
-        body.className = 'body';
-        section.append(body);
-        return section;
-      })();
-      panel.querySelector('.body').append(face);
-      host.replaceChildren(panel);
-    } else {
-      frame ??= (() => {
-        const window_ = document.createElement('compost-window');
-        window_.setAttribute('heading', 'Slide');
-        window_.setAttribute('static', '');
-        window_.setAttribute('open', '');
-        const holder = document.createElement('div');
-        holder.className = 'full';
-        window_.append(holder);
-        return window_;
-      })();
-      frame.querySelector('.full').append(face);
-      host.replaceChildren(frame);
-    }
-  }
-  if (shape !== 'window') return;
   // The host's window is the plug-in's whole world, so the frame fills it.
   frame.setAttribute('width', String(Math.max(320, innerWidth - pad * 2)));
   frame.setAttribute('height', String(Math.max(240, innerHeight - top * 2 - headerHeight)));
   frame.moveTo?.(pad, top);
 }
 
-phone.addEventListener('change', reframe);
 // `resize` alone misses a webview that is given its size before the first frame.
 new ResizeObserver(reframe).observe(document.documentElement);
 addEventListener('resize', reframe);
