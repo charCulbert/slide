@@ -213,4 +213,5 @@ presentation.
 - **A5** Plugin: params, state, presets, webview, event chunks, tempo, tail, Frame queue.
 - **A6** Face: port `render()`, `pick()`, `move()` onto `<slide-face>` with value controls;
   `laws.js` and fixture test; bridge; Playwright test against the WCLAP DAW.
-- **A7** Presets (the 17 from the prototype), README, screenshot, notices.
+- **A7** Presets (ten, covering every medium, Mode, Link and corner of Shape), README,
+  screenshot, notices.

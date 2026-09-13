@@ -2,7 +2,7 @@
 
 A stereo delay whose face is a picture of the repeats. The picture draws every
 repeat on a log time axis; the controls are slide-rule rails and chips around
-it. Seventeen presets. Available as CLAP, AUv3, and WCLAP.
+it. Ten presets. Available as CLAP, AUv3, and WCLAP.
 
 ![Slide in the browser DAW](screenshot.png)
 

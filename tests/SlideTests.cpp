@@ -572,9 +572,9 @@ void presetDiscovery()
     Receiver receiver;
     CHECK(provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr,
                                  &receiver.list));
-    CHECK(receiver.found.size() == presets.size() && presets.size() == 17);
-    CHECK(receiver.plugins == 17 && receiver.creators == 17 && receiver.features == 17
-          && receiver.flags == 17);
+    CHECK(receiver.found.size() == presets.size() && presets.size() == 10);
+    CHECK(receiver.plugins == 10 && receiver.creators == 10 && receiver.features == 10
+          && receiver.flags == 10);
     for (size_t i = 0; i < presets.size(); ++i)
     {
         CHECK(receiver.found[i].first == presets[i].name);
