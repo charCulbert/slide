@@ -315,6 +315,16 @@ private:
         return std::copysign(0.5f + std::tanh((a - 0.5f) * 2.0f) * 0.5f, v);
     }
 
+    // D13: 64 repeats sum into the wet path, so a flat or swelling chain can leave
+    // it well past full scale. This is the last thing the wet sees before the mix:
+    // exactly a wire below 0.9, and a tanh knee above it that never reaches 1.
+    static float wetClip(float v) noexcept
+    {
+        const auto a = std::abs(v);
+        if (a <= 0.9f) return v;
+        return std::copysign(0.9f + 0.1f * std::tanh((a - 0.9f) * 10.0f), v);
+    }
+
     float degrade(int c, int k, float v) noexcept
     {
         if (crushQuantum > 0)
@@ -479,8 +489,8 @@ private:
                 chainR += g * b;
                 if (k == 0) { loopL = a; loopR = b; }
             }
-            const auto wetL = chainWeight * chainL + loopWeight * loopL;
-            const auto wetR = chainWeight * chainR + loopWeight * loopR;
+            const auto wetL = wetClip(chainWeight * chainL + loopWeight * loopL);
+            const auto wetR = wetClip(chainWeight * chainR + loopWeight * loopR);
 
             // --- each stage's read on its way onward
             for (int k = 0; k < runningStages; ++k)

@@ -154,6 +154,7 @@ wobble reference time = clamp(T, 40, 400) ms
 early diffuser  L {2.3, 5.1, 9.7, 15.3}  R {2.9, 6.1, 11.3, 17.9} ms
 loop diffuser   L {4.7, 7.9, 13.1, 19.7} R {5.3, 8.9, 14.9, 22.3} ms
 clip            |v| ≤ 0.5 pass; else sign·(0.5 + 0.5·tanh(2(|v|−0.5)))
+wet clip        |v| ≤ 0.9 pass; else sign·(0.9 + 0.1·tanh((|v|−0.9)/0.1))
 mix             dry·cos(mix·π/2) + wet·sin(mix·π/2)
 smoothing       20 ms on times, lap gain, tone, mix, input gates
 ```
@@ -189,6 +190,10 @@ presentation.
 - **D11** The face is one canvas built on compost value controls (pinned `7b75bb3`).
 - **D12** Delay primitives live in chardsp with runtime capacity: `FractionalDelayLine`
   (Catmull-Rom), `AllpassDiffuser`, `OnePole`. chardsp's linear `DelayLine` is untouched.
+- **D13** A safety clip on the wet sum, after the stages and before the mix: 64 repeats
+  can add up past full scale, so the wet path is a wire below 0.9 and a tanh knee above
+  it, approaching but never passing 1. The dry path is untouched, so Mix 0 is still the
+  input sample for sample.
 
 ## 6. Risks
 

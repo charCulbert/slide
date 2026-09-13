@@ -158,7 +158,7 @@ void pluginDelays()
     p.set(shape, 0);
 
     std::vector<float> inL(1024), inR(1024), outL(1024), outR(1024);
-    inL[0] = inR[0] = 1;
+    inL[0] = inR[0] = 0.5f; // under the wet clip's knee, so the repeat is untouched
     std::array<float*, 2> inChannels { inL.data(), inR.data() };
     std::array<float*, 2> outChannels { outL.data(), outR.data() };
     clap_audio_buffer_t in { inChannels.data(), nullptr, 2, 0, 0 };
@@ -167,7 +167,7 @@ void pluginDelays()
 
     const size_t expected = 480; // 10 ms at 48 kHz
     for (size_t i = 0; i < expected; ++i) CHECK(std::abs(outL[i]) < 1e-6 && std::abs(outR[i]) < 1e-6);
-    CHECK(std::abs(outL[expected] - 1) < 1e-5 && std::abs(outR[expected] - 1) < 1e-5);
+    CHECK(std::abs(outL[expected] - 0.5) < 1e-5 && std::abs(outR[expected] - 0.5) < 1e-5);
 
     const auto* tail = static_cast<const clap_plugin_tail_t*>(p.p->get_extension(p.p, CLAP_EXT_TAIL));
     CHECK(tail && tail->get(p.p) == 480); // one repeat of 10 ms
@@ -1106,6 +1106,45 @@ void digitalWear()
     CHECK(peak(out) > 0.05);
 }
 
+// D13: the wet path is a wire below 0.9 and a knee above it.
+void wetClip()
+{
+    using namespace slide;
+    {
+        // Below the knee the clip is the identity, so a half-scale repeat comes back
+        // bit for bit — the same samples a run without the clip would give.
+        Rig rig;
+        rig.set(left, 10);
+        rig.set(right, 10);
+        Block input(2400);
+        input.l[0] = 0.5f;
+        input.r[0] = -0.5f;
+        const auto out = run(rig, input);
+        const auto at = rig.samples(10);
+        CHECK(out.l[at] == 0.5f && out.r[at] == -0.5f);
+        for (size_t i = 1; i < out.size(); ++i)
+            if (i != at) CHECK(out.l[i] == 0.0f && out.r[i] == 0.0f);
+    }
+    {
+        // Past it the knee bites: a wet impulse of three comes back inside the rails.
+        Rig rig;
+        rig.set(left, 10);
+        rig.set(right, 10);
+        const auto out = run(rig, impulse(2400, 3.0f));
+        const auto top = peak(out);
+        CHECK(top > 0.99 && top <= 1.0); // 1 is the asymptote, and float lands on it
+    }
+    {
+        // And short of the asymptote it stays strictly under.
+        Rig rig;
+        rig.set(left, 10);
+        rig.set(right, 10);
+        const auto out = run(rig, impulse(2400, 1.5f));
+        const auto top = peak(out);
+        CHECK(top > 0.9 && top < 1.0);
+    }
+}
+
 void extremes()
 {
     using namespace slide;
@@ -1116,7 +1155,7 @@ void extremes()
     {
         const auto out = run(rig, noise(seconds, 1.0f, 7u + static_cast<uint32_t>(i)));
         CHECK(finite(out));
-        CHECK(peak(out) < 8.0);
+        CHECK(peak(out) <= 1.0); // D13: Mix is at its maximum, so this is the wet path
     }
     // And the other end of every rail.
     Rig floorRig;
@@ -1206,6 +1245,7 @@ void engineByHand()
     holdSustains();
     wearIsClean();
     digitalWear();
+    wetClip();
     extremes();
     silenceFlushes();
     longestDelayAt44100();
