@@ -26,7 +26,7 @@ port of the engine so the picture and the sound can be judged together.
 
 ## Run
 
-Serve the parent of `tide/` so the compost submodule resolves, then open the
+Serve the parent of `slide/` so the compost submodule resolves, then open the
 page:
 
 ```sh

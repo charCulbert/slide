@@ -9,8 +9,10 @@ compost = here / '../external/compost/src/components/compost-window.js'
 
 def bundle(entry):
     """Tiny ES-module inliner for compost's plain modules: each module becomes an
-    IIFE whose exports land in a registry keyed by absolute path."""
+    IIFE whose exports land in a registry keyed by path relative to the repo."""
     seen, order = {}, []
+    root = here.parent.resolve()
+    key = lambda f: str(f.relative_to(root))
     def load(file):
         file = file.resolve()
         if file in seen: return
@@ -22,7 +24,7 @@ def bundle(entry):
             if not spec.startswith('.'): return m.group(0)
             dep = (file.parent / spec).resolve(); deps.append(dep)
             names = ','.join(x for x in (m.group(2), m.group(4)) if x)
-            return f'const {{{names.replace(" as ", ":")}}} = __m[{str(dep)!r}];' if names else ''
+            return f'const {{{names.replace(" as ", ":")}}} = __m[{key(dep)!r}];' if names else ''
         src = re.sub(r'^\s*import\s+(?:([\w$]+)|\{([^}]*)\}|\*\s+as\s+([\w$]+))?\s*(?:,\s*\{([^}]*)\})?\s*(?:from\s*)?["\']([^"\']+)["\'];?\s*$', imp, src, flags=re.M)
         for d in deps: load(d)
         exports = []
@@ -37,7 +39,7 @@ def bundle(entry):
         src = re.sub(r'^export\s*\{([^}]*)\};?', expl, src, flags=re.M)
         src = re.sub(r'^export\s+default\s+', 'const __default = ', src, flags=re.M)
         if '__default' in src: exports.append('default:__default')
-        order.append(f'__m[{str(file)!r}]=(()=>{{ {src}\n return {{{",".join(exports)}}}; }})();')
+        order.append(f'__m[{key(file)!r}]=(()=>{{ {src}\n return {{{",".join(exports)}}}; }})();')
     load(entry)
     return 'const __m={};\n' + '\n'.join(order)
 

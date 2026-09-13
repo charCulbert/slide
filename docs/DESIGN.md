@@ -121,8 +121,7 @@ Every continuous control is a compost `createValueControl` sharing the canvas as
 target with `pointerTarget: null`; the face hit-tests, decides the axis, then calls
 `startPointerDrag`. Each control has its own small semantic element, so keyboard and
 ARIA come from compost. Sync and Hold are `compost-button mode="switch"`; Link, Mode and
-Medium are `compost-button mode="cycle"` once that lands (`docs/compost-cycle-request.md`),
-canvas chips until then. Hit regions, cursors, hairlines, snap lock, tick generation and
+Medium are `compost-button mode="cycle"`. Hit regions, cursors, hairlines, snap lock, tick generation and
 the link rules stay in the face.
 
 ## 3. Laws
