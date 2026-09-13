@@ -144,10 +144,10 @@ inline Recipe recipeAt(int medium, double wear01) noexcept
     if (medium == 4)
     {
         // Digital wears by crushing and decimating: bits fall linearly, the sample
-        // rate falls by ratio from 48 kHz to 8 kHz.
+        // rate falls by ratio from 48 kHz to 2.5 kHz.
         Recipe digital = cleanRecipe;
-        digital.bits = static_cast<int>(std::lround(16.0 - 8.0 * w));
-        digital.decimateHz = 48000.0 * std::pow(8000.0 / 48000.0, w);
+        digital.bits = static_cast<int>(std::lround(16.0 - 11.0 * w));
+        digital.decimateHz = 48000.0 * std::pow(2500.0 / 48000.0, w);
         return digital;
     }
 

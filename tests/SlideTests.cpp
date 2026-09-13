@@ -680,9 +680,10 @@ void lawsByHand()
     CHECK(recipeAt(2, 1).lossTracksTime && near(recipeAt(2, 1).lossHz, 8000));
     CHECK(recipeAt(3, 1).tidePartials && near(recipeAt(3, 1).lossHz, 20000));
     const auto digital = recipeAt(4, 1);
-    CHECK(digital.bits == 8 && near(digital.decimateHz, 8000) && near(digital.lossHz, 20000));
+    CHECK(digital.bits == 5 && near(digital.decimateHz, 2500) && near(digital.lossHz, 20000));
     CHECK(digital.sine == 0 && digital.rand == 0 && digital.hiss == 0);
-    CHECK(recipeAt(4, 0.5).bits == 12);
+    CHECK(recipeAt(4, 0.5).bits == 11);
+    CHECK(near(recipeAt(4, 0.5).decimateHz, 48000 * std::sqrt(2500.0 / 48000)));
     CHECK(recipeAt(9, 1).lossHz == 20000 && recipeAt(9, 1).bits == 0);
 
     // Tail.
@@ -1091,17 +1092,17 @@ void digitalWear()
         input.l[i] = 0.4f * static_cast<float>(std::sin(2 * M_PI * 220.0 * i / rig.rate));
     const auto out = run(rig, input);
 
-    // The second repeat has been round the crush and the decimator: 8 bits, and
-    // held in runs at 8 kHz.
+    // The second repeat has been round the crush and the decimator: 5 bits, and
+    // held in runs at 2.5 kHz.
     size_t held = 0, longest = 0;
     for (size_t i = step * 2 + 10; i < step * 3 - 10; ++i)
     {
         const auto v = out.r[i];
-        CHECK(std::abs(v * 128.0f - std::round(v * 128.0f)) < 1e-3);
+        CHECK(std::abs(v * 16.0f - std::round(v * 16.0f)) < 1e-3);
         held = v == out.r[i - 1] ? held + 1 : 0;
         longest = std::max(longest, held);
     }
-    CHECK(longest >= 5); // 48 kHz held at 8 kHz is six samples to a step
+    CHECK(longest >= 18); // 48 kHz held at 2.5 kHz is nineteen samples to a step
     CHECK(peak(out) > 0.05);
 }
 

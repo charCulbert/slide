@@ -231,10 +231,10 @@
     {"medium": 3, "wear": 0.7, "sine": 0.015786931579651, "sineHz": 0.3, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 0, "decimateHz": 0, "hiss": 0, "tidePartials": 1},
     {"medium": 3, "wear": 1, "sine": 0.03, "sineHz": 0.3, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 0, "decimateHz": 0, "hiss": 0, "tidePartials": 1},
     {"medium": 4, "wear": 0, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 0, "decimateHz": 0, "hiss": 0, "tidePartials": 0},
-    {"medium": 4, "wear": 0.1, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 15, "decimateHz": 40126.022499741, "hiss": 0, "tidePartials": 0},
-    {"medium": 4, "wear": 0.35, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 13, "decimateHz": 25638.2453770403, "hiss": 0, "tidePartials": 0},
-    {"medium": 4, "wear": 0.7, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 10, "decimateHz": 13694.1588752776, "hiss": 0, "tidePartials": 0},
-    {"medium": 4, "wear": 1, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 8, "decimateHz": 8000, "hiss": 0, "tidePartials": 0}
+    {"medium": 4, "wear": 0.1, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 15, "decimateHz": 35719.9723883156, "hiss": 0, "tidePartials": 0},
+    {"medium": 4, "wear": 0.35, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 12, "decimateHz": 17064.1950780776, "hiss": 0, "tidePartials": 0},
+    {"medium": 4, "wear": 0.7, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 8, "decimateHz": 6066.39070130598, "hiss": 0, "tidePartials": 0},
+    {"medium": 4, "wear": 1, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "bits": 5, "decimateHz": 2500, "hiss": 0, "tidePartials": 0}
   ],
   "tailMs": [
     {"mode": 0, "left": 1, "right": 1, "repeats": 1, "hold": 0, "out": 1},
