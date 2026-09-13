@@ -114,12 +114,14 @@ export function recipeAt(medium, wear01) {
 
   const amt = Math.pow(w, 1.8) * 5;
   if (medium === 4) {
-    // Digital wears by crushing and decimating: bits fall linearly, the sample
-    // rate falls by ratio from 48 kHz to 2.5 kHz.
+    // Digital wears by crushing and decimating: bits fall linearly to 8, the
+    // sample rate falls by ratio from 48 kHz to 8 kHz. Its clock drifts slowly
+    // and jitters a little; no hiss, no loss.
     return {
       ...cleanRecipe,
-      bits: Math.round(16 - 11 * w),
-      decimateHz: 48000 * Math.pow(2500 / 48000, w)
+      sine: 0.0008 * amt, sineHz: 0.4, rand: 0.0002 * amt, randHz: 12,
+      bits: Math.round(16 - 8 * w),
+      decimateHz: 48000 * Math.pow(8000 / 48000, w)
     };
   }
 

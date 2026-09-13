@@ -146,7 +146,7 @@ tape    sine .0025@0.7Hz  rand .0012@6Hz   lp 9000            hiss .0003
 oil     sine .005 @2.3Hz  rand .015 @1.4Hz lp 2600  bits 10   hiss .0004
 bucket                    rand .0008@20Hz  lp 8000 (×√(60/T)) hiss .0005
 tide    sine .006 @0.3Hz, partials 1 / 1.0355 / 0.518, ÷1.95
-digital bits 16→5 with wear, decimate 48 kHz→2.5 kHz with wear, no wobble, no hiss
+digital sine .0008@0.4Hz  rand .0002@12Hz  bits 16→8 with wear, decimate 48 kHz→8 kHz with wear, no hiss
 sine·amt, rand·amt·6, hiss·min(4, 0.9·amt); lp full at amt ≥ 0.5; crush at amt > 0.1
 wobble reference time = clamp(T, 40, 400) ms
 
