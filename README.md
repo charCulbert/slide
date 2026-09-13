@@ -1,8 +1,8 @@
 # Slide
 
-A stereo delay whose face is a picture of the repeats. The picture draws every
+A stereo delay inspired by [Slide Rules](https://sliderulemuseum.com/)! . The ui draws every
 repeat on a log time axis; the controls are slide-rule rails and chips around
-it. Ten presets. Available as CLAP, AUv3, and WCLAP.
+it. Ten presets. Builds as CLAP, AUv3, and WCLAP.
 
 ![Slide in the browser DAW](screenshot.png)
 
