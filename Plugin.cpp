@@ -56,6 +56,7 @@ public:
 protected:
     bool init() noexcept override
     {
+        ui.init();
         hostParams = static_cast<const clap_host_params_t*>(host->get_extension(host, CLAP_EXT_PARAMS));
         hostState = static_cast<const clap_host_state_t*>(host->get_extension(host, CLAP_EXT_STATE));
         hostPresets = static_cast<const clap_host_preset_load_t*>(
