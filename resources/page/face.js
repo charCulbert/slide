@@ -418,23 +418,26 @@ export class SlideFace extends HTMLElement {
   // ---- the picture's model --------------------------------------------------
 
   /** Every echo, as the engine makes them: routes through L (i passes) and R (j
-   * passes) land at i·L + j·R; routes with the same i and j add as amplitudes. */
+   * passes) land at i·L + j·R; routes landing at the same moment on a line add as
+   * amplitudes. */
   echoes() {
     const [TA, TB] = this.times(), x = this.percent('cross'), f = this.percent('feed');
     const g = laws.passGain(this.repeats(), x, TA, TB);
     const out = [], heap = [], key = new Map(), FLOOR = Math.pow(10, -66 / 20);
-    const K = e => `${e.line}:${e.i}:${e.j}`;
+    // routes that land at the same moment on the same line add up, as they do in the
+    // sound: at a nice ratio many do. Ones that merely land near each other stay apart.
+    const K = e => `${e.line}:${Math.round(e.t * 100)}`;
     const up = i => { while (i > 0) { const p = (i - 1) >> 1; if (heap[p].t <= heap[i].t) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
     const down = i => { for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
       if (l < heap.length && heap[l].t < heap[m].t) m = l; if (r < heap.length && heap[r].t < heap[m].t) m = r;
       if (m === i) return; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } };
-    const push = e => { if (e.a < FLOOR || e.t > 12000 || heap.length > 5000) return; const k = K(e), ex = key.get(k);
+    const push = e => { if (e.a < FLOOR || e.t > 12000 || heap.length > 10000) return; const k = K(e), ex = key.get(k);
       if (ex) { ex.a += e.a; ex.aL += e.aL; if (e.hop && !ex.hop) ex.hop = e.hop; return; }
       key.set(k, e); heap.push(e); up(heap.length - 1); };
     const a0 = 0.7 * Math.min(1, 1 - f), b0 = 0.7 * Math.min(1, 1 + f);
     push({t: TA, line: 0, i: 1, j: 0, a: a0, aL: a0, n: 1});
     push({t: TB, line: 1, i: 0, j: 1, a: b0, aL: 0, n: 1});
-    while (heap.length && out.length < 2500) {
+    while (heap.length && out.length < 5000) {
       const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; down(0); }
       key.delete(K(top)); out.push(top);
       for (const to of [top.line, 1 - top.line]) { const i = top.i + (to === 0), j = top.j + (to === 1);
