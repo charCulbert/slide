@@ -28,15 +28,15 @@ try {
   await page.locator('body[data-engine="ready"]').waitFor({timeout: 30000});
   await page.getByRole('button', {name: 'Plugins', exact: true}).click();
   await page.locator('#plugin-file')
-    .setInputFiles(resolve(root, 'build-wclap/artifacts/Slide.wclap.tar.gz'));
+    .setInputFiles(resolve(root, 'build-wclap/artifacts/Slide Lab.wclap.tar.gz'));
   await page.locator('#plugin-inspection-status').filter({hasText: 'Added 1 plug-in'})
     .waitFor({timeout: 30000});
   await page.locator('#plugin-tree .plugin-row').filter({hasText: 'Slide'}).dblclick();
 
-  const ui = page.frameLocator('iframe[title="Slide interface"]');
+  const ui = page.frameLocator('iframe[title^="Slide"]');
   // The face is one canvas plus a semantic element per parameter; the metadata
   // handshake has landed once Left exists with compost's slider role.
-  await ui.getByRole('slider', {name: 'Left', exact: true}).waitFor({timeout: 30000});
+  await ui.getByRole('slider', {name: 'Left time', exact: true}).waitFor({timeout: 30000});
   await ui.getByRole('button', {name: 'Sync', exact: true}).waitFor();
   await page.screenshot({path: `${artifacts}/loaded.png`});
 
@@ -87,7 +87,7 @@ try {
 
   // Drag Left: the keyboard drives the same compost gesture the pointer does, and
   // the plugin must answer with the new value.
-  const left = ui.getByRole('slider', {name: 'Left', exact: true});
+  const left = ui.getByRole('slider', {name: 'Left time', exact: true});
   await left.focus();
   const before = Number(await left.getAttribute('aria-valuenow'));
   await page.keyboard.press('ArrowRight');
@@ -99,21 +99,20 @@ try {
     ['0', after], {timeout: 10000});
   assert.equal(await value(0), after, 'Left did not round-trip through the bridge');
 
-  // A drag on the picture itself: the Left bracket above the line, which is the
-  // gesture the face hit-tests and hands to the Left control.
-  const iframe = await page.locator('iframe[title="Slide interface"]').boundingBox();
+  // A drag on the picture itself: L's pointer on its first echo, whose sideways
+  // drag moves Left time.
+  const iframe = await page.locator('iframe[title^="Slide"]').boundingBox();
   const grab = await frame.evaluate(() => {
     const element = document.querySelector('slide-face');
     const canvas = element.shadowRoot.querySelector('canvas');
     const box = canvas.getBoundingClientRect();
-    const {XD, Y, dpr} = element.geo;
-    return {x: box.x + XD(element.times().left) / dpr, y: box.y + (Y - 60) / dpr,
-            perDecade: element.geo.perDec / dpr};
+    const z = element.zones.find(zone => zone.key === 'Lp'), scale = box.width / canvas.width;
+    return {x: box.x + (z.x + z.w / 2) * scale, y: box.y + (z.y + z.h / 2) * scale, step: 40};
   });
   const before2 = await value(0);
   await page.mouse.move(iframe.x + grab.x, iframe.y + grab.y);
   await page.mouse.down();
-  await page.mouse.move(iframe.x + grab.x + grab.perDecade * 0.15, iframe.y + grab.y, {steps: 8});
+  await page.mouse.move(iframe.x + grab.x + grab.step, iframe.y + grab.y, {steps: 8});
   await page.mouse.up();
   await frame.waitForFunction(previous => window.slideTest.values['0'] !== previous,
     before2, {timeout: 10000});
@@ -121,12 +120,14 @@ try {
   assert(dragged > before2, `Dragging the picture did not raise Left: ${before2} -> ${dragged}`);
   console.log('DRAG Left', before2, '->', dragged);
 
-  // Sync is a compost-button switch; the plugin must see the 1.
-  await ui.getByRole('button', {name: 'Sync', exact: true}).click();
-  await frame.waitForFunction(() => window.slideTest.values['5'] === 1, null, {timeout: 10000});
-  assert.equal(await value(5), 1, 'Sync did not reach the plugin');
+    // Sync is drawn on the canvas with its compost button laid over it for the
+  // keyboard; press it the way a keyboard user would.
+  await ui.getByRole('button', {name: 'Sync', exact: true}).focus();
+  await page.keyboard.press('Space');
+  await frame.waitForFunction(() => window.slideTest.values['4'] === 1, null, {timeout: 10000});
+  assert.equal(await value(4), 1, 'Sync did not reach the plugin');
 
-  await page.locator('iframe[title="Slide interface"]').screenshot({path: `${artifacts}/slide.png`});
+  await page.locator('iframe[title^="Slide"]').screenshot({path: `${artifacts}/slide.png`});
   await writeFile(`${artifacts}/report.json`, JSON.stringify(
     {verified: ['face appears', 'picture draws', 'Left round-trips', 'picture drag',
                 'Sync toggles'],

@@ -18,61 +18,23 @@ const close = (actual, expected, what) =>
   assert.ok(Math.abs(actual - expected) <= tolerance,
     `${what}: ${actual} != ${expected} (Δ ${Math.abs(actual - expected)})`);
 
-test('linkRight', () => {
-  for (const row of fixture.linkRight)
-    close(laws.linkRight(row.link, row.left, row.ratio, row.difference, row.right),
-      row.out, JSON.stringify(row));
-});
-
-test('divisionMs', () => {
-  for (const row of fixture.divisionMs)
-    close(laws.divisionMs(row.index, row.bpm), row.out, JSON.stringify(row));
-});
-
-test('nearestDivision', () => {
-  for (const row of fixture.nearestDivision)
-    assert.equal(laws.nearestDivision(row.ms, row.bpm), row.out, JSON.stringify(row));
-});
-
-test('gainAt', () => {
-  for (const row of fixture.gainAt)
-    close(laws.gainAt(row.shape, row.repeats, row.k), row.out, JSON.stringify(row));
-});
-
-test('lapGain and isLoop', () => {
-  for (const row of fixture.lapGain) {
-    const what = JSON.stringify(row);
-    close(laws.lapGain(row.shape, row.repeats, Boolean(row.hold)), row.lapGain, what);
-    assert.equal(laws.isLoop(row.shape, Boolean(row.hold)), Boolean(row.isLoop), what);
-  }
-});
-
-test('toneLaw', () => {
-  for (const row of fixture.toneLaw) {
-    const what = JSON.stringify(row);
-    const out = laws.toneLaw(row.blur, row.tone, Boolean(row.hold));
-    close(out.diffusion, row.diffusion, `diffusion ${what}`);
-    close(out.early, row.early, `early ${what}`);
-    close(out.highCutHz, row.highCutHz, `highCutHz ${what}`);
-    close(out.lowCutHz, row.lowCutHz, `lowCutHz ${what}`);
-  }
-});
-
 test('recipeAt', () => {
   for (const row of fixture.recipeAt) {
     const what = JSON.stringify(row);
     const out = laws.recipeAt(row.medium, row.wear);
-    for (const key of ['sine', 'sineHz', 'rand', 'randHz', 'lossHz', 'bits', 'decimateHz', 'hiss'])
+    for (const key of ['sine', 'sineHz', 'rand', 'randHz', 'lossHz', 'hiss', 'drive', 'compand'])
       close(out[key], row[key], `${key} ${what}`);
     assert.equal(out.lossTracksTime, Boolean(row.lossTracksTime), `lossTracksTime ${what}`);
-    assert.equal(out.tidePartials, Boolean(row.tidePartials), `tidePartials ${what}`);
   }
 });
 
-test('tailMs', () => {
-  for (const row of fixture.tailMs)
-    close(laws.tailMs(row.mode, row.left, row.right, row.repeats, Boolean(row.hold)),
-      row.out, JSON.stringify(row));
+test('toneCuts', () => {
+  for (const row of fixture.toneCuts) {
+    const what = JSON.stringify(row);
+    const out = laws.toneCuts(row.tone);
+    close(out.highCutHz, row.highCutHz, `highCutHz ${what}`);
+    close(out.lowCutHz, row.lowCutHz, `lowCutHz ${what}`);
+  }
 });
 
 test('nearestNiceRatio', () => {
@@ -84,10 +46,12 @@ test('nearestNiceRatio', () => {
   }
 });
 
-test('wobbleReferenceMs and bucketLossHz', () => {
-  for (const row of fixture.wobble) {
-    const what = JSON.stringify(row);
-    close(laws.wobbleReferenceMs(row.timeMs), row.wobbleReferenceMs, `reference ${what}`);
-    close(laws.bucketLossHz(row.lossHz, row.timeMs), row.bucketLossHz, `bucket ${what}`);
-  }
+test('wobbleReferenceMs', () => {
+  for (const row of fixture.wobble)
+    close(laws.wobbleReferenceMs(row.timeMs), row.wobbleReferenceMs, JSON.stringify(row));
+});
+
+test('passGain', () => {
+  for (const row of fixture.passGain)
+    close(laws.passGain(row.repeats, row.cross, row.a, row.b), row.out, JSON.stringify(row));
 });

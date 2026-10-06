@@ -1,20 +1,19 @@
 <!doctype html>
 <!--
-  Slide — the plug-in's face. The CSS variables, fonts and dark-mode block are the
-  prototype's (prototype/slide.html), which is the spec; the page itself carries no
-  test rig, because the host supplies the audio, the transport and the presets.
+  Slide — the plug-in's face. The page carries no test rig, because the host
+  supplies the audio, the transport and the presets.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Slide</title>
+<title>Slide Lab</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Barlow+Semi+Condensed:wght@500&display=swap">
 <style>
-:root{ --bg:#d6d6d6; --panel:#d2d2d2; --band:#c3c3c3; --ink:#1c1c1c; --ink2:#4f4f4f; --dim:#5d5d5d; --hair:#a9a9a9; --track:#b9b9b9; --acc:#75540a; color-scheme:light;
+:root{ --panel:#cdcdcd; --band:#c2c2c2; --ink:#1c1c1c; --ink2:#4f4f4f; --dim:#5d5d5d; --hair:#a9a9a9; --acc:#75540a; --lineb:#767676; --glass:rgba(255,255,255,.28); color-scheme:light;
   --compost-ui-font:"IBM Plex Sans",system-ui,sans-serif; --compost-accent:var(--acc); }
-:root[data-color-scheme="dark"]{ --bg:#292929; --panel:#2e2e2e; --band:#3a3a3a; --ink:#dedede; --ink2:#bdbdbd; --dim:#909090; --hair:#575757; --track:#3a3a3a; --acc:#ddc07e; color-scheme:dark }
+:root[data-color-scheme="dark"]{ --panel:#2f2f2f; --band:#3a3a3a; --ink:#dedede; --ink2:#bdbdbd; --dim:#909090; --hair:#555; --acc:#ddc07e; --lineb:#9a9a9a; --glass:rgba(255,255,255,.07); color-scheme:dark }
 *{box-sizing:border-box}
 html,body{width:100%;height:100%}
 body{margin:0;background:var(--panel);color:var(--ink);font-family:var(--compost-ui-font);font-size:13px;min-height:100vh;padding:0}

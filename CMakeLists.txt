@@ -58,8 +58,8 @@ if(NOT TARGET chardsp)
     add_subdirectory("${CHARDSP_ROOT}" chardsp EXCLUDE_FROM_ALL)
 endif()
 
-set(PLUGIN_OUTPUT_NAME "Slide")
-set(PLUGIN_ID "com.charlieculbert.slide")
+set(PLUGIN_OUTPUT_NAME "Slide Lab")
+set(PLUGIN_ID "com.charlieculbert.slide-lab")
 
 include("${CHAR_CLAP_UTILS_ROOT}/cmake/CharClapWebUI.cmake")
 char_clap_stage_web_ui(slide
@@ -69,20 +69,17 @@ char_clap_stage_web_ui(slide
 
 # char_clap_stage_web_ui stages utils.js, parameter-scale.js, internal/ and the named
 # components; it has no hook for extra files. The face is built on compost's value
-# controls (D11), so stage those two modules beside them. This runs on every build of
+# controls, so stage that module beside them. This runs on every build of
 # slide-resources, which also carries ui/face.js and ui/laws.js across after an edit
 # to either — the staging function's own stamp watches only index.html and main.js.
 add_custom_command(TARGET slide-resources POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${COMPOST_ROOT}/src/value-control.js"
-        "${COMPOST_ROOT}/src/parameter-controller.js"
         "${slide_RESOURCE_DIRECTORY}/ui/compost/"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/face.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/laws.js"
         "${slide_RESOURCE_DIRECTORY}/ui/"
-    # the development harness is not part of the plug-in
-    COMMAND ${CMAKE_COMMAND} -E rm -rf "${slide_RESOURCE_DIRECTORY}/ui/dev"
     COMMAND ${CMAKE_COMMAND} -E touch "${CMAKE_CURRENT_BINARY_DIR}/slide-resources.stamp"
     VERBATIM)
 
@@ -125,12 +122,11 @@ make_clapfirst_plugins(
     BUNDLE_IDENTIFIER "${PLUGIN_ID}"
     BUNDLE_VERSION "${PROJECT_VERSION}"
     PLUGIN_FORMATS ${formats}
-    # D5: 64 stages x 2.1 s per channel is ~52 MB of delay memory at 48 kHz, so a
-    # browser host must reserve a 64 MiB heap up front. The maximum leaves room for
-    # higher sample rates, where the same lines cost proportionally more.
-    WCLAP_MEMORY_MINIMUM 64MiB
-    WCLAP_MEMORY_INITIAL 64MiB
-    WCLAP_MEMORY_MAXIMUM 128MiB
+    # Two 3.1 s lines and their compander gains, plus six 16-stage blurs, are about
+    # 6 MB at 48 kHz and four times that at 192 kHz.
+    WCLAP_MEMORY_MINIMUM 16MiB
+    WCLAP_MEMORY_INITIAL 16MiB
+    WCLAP_MEMORY_MAXIMUM 64MiB
     AUV3_BUILD_STANDALONE TRUE
     AUV2_MANUFACTURER_NAME "Charlie Culbert"
     AUV2_MANUFACTURER_CODE "ChAr"

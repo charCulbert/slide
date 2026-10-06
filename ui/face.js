@@ -1,74 +1,89 @@
-// <slide-face> — the whole face: picture, rails, chips, telemetry, on one canvas.
+// <slide-face> — the whole face on one canvas: the picture of the echoes in the
+// middle, every parameter on a rail around it, and most of them draggable in the
+// picture too, each gesture level with its rail.
 //
-// Ported from prototype/slide.html, which is the behavioural spec. Every number the
-// face needs about a parameter — range, step, curve, midpoint, option words —
-// arrives through setMetadata (D10); nothing about the parameter set is written down
-// here. Continuous parameters are compost value controls sharing the canvas as their
-// event target (D11), so keyboard, ARIA and the gesture lifecycle come from compost
-// and every change leaves as a normal compost parameter event. Sync and Hold are
-// compost-button switches; Link, Mode and Medium are compost-button cycles, laid over
-// the canvas top band and styled to look like the prototype's chips.
+// The picture: two lines, left (L) and right (R), each a row of echoes. L is the
+// stock and R the slide, R's time held to L's by a ratio or a difference. The time
+// axis is log from 10 ms to 10 s, then a perspective stretch to ∞ at the edge. The
+// band from the first echo to the glass is the loop; before it is the input's (Pre
+// blur), after the glass the output's (Post blur). The glass sits on the tail:
+// sideways is Repeats, up and down is Tone.
+//
+// Every number the face needs about a parameter — range, step, curve, midpoint,
+// option words — arrives through setMetadata; nothing about the parameter set is
+// written down here except which identifier each gesture moves. Continuous
+// parameters are compost value controls sharing the canvas as their event target,
+// so keyboard, ARIA and the gesture lifecycle come from compost and every change
+// leaves as a normal compost parameter event. Link, Sync and Medium are compost
+// buttons laid over the canvas where their chips are drawn.
 
 import './compost/components/compost-button.js';
 import {createValueControl} from './compost/value-control.js';
 import * as laws from './laws.js';
 
 const MONO = '"IBM Plex Mono", ui-monospace, monospace';
-const SANS = '"IBM Plex Sans", system-ui, sans-serif';
 
-// Identifiers of the discrete parameters the top band owns as chips. `on` decides
-// when the word is lit: Link is lit unless it is at its last option (Off), Mode
-// unless it is at its first (Stereo), Medium never.
+// The discrete parameters. Each is drawn on the canvas, with its compost button laid
+// over the drawing, invisible, for the keyboard and screen readers.
 const CHIPS = [
-  {id: 'link', mode: 'cycle', on: 'notMax', prefix: true},
-  {id: 'mode', mode: 'cycle', on: 'notMin'},
-  {id: 'sync', mode: 'switch', on: 'pressed'},
-  {id: 'medium', mode: 'cycle', on: 'never'},
-  {id: 'hold', mode: 'switch', on: 'pressed'}
+  {id: 'mod_type', mode: 'cycle'},
+  {id: 'sync', mode: 'switch'},
+  {id: 'link', mode: 'cycle'}
 ];
 const CHIP_IDS = CHIPS.map(chip => chip.id);
 
+// Note values in beats, for Sync's snapping and names.
+const NOTES = [[1 / 48, '1/128T'], [1 / 32, '1/128'], [1 / 24, '1/64T'], [3 / 64, '1/128.'], [1 / 16, '1/64'],
+  [1 / 12, '1/32T'], [3 / 32, '1/64.'], [1 / 8, '1/32'], [1 / 6, '1/16T'], [3 / 16, '1/32.'], [1 / 4, '1/16'],
+  [1 / 3, '1/8T'], [3 / 8, '1/16.'], [1 / 2, '1/8'], [2 / 3, '1/4T'], [3 / 4, '1/8.'], [1, '1/4'],
+  [4 / 3, '1/2T'], [3 / 2, '1/4.'], [2, '1/2'], [8 / 3, '1/1T'], [3, '1/2.'], [4, '1/1'], [6, '1/1.'],
+  [8, '2/1'], [16, '4/1']];
+
+const RATIO_NAMES = ['1:4', '1:3', '1:2', '2:3', '3:4', '1:1', '5:4', '4:3', '3:2', 'φ', '2:1', '3:1', '4:1'];
+const NICE = laws.niceRatios.map((r, i) => [r, RATIO_NAMES[i]]);
+// The ratios that claim label space first on R's rail, most common first.
+const RAIL_RATIOS = ['1:1', '2:1', '1:2', '3:2', '2:3', '3:1', '4:3', '3:4', 'φ', '1:3', '4:1', '1:4', '5:4'];
+
+// Names are set in a condensed grotesque, like a rule's engraving; numbers and
+// readouts are mono.
+const NAMES = '"Barlow Semi Condensed", "IBM Plex Sans Condensed", system-ui, sans-serif';
+const MOD_AMOUNTS = ['mod_a', 'mod_b', 'mod_c'];
+
+const AXIS_END = 10000; // where the log axis gives way to the perspective stretch
+
+// Which picture key each parameter identifier lights, for keyboard focus.
+const FOCUS = {left_time: 'L', left_beats: 'L', ratio: 'R', difference: 'R', repeats: 'repeats',
+  pre_blur: 'pre', loop_blur: 'loop', post_blur: 'post', tone: 'tone', mix: 'mix', mod_a: 'mod', mod_b: 'mod',
+  mod_c: 'mod', cross: 'cross', feed: 'feed'};
+
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const dB = a => 20 * Math.log10(Math.max(1e-6, a));
-const fmtMs = v => v < 1000
-  ? `${v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : v.toFixed(0)} ms`
-  : `${(v / 1000).toFixed(v < 10000 ? 2 : 1)} s`;
 const rnd = i => ((i * 9301 + 49297) % 233280) / 233280 * 2 - 1;
+const ratioName = r => (NICE.find(([v]) => Math.abs(Math.log(r / v)) < 0.004) || [0, r.toFixed(2)])[1];
+const fmt = ms => !Number.isFinite(ms) || ms > 3.6e6 ? '∞' : ms >= 60000 ? `${(ms / 60000).toFixed(1)} min`
+  : ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)} s` : `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`;
+const fmtCount = n => n < 10 ? n.toFixed(1) : `${Math.round(n)}`;
 
-const ratioName = r =>
-  Math.abs(r - 1.6180339887) < 0.002 ? 'φ' : Math.abs(r - 2 / 3) < 0.002 ? '2:3'
-  : Math.abs(r - 4 / 3) < 0.002 ? '4:3' : Math.abs(r - 1.5) < 0.002 ? '3:2'
-  : Math.abs(r - 1) < 0.002 ? '1:1' : Math.abs(r - 2) < 0.002 ? '2:1'
-  : Math.abs(r - 0.5) < 0.002 ? '1:2' : `${r.toFixed(2)}×`;
-
-// The two hand-drawn cursors: a smear for Blur, a curve for Shape.
-const cur = svg => `url("data:image/svg+xml,${encodeURIComponent(svg)}") 12 12, ns-resize`;
-const CUR = {
-  wash: cur('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g stroke="#111" fill="none" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M8 6l4-3 4 3M8 18l4 3 4-3"/><g opacity=".35" stroke-width="3"><line x1="4" y1="9" x2="20" y2="9"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="4" y1="15" x2="20" y2="15"/></g></g></svg>'),
-  shape: cur('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><g stroke="#111" fill="none" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><path d="M8 6l4-3 4 3M8 18l4 3 4-3"/><path d="M3 17q6 0 9-9t9-2" opacity=".6"/></g></svg>')
-};
+// The time axis: log from 10 ms to 10 s, then a perspective stretch to the right
+// edge where a time t sits 1 − 10 s/t of the way along, so 20 s is halfway, 40 s
+// three quarters, and the edge is ∞.
+function timeAxis(x0, xEnd, x1) {
+  const lo = laws.minTimeMs, dec = Math.log10(AXIS_END / lo);
+  const X = t => t <= AXIS_END ? x0 + Math.log10(Math.max(lo, t) / lo) / dec * (xEnd - x0)
+    : xEnd + (x1 - xEnd) * (1 - AXIS_END / t);
+  X.inv = x => x <= xEnd ? lo * Math.pow(10, (x - x0) / (xEnd - x0) * dec)
+    : AXIS_END / Math.max(1e-6, 1 - (x - xEnd) / (x1 - xEnd));
+  X.over = x1;
+  return X;
+}
 
 const STYLE = `
-:host{ position:relative; display:block; height:100%; min-width:0;
-  --face-mono:${MONO}; --face-sans:${SANS}; }
+:host{ position:relative; display:block; height:100%; min-width:0; }
 canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none }
 .chips{ position:absolute; inset:0; pointer-events:none }
-compost-button{ position:absolute; pointer-events:auto; font-family:var(--face-mono);
-  font-weight:500; font-size:11px; line-height:22px; --compost-button-width:100%;
-  --compost-button-height:22px; }
-compost-button::part(button){ width:100%; height:22px; border:0; background:none;
-  padding:0; color:var(--dim); cursor:pointer; font:inherit; }
-compost-button::part(label){ font-size:11px; padding:0 8px; line-height:22px;
-  text-decoration:none; }
-compost-button:hover::part(button){ color:var(--ink) }
-compost-button:hover::part(label){ text-decoration:underline;
-  text-decoration-color:var(--hair); text-decoration-thickness:1px;
-  text-underline-offset:4px; }
-compost-button[on]::part(button){ color:var(--ink) }
-compost-button[on]::part(label), compost-button[on]:hover::part(label){
-  text-decoration:underline; text-decoration-color:var(--ink);
-  text-decoration-thickness:2px; text-underline-offset:4px; }
-compost-button::part(button):focus-visible{ outline:1px solid var(--acc); outline-offset:1px }
+compost-button{ position:absolute; pointer-events:none; opacity:0; --compost-button-width:100%; --compost-button-height:100%; }
+compost-button:focus-within{ opacity:1 }
+compost-button::part(button){ width:100%; height:100%; border:0; background:none; color:transparent; padding:0;
+  outline:1px solid var(--acc); outline-offset:1px; }
 .controls{ position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%) }
 .controls>div{ width:1px; height:1px }
 `;
@@ -88,9 +103,7 @@ export class SlideFace extends HTMLElement {
     this.metaByID = new Map();  // id -> spec
     this.controls = new Map();  // identifier -> compost value control
     this.buttons = new Map();   // identifier -> compost-button
-    this.chipBoxes = new Map(); // identifier -> {x,y,w,h} in css px
-    this.zones = [];            // canvas hit rectangles, device px
-    this.geo = null;
+    this.zones = [];            // hit rectangles, device px, back to front
     this.rect = null;
     this.hover = null;
     this.drag = null;
@@ -100,8 +113,7 @@ export class SlideFace extends HTMLElement {
     this.themeDirty = true;
     this.dirty = true;
     this.now = 0;
-    this.level = {in: 0, out: 0};
-    this.frame = {inL: 0, inR: 0, wetL: 0, wetR: 0, leftMs: 0, rightMs: 0, hold: 0, bpm: 120};
+    this.frame = {bpm: 120};
 
     this.onPointerMove = this.onPointerMove.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
@@ -116,6 +128,7 @@ export class SlideFace extends HTMLElement {
     c.addEventListener('pointerdown', this.onPointerDown);
     c.addEventListener('pointerup', this.onPointerUp);
     c.addEventListener('pointercancel', this.onPointerUp);
+    c.addEventListener('dblclick', e => this.onDoubleClick(e));
     c.addEventListener('pointerleave', () => {
       if (!this.drag && this.hover) { this.hover = null; this.invalidate(); }
     });
@@ -124,9 +137,9 @@ export class SlideFace extends HTMLElement {
   }
 
   // Moving the face from one parent to another disconnects and reconnects it. Both
-  // callbacks must therefore be reversible: they start and stop the clock and the observers,
-  // and never touch the value controls, whose ARIA and gesture state have to survive
-  // the move. The canvas's own listeners are wired once, in wire().
+  // callbacks must therefore be reversible: they start and stop the clock and the
+  // observers, and never touch the value controls, whose ARIA and gesture state have
+  // to survive the move. The canvas's own listeners are wired once, in wire().
   connectedCallback() {
     if (!this.wired) this.wire();
     this.resizeObserver = new ResizeObserver(() => { this.rect = null; this.invalidate(); });
@@ -136,15 +149,15 @@ export class SlideFace extends HTMLElement {
       {attributes: true, attributeFilter: ['data-color-scheme', 'class', 'style']});
     this.scheme = matchMedia('(prefers-color-scheme: dark)');
     this.scheme.addEventListener('change', this.markTheme);
+    document.fonts?.ready.then(this.invalidate);
     this.rect = null;
     this.themeDirty = true;
     this.invalidate();
     const tick = () => {
       this.raf = requestAnimationFrame(tick);
       this.now = performance.now() / 1000;
-      this.easeLevels();
       // render() reports false while the view has no box; stay dirty until it does.
-      if (this.dirty || this.animating()) this.dirty = !this.render();
+      if (this.dirty || this.moving()) this.dirty = !this.render();
     };
     this.raf = requestAnimationFrame(tick);
   }
@@ -156,19 +169,11 @@ export class SlideFace extends HTMLElement {
     this.scheme?.removeEventListener('change', this.markTheme);
   }
 
-  /** Tears the face down for good; a move is not a teardown, so nothing calls this
-   * except a page that is finished with the element. */
-  dispose() {
-    this.disconnectedCallback();
-    for (const control of this.controls.values()) control.dispose();
-    this.controls.clear();
-  }
-
   invalidate() { this.dirty = true; }
 
   // ---- metadata, values, telemetry -----------------------------------------
 
-  /** The parameter table, as the plugin's handshake sent it (D10). */
+  /** The parameter table, as the plugin's handshake sent it. */
   setMetadata(list) {
     this.meta.clear();
     this.metaByID.clear();
@@ -184,16 +189,17 @@ export class SlideFace extends HTMLElement {
   setValue(idOrIdentifier, value) {
     const spec = this.metaByID.get(String(idOrIdentifier)) || this.meta.get(idOrIdentifier);
     if (!spec || !Number.isFinite(value)) return;
-    const control = this.controls.get(spec.identifier);
-    if (control) control.setValue(value, false, 'bridge');
-    const button = this.buttons.get(spec.identifier);
-    if (button) button.setValue(value, false, 'bridge');
+    this.controls.get(spec.identifier)?.setValue(value, false, 'bridge');
+    this.buttons.get(spec.identifier)?.setValue(value, false, 'bridge');
     this.invalidate();
   }
 
-  /** One telemetry snapshot (D9), pulled by the bridge every animation frame. */
+  /** The host's tempo, for Sync, whenever it changes. */
   setTelemetry(frame) {
-    if (frame && Number.isFinite(frame.bpm)) this.frame = frame;
+    if (frame && Number.isFinite(frame.bpm) && frame.bpm !== this.frame.bpm) {
+      this.frame = frame;
+      this.invalidate();
+    }
   }
 
   buildControls() {
@@ -209,7 +215,7 @@ export class SlideFace extends HTMLElement {
       this.controlHost.append(element);
       const control = createValueControl(element, {
         parameterID: String(spec.id),
-        parameterKind: spec.step > 0 && spec.options.length ? 'discrete' : 'continuous',
+        parameterKind: 'continuous',
         name: spec.name,
         label: spec.name,
         min: spec.min,
@@ -220,7 +226,6 @@ export class SlideFace extends HTMLElement {
         unit: spec.unit,
         value: spec.initial,
         resetValue: spec.initial,
-        text: spec.options.length ? spec.options : '',
         displayFractionDigits: spec.digits,
         eventTarget: this.canvas,
         pointerTarget: null,
@@ -243,22 +248,13 @@ export class SlideFace extends HTMLElement {
       button.setAttribute('aria-label', spec.name);
       if (chip.mode === 'switch') button.toggleAttribute('pressed', spec.initial >= 0.5);
       else {
-        button.setAttribute('text', this.chipText(chip).join('|'));
+        button.setAttribute('text', spec.options.join('|'));
         button.setAttribute('value', String(Math.round(spec.initial)));
       }
-      button.addEventListener('change', () => this.chipChanged(chip));
+      button.addEventListener('change', () => this.chipChanged(chip.id));
       this.chipHost.append(button);
       this.buttons.set(chip.id, button);
     }
-  }
-
-  chipText(chip) {
-    const spec = this.meta.get(chip.id);
-    if (!spec) return [];
-    // Link reads as the prototype's sentence; Medium reads "Clean" at Wear 0 (D6).
-    if (chip.prefix) return spec.options.map(o => `${spec.name} ${o.toLowerCase()}`);
-    if (chip.id === 'medium' && this.val('wear') === 0) return spec.options.map(() => 'Clean');
-    return spec.options.slice();
   }
 
   // ---- reading and writing values ------------------------------------------
@@ -276,6 +272,8 @@ export class SlideFace extends HTMLElement {
     return spec ? [spec.min, spec.max] : [0, 1];
   }
 
+  initial(identifier) { return this.meta.get(identifier)?.initial ?? 0; }
+
   /** One complete edit: begin, value, end. */
   once(identifier, value) {
     const control = this.controls.get(identifier);
@@ -288,366 +286,215 @@ export class SlideFace extends HTMLElement {
     control.endGesture(false, 'face');
   }
 
-  /** A chip that changes what another parameter means re-bases that parameter, so
-   * the times on screen do not jump — the prototype's act(). */
-  chipChanged(chip) {
-    const {left, right} = this.lastTimes ?? this.times();
-    if (chip.id === 'link') {
-      this.once('ratio', left > 0 ? right / left : 1);
-      this.once('difference', right - left);
-    } else if (chip.id === 'sync' && this.sync()) {
-      this.once('left_division', this.nearestDivision(left)?.index ?? 0);
-      if (this.link() === 2) this.once('right_division', this.nearestDivision(right)?.index ?? 0);
+  /** Inside a drag: the first write to a parameter opens its gesture, and the drag's
+   * end closes every gesture it opened. Outside one, a write is a complete edit. */
+  write(identifier, value) {
+    if (!this.drag) { this.once(identifier, value); return; }
+    const control = this.controls.get(identifier);
+    const spec = this.meta.get(identifier);
+    if (!control || !spec || !Number.isFinite(value)) return;
+    if (!this.drag.started.has(identifier)) {
+      this.drag.started.add(identifier);
+      control.beginGesture('face');
     }
+    control.setValue(clamp(value, spec.min, spec.max), true, 'face');
+  }
+
+  /** A chip that changes what the times mean re-bases them first, so nothing on
+   * screen or in the sound moves: Link and Sync both keep both lines put. */
+  chipChanged(id) {
+    const [l, r] = this.lastTimes ?? this.times();
+    if (id === 'link') { this.once('ratio', r / l); this.once('difference', r - l); }
+    else if (id === 'sync') this.writeLeft(l, true);
     this.invalidate();
   }
 
-  beginEdit(identifier) { this.controls.get(identifier)?.beginGesture('face'); }
-  endEdit(identifier) { this.controls.get(identifier)?.endGesture(false, 'face'); }
-
-  setSwitch(identifier, on) {
-    const button = this.buttons.get(identifier);
-    if (button && button.pressed !== Boolean(on)) button.setValue(on ? 1 : 0, true, 'face');
-  }
-
-  // ---- the derived numbers the picture is drawn from -----------------------
+  // ---- the parameters in the picture's units -------------------------------
 
   bpm() { return this.frame.bpm > 0 ? this.frame.bpm : 120; }
-
-  divisions() {
-    const spec = this.meta.get('left_division');
-    if (!spec) return [];
-    const bpm = this.bpm();
-    return spec.options.map((name, index) => ({
-      index,
-      name,
-      ms: laws.divisionMs(index, bpm),
-      kind: name.endsWith('.') ? 'dot' : name.endsWith('T') ? 'trip' : 'plain'
-    })).filter(d => d.ms >= laws.minTimeMs && d.ms <= this.range('left')[1]);
-  }
-
-  nearestDivision(ms) {
-    const index = laws.nearestDivision(ms, this.bpm());
-    const name = this.meta.get('left_division')?.options[index];
-    return name == null ? null : {index, name, ms: laws.divisionMs(index, this.bpm())};
-  }
-
+  beatMs() { return 60000 / this.bpm(); }
   sync() { return this.val('sync') >= 0.5; }
-  hold() { return this.val('hold') >= 0.5; }
-  link() { return Math.round(this.val('link')); }
-  mode() { return Math.round(this.val('mode')); }
-  medium() { return Math.round(this.val('medium')); }
-  repeats() { return Math.round(this.val('repeats')); }
-  shape() { return this.val('shape'); }
-  blur01() { const [, max] = this.range('blur'); return this.val('blur') / max; }
-  tone11() { const [, max] = this.range('tone'); return this.val('tone') / max; }
-  mix01() { const [, max] = this.range('mix'); return this.val('mix') / max; }
-  wear01() { const [, max] = this.range('wear'); return this.val('wear') / max; }
+  ratioMode() { return Math.round(this.val('link')) === 0; }
+  modType() { return clamp(Math.round(this.val('mod_type')), 0, 2); }
+  modAmount(type = this.modType()) { return this.val(MOD_AMOUNTS[type]); }
+  repeats() { return Math.max(1, this.val('repeats')); }
+  percent(id) { return this.val(id) / 100; }
 
-  /** Left and Right in ms, after Sync and Link. */
   times() {
-    const [lo, hi] = this.range('left');
-    const sync = this.sync();
-    const bpm = this.bpm();
-    const left = sync
-      ? laws.divisionMs(Math.round(this.val('left_division')), bpm)
-      : clamp(this.val('left'), lo, hi);
-    const linked = laws.linkRight(this.link(), left, this.val('ratio'),
-      this.val('difference'), this.val('right'));
-    let right = linked;
-    if (sync) {
-      right = this.link() === 2
-        ? laws.divisionMs(Math.round(this.val('right_division')), bpm)
-        : (this.nearestDivision(linked)?.ms ?? linked);
-    }
-    return {left: clamp(left, lo, hi), right: clamp(right, lo, hi)};
+    const l = clamp(this.sync() ? this.val('left_beats') * this.beatMs() : this.val('left_time'),
+      laws.minTimeMs, laws.maxTimeMs);
+    const r = this.ratioMode() ? l * this.val('ratio') : l + this.val('difference');
+    return [l, clamp(Number.isFinite(r) ? r : l, laws.minTimeMs, laws.maxTimeMs)];
   }
 
   tail() {
-    const {left, right} = this.times();
-    return laws.tailMs(this.mode(), left, right, this.repeats(), this.hold());
+    return Math.max(...this.times()) * this.repeats();
   }
 
-  gains() {
-    const n = this.repeats();
-    const out = [];
-    for (let k = 0; k < n; k++) out.push(laws.gainAt(this.shape(), n, k));
+  nearestNote(ms) {
+    const beats = ms / this.beatMs();
+    let best = NOTES[0];
+    for (const n of NOTES) if (Math.abs(Math.log(n[0] / beats)) < Math.abs(Math.log(best[0] / beats))) best = n;
+    return {beats: best[0], name: best[1], ms: best[0] * this.beatMs()};
+  }
+
+  /** A time as the reader wants it: a note name under Sync when it is one. */
+  nameT(ms) {
+    if (!this.sync()) return fmt(ms);
+    const n = this.nearestNote(ms);
+    return Math.abs(Math.log(n.ms / ms)) < 0.003 ? n.name : fmt(ms);
+  }
+
+  relWord() {
+    const [l, r] = this.times();
+    return this.ratioMode() ? `L × ${ratioName(r / l)}` : `L ${r - l >= 0 ? '+' : '−'} ${fmt(Math.abs(r - l))}`;
+  }
+
+  // ---- moving the times -----------------------------------------------------
+
+  /** Writes L's own time in the units Sync stores; under Sync it snaps to the
+   * nearest note unless `free`. */
+  writeLeft(ms, free) {
+    const t = clamp(ms, laws.minTimeMs, laws.maxTimeMs);
+    if (this.sync()) this.write('left_beats', free ? t / this.beatMs() : this.nearestNote(t).beats);
+    else this.write('left_time', t);
+  }
+
+  snapRatio(r, free) {
+    if (free) { this.held = 0; return r; }
+    const s = laws.nearestNiceRatio(r, this.held);
+    this.held = s.newHeld;
+    return s.value;
+  }
+
+  /** Moves L alone: R stays where it was at the start of the drag, and the relation
+   * follows. Under Sync L snaps to notes; otherwise the ratio snaps to nice ones. */
+  moveL(ms, rFixed, free) {
+    const [rMin, rMax] = this.range('ratio');
+    let l = clamp(ms, laws.minTimeMs, laws.maxTimeMs);
+    if (this.ratioMode()) {
+      l = clamp(l, rFixed / rMax, rFixed / rMin);
+      if (this.sync() && !free) l = this.nearestNote(l).ms;
+      else l = rFixed / this.snapRatio(rFixed / l, free);
+      this.writeLeft(l, true);
+      this.write('ratio', clamp(rFixed / l, rMin, rMax));
+    } else {
+      if (this.sync() && !free) l = this.nearestNote(l).ms;
+      this.writeLeft(l, true);
+      this.write('difference', rFixed - l);
+    }
+  }
+
+  /** Moves R alone: the relation changes, L stays. */
+  moveR(ms, free) {
+    const l = this.times()[0], r = clamp(ms, laws.minTimeMs, laws.maxTimeMs);
+    if (this.ratioMode()) {
+      const [rMin, rMax] = this.range('ratio');
+      this.write('ratio', clamp(this.snapRatio(r / l, free), rMin, rMax));
+    } else this.write('difference', r - l);
+  }
+
+  /** Moves both: L goes, and R keeps its ratio or difference to it. */
+  moveBoth(ms, free) {
+    const ratio = this.val('ratio'), diff = this.val('difference');
+    const lo = this.ratioMode() ? Math.max(laws.minTimeMs, laws.minTimeMs / ratio) : Math.max(laws.minTimeMs, laws.minTimeMs - diff);
+    const hi = this.ratioMode() ? Math.min(laws.maxTimeMs, laws.maxTimeMs / ratio) : Math.min(laws.maxTimeMs, laws.maxTimeMs - diff);
+    this.writeLeft(clamp(ms, lo, hi), free);
+  }
+
+  resetL() {
+    const r = this.times()[1];
+    const l = this.sync() ? this.initial('left_beats') * this.beatMs() : this.initial('left_time');
+    this.writeLeft(l, true);
+    this.write('ratio', r / l);
+    this.write('difference', r - l);
+  }
+
+  resetR() { this.write('ratio', this.initial('ratio')); this.write('difference', this.initial('difference')); }
+
+  // ---- the picture's model --------------------------------------------------
+
+  /** Every echo, as the engine makes them: routes through L (i passes) and R (j
+   * passes) land at i·L + j·R; routes with the same i and j add as amplitudes. */
+  echoes() {
+    const [TA, TB] = this.times(), x = this.percent('cross'), f = this.percent('feed');
+    const g = laws.passGain(this.repeats(), x, TA, TB);
+    const out = [], heap = [], key = new Map(), FLOOR = Math.pow(10, -66 / 20);
+    const K = e => `${e.line}:${e.i}:${e.j}`;
+    const up = i => { while (i > 0) { const p = (i - 1) >> 1; if (heap[p].t <= heap[i].t) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+    const down = i => { for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
+      if (l < heap.length && heap[l].t < heap[m].t) m = l; if (r < heap.length && heap[r].t < heap[m].t) m = r;
+      if (m === i) return; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } };
+    const push = e => { if (e.a < FLOOR || e.t > 12000 || heap.length > 5000) return; const k = K(e), ex = key.get(k);
+      if (ex) { ex.a += e.a; ex.aL += e.aL; if (e.hop && !ex.hop) ex.hop = e.hop; return; }
+      key.set(k, e); heap.push(e); up(heap.length - 1); };
+    const a0 = 0.7 * Math.min(1, 1 - f), b0 = 0.7 * Math.min(1, 1 + f);
+    push({t: TA, line: 0, i: 1, j: 0, a: a0, aL: a0, n: 1});
+    push({t: TB, line: 1, i: 0, j: 1, a: b0, aL: 0, n: 1});
+    while (heap.length && out.length < 2500) {
+      const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; down(0); }
+      key.delete(K(top)); out.push(top);
+      for (const to of [top.line, 1 - top.line]) { const i = top.i + (to === 0), j = top.j + (to === 1);
+        const k = g * (to === top.line ? 1 - x : x);
+        push({t: i * TA + j * TB, line: to, i, j, n: top.n + 1, a: top.a * k, aL: top.aL * k,
+          hop: to !== top.line ? {t: top.t, line: top.line} : null}); }
+    }
+    out.g = g;
     return out;
   }
 
-  /** Fraction of a decade of accumulated timing wobble at this instant. Wear 0 is
-   * still on every medium (D6) and Digital never wobbles. */
-  drift(n, side) {
-    const wear = this.wear01();
-    const amt = Math.pow(wear, 1.8) * 5;
-    const medium = this.medium();
-    if (amt <= 0 || medium === 4 || this.drag) return 0;
-    const t = this.now, ph = side ? 1.57 : 0;
-    let w = 0;
-    if (medium === 0) w = 0.35 * Math.sin(2 * Math.PI * 0.7 * t + ph) + 0.15 * Math.sin(2 * Math.PI * 6.1 * t + n + ph);
-    else if (medium === 1) w = 0.6 * Math.sin(2 * Math.PI * 2.3 * t + ph) + 0.9 * Math.sin(2 * Math.PI * 0.33 * t + rnd(n) * 3 + ph) * rnd(n * 7 + side);
-    else if (medium === 2) w = 0.25 * rnd(Math.floor(t * 20) + n * 13 + side);
-    else if (medium === 3) w = 0.5 * (Math.sin(2 * Math.PI * 0.3 * t + ph) + 0.6 * Math.sin(2 * Math.PI * 0.311 * t + 0.4) + 0.35 * Math.sin(2 * Math.PI * 0.155 * t + 1.9)) / 1.95;
-    return w * amt * 0.035 * Math.sqrt(n);
+  recipe() { return laws.recipeAt(this.modType(), this.modAmount() / 100); }
+
+  /** True while the Mod is moving the echoes, so the picture keeps redrawing. */
+  moving() { return this.meta.size > 0 && this.recipe().sine > 0; }
+
+  /** Each line's fractional stretch from the Mod's slow wobble right now, as the
+   * engine runs it: depth × the wobble's reference time, over the line's time. (The
+   * engine's random part is left out of the picture.) */
+  wobbleNow() {
+    const rec = this.recipe(), times = this.times();
+    return [0, 1].map(line => rec.sine * Math.sin(2 * Math.PI * (rec.sineHz * this.now + line * 0.25))
+      * laws.wobbleReferenceMs(times[line]) / times[line]);
   }
 
-  /** Every repeat that sounds, as {t, side, a, n}. */
-  repeatList() {
-    const out = [];
-    const G = this.gains(), N = G.length;
-    const mode = this.mode(), hold = this.hold();
-    const pp = mode === 1, tap = mode === 2 ? 'R' : mode === 3 ? 'L' : false;
-    const {left: TL, right: TR} = this.times();
-    const th = Math.asin(pp ? 1 : 0.15), sk = Math.cos(th), lk = Math.sin(th);
-    const LIMIT = laws.holdTailMs;
-
-    if (hold) {
-      for (let k = 0; k < 400; k++) {
-        const t = tap === 'L' ? k * TR + TL : (k + 1) * TL;
-        if (t <= LIMIT) out.push({t, side: 0, a: Math.SQRT1_2, n: k + 1});
-        const t2 = tap === 'R' ? k * TL + TR : (k + 1) * TR;
-        if (t2 <= LIMIT) out.push({t: t2, side: 1, a: Math.SQRT1_2, n: k + 1});
-        if (t > LIMIT && t2 > LIMIT) break;
-      }
-      return out;
-    }
-    if (tap === 'R') {
-      for (let k = 0; k < N; k++) {
-        out.push({t: (k + 1) * TL, side: 0, a: G[k], n: k + 1});
-        out.push({t: k * TL + TR, side: 1, a: G[k], n: k + 1});
-      }
-      return out;
-    }
-    if (tap === 'L') {
-      for (let k = 0; k < N; k++) {
-        out.push({t: k * TR + TL, side: 0, a: G[k], n: k + 1});
-        out.push({t: (k + 1) * TR, side: 1, a: G[k], n: k + 1});
-      }
-      return out;
-    }
-    const heap = [], key = new Map();
-    const K = e => `${e.side}:${Math.round(Math.log10(e.t) * 300)}:${e.n}`;
-    const push = e => {
-      const k = K(e), ex = key.get(k);
-      if (ex) { ex.a = Math.hypot(ex.a, e.a); return; }
-      key.set(k, e); heap.push(e);
-      let i = heap.length - 1;
-      while (i > 0) {
-        const p = (i - 1) >> 1;
-        if (heap[p].t <= heap[i].t) break;
-        [heap[p], heap[i]] = [heap[i], heap[p]]; i = p;
-      }
-    };
-    const pop = () => {
-      const top = heap[0], last = heap.pop();
-      if (heap.length) {
-        heap[0] = last;
-        let i = 0;
-        for (;;) {
-          const l = 2 * i + 1, r = l + 1; let m = i;
-          if (l < heap.length && heap[l].t < heap[m].t) m = l;
-          if (r < heap.length && heap[r].t < heap[m].t) m = r;
-          if (m === i) break;
-          [heap[m], heap[i]] = [heap[i], heap[m]]; i = m;
-        }
-      }
-      key.delete(K(top));
-      return top;
-    };
-    push({t: TL, side: 0, a: Math.SQRT1_2, n: 1});
-    push({t: TR, side: 1, a: Math.SQRT1_2, n: 1});
-    while (heap.length && out.length < 4000) {
-      const e = pop();
-      if (e.t > LIMIT || e.n > N) continue;
-      out.push({t: e.t, side: e.side, a: e.a * G[e.n - 1], n: e.n});
-      if (e.n >= N) continue;
-      push({t: e.t + [TL, TR][e.side], side: e.side, a: e.a * sk, n: e.n + 1});
-      push({t: e.t + [TL, TR][1 - e.side], side: 1 - e.side, a: e.a * lk, n: e.n + 1});
-    }
-    return out;
+  /** How an echo looks after its passes through the loop's filters, in either
+   * theme: losing highs (the Mod's loss, Tone's dark side) makes it darker and a
+   * little heavier, losing lows (Tone's thin side) brighter and finer. Both grow over
+   * the first few passes. Returns a width factor and a tint from -1 (towards black)
+   * to +1 (towards white). */
+  shadeOf(e) {
+    const cuts = laws.toneCuts(this.val('tone') / 100);
+    const hc = Math.min(this.recipe().lossHz, cuts.highCutHz);
+    const dark = 1 - Math.pow(clamp((Math.log10(hc) - Math.log10(200)) / 2, 0, 1), 0.6);
+    const thin = clamp(Math.log10(cuts.lowCutHz / 20) / Math.log10(2500 / 20), 0, 1);
+    const p = Math.min(1, e.n / 6);
+    return {width: Math.max(0.4, 1 + 0.8 * dark * p - 0.55 * thin * p), tint: (thin - dark) * p};
   }
 
-  easeLevels() {
-    const f = this.frame;
-    const i = Math.max(f.inL || 0, f.inR || 0), o = Math.max(f.wetL || 0, f.wetR || 0);
-    const L = this.level;
-    L.in = i > L.in ? i : L.in * 0.85;
-    L.out = o > L.out ? o : L.out * 0.93;
-    if (L.in < 0.001) L.in = 0;
-    if (L.out < 0.001) L.out = 0;
-  }
-
-  animating() {
-    return (this.wear01() > 0 && this.medium() !== 4) || this.level.in > 0 || this.level.out > 0;
-  }
-
-  // ---- layout ---------------------------------------------------------------
-
-  readTheme() {
-    if (!this.themeDirty) return;
-    const s = getComputedStyle(this);
-    for (const k of ['panel', 'band', 'ink', 'ink2', 'dim', 'hair', 'track', 'acc', 'bg'])
-      this.theme[k] = s.getPropertyValue(`--${k}`).trim() || '#888';
-    this.themeDirty = false;
-  }
-
-  layout() {
-    const c = this.canvas;
-    const r = this.rect || (this.rect = c.getBoundingClientRect());
-    const dpr = Math.min(2, devicePixelRatio || 1);
-    const W = Math.max(320, Math.round(r.width * dpr)), H = Math.max(240, Math.round(r.height * dpr));
-    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
-    const narrow = W / dpr < 720;
-    const u = dpr;
-    const top = (narrow ? 92 : 60) * u;
-    const railH = 26 * u, railGap = 4 * u, rails = 3;
-    const bottom = H - (rails * (railH + railGap)) - 12 * u;
-    const axisY = bottom - 4 * u;
-    const X0 = (narrow ? 52 : 68) * u, X1 = W - (narrow ? 116 : 140) * u;
-    const Y = top + (axisY - top) / 2 - 6 * u;
-    const HMAX = (axisY - top) / 2 - 30 * u;
-    return {
-      W, H, dpr: u, narrow, top, axisY, X0, X1, Y, HMAX, railH, railGap,
-      railY: k => bottom + 8 * u + k * (railH + railGap),
-      vx: {wash: X1 + (narrow ? 26 : 34) * u, shape: X1 + (narrow ? 62 : 74) * u,
-           tone: X1 + (narrow ? 98 : 114) * u},
-      vTop: Y - HMAX, vBot: Y + HMAX,
-      XD: v => X0 + Math.log10(v) / 5 * (X1 - X0),
-      perDec: (X1 - X0) / 5
-    };
-  }
-
-  /** The chip row: the same measured-word layout the prototype drew, but the words
-   * are compost buttons laid over the canvas. */
-  layoutChips() {
-    const {dpr, narrow, W} = this.geo;
-    const g = this.g;
-    g.font = `500 ${Math.round(11 * dpr)}px ${MONO}`;
-    const widthOf = label => g.measureText(label).width + 16 * dpr;
-    const label = chip => {
-      const button = this.buttons.get(chip.id);
-      if (!button) return '';
-      if (chip.mode === 'switch') return this.meta.get(chip.id)?.name ?? '';
-      const text = this.chipText(chip);
-      return text[clamp(Math.round(this.val(chip.id)), 0, text.length - 1)] ?? '';
-    };
-    const h = 22 * dpr;
-    const yc = 11 * dpr, y2 = narrow ? 40 * dpr : yc;
-    const boxes = {};
-    let X = 92 * dpr;
-    boxes.link = {x: X, y: yc, w: widthOf(label(CHIPS[0])), h};
-    X = boxes.link.x + boxes.link.w + 6 * dpr;
-    boxes.mode = {x: X, y: yc, w: widthOf(label(CHIPS[1])), h};
-    X = narrow ? 16 * dpr : boxes.mode.x + boxes.mode.w + 22 * dpr;
-    boxes.sync = {x: X, y: y2, w: widthOf(label(CHIPS[2])), h};
-    X = boxes.sync.x + boxes.sync.w + 6 * dpr;
-    boxes.medium = {x: X, y: y2, w: widthOf(label(CHIPS[3])), h};
-
-    const xr = W - 16 * dpr;
-    const holdW = widthOf(label(CHIPS[4]));
-    boxes.hold = {x: xr - holdW, y: y2, w: holdW, h};
-
-    // the Wear rail after the medium word, and the Mix rail left of Hold
-    const bw = (narrow ? 56 : 80) * dpr;
-    boxes.wearRail = {x0: boxes.medium.x + boxes.medium.w + 6 * dpr, w: bw,
-      y: y2 + h / 2 + 1};
-    const mw = (narrow ? 80 : 120) * dpr;
-    boxes.mixRail = {x0: boxes.hold.x - 24 * dpr - mw, w: mw, y: y2 + 11 * dpr};
-    return boxes;
-  }
-
-  placeChips(boxes) {
-    const {dpr} = this.geo;
-    for (const chip of CHIPS) {
-      const button = this.buttons.get(chip.id);
-      const box = boxes[chip.id];
-      if (!button || !box) continue;
-      if (chip.mode === 'cycle') {
-        const text = this.chipText(chip).join('|');
-        if (button.getAttribute('text') !== text) button.setAttribute('text', text);
-      }
-      const value = this.val(chip.id);
-      const spec = this.meta.get(chip.id);
-      const on = chip.on === 'pressed' ? value >= 0.5
-        : chip.on === 'notMax' ? value !== spec.max
-        : chip.on === 'notMin' ? value !== spec.min : false;
-      button.toggleAttribute('on', on);
-      button.style.left = `${box.x / dpr}px`;
-      button.style.top = `${box.y / dpr}px`;
-      button.style.width = `${box.w / dpr}px`;
-      button.style.height = `${box.h / dpr}px`;
-    }
+  /** How wide an echo's smear is drawn: Pre and Post evenly on every echo, Loop
+   * growing pass by pass. */
+  smearOf(e) {
+    const pre = 0.7 * this.percent('pre_blur'), loop = 0.7 * this.percent('loop_blur'), post = 0.7 * this.percent('post_blur');
+    return 7 * pre + 9 * post + 4 * loop * Math.sqrt(e.n) * (1 + loop);
   }
 
   // ---- drawing --------------------------------------------------------------
 
-  txt(s, x, y, size, col, align = 'center', base = 'alphabetic', font = MONO, weight = 400) {
-    const g = this.g;
-    g.fillStyle = col; g.font = `${weight} ${size}px ${font}`;
-    g.textAlign = align; g.textBaseline = base; g.fillText(s, x, y);
+  readTheme() {
+    if (!this.themeDirty) return;
+    const s = getComputedStyle(this);
+    for (const k of ['panel', 'band', 'ink', 'ink2', 'dim', 'hair', 'acc', 'lineb', 'glass'])
+      this.theme[k] = s.getPropertyValue(`--${k}`).trim() || '#888';
+    this.themeDirty = false;
   }
 
-  line(x1, y1, x2, y2, col, w = 1, a = 1) {
-    const g = this.g;
-    g.strokeStyle = col; g.lineWidth = w; g.globalAlpha = a;
-    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); g.globalAlpha = 1;
-  }
-
-  rail(y, name, ticks, hx, handleCol, active, label, idx) {
-    const {X0, X1, dpr, railH} = this.geo, T = this.theme;
-    const a = active ? 1 : 0.55;
-    this.line(X0, y + railH * 0.55, X1, y + railH * 0.55, T.hair, 1, a);
-    for (const t of ticks) {
-      if (t.x < X0 - 1 || t.x > X1 + 1) continue;
-      this.line(t.x, y + railH * 0.55, t.x,
-        y + railH * 0.55 - (t.major ? 9 : t.mid ? 6 : 3.5) * dpr,
-        t.major ? T.ink2 : T.dim, t.major ? 1 : 0.7, a * (t.major ? 1 : 0.7));
-      if (t.label != null)
-        this.txt(t.label, t.x, y + railH * 0.55 - 11 * dpr, Math.round(8.5 * dpr), T.dim, 'center', 'bottom');
-    }
-    this.txt(name, X0 - 8 * dpr, y + railH * 0.55, Math.round(9 * dpr),
-      active ? T.ink : T.dim, 'right', 'middle');
-    if (idx != null) {
-      this.line(idx, y + railH * 0.55 - 12 * dpr, idx, y + railH * 0.55 + 3 * dpr, T.dim, 1, a * 0.8);
-      this.txt('1', idx, y + railH * 0.55 + 5 * dpr, Math.round(8 * dpr), T.dim, 'center', 'top');
-    }
-    const g = this.g;
-    this.line(hx, y + railH * 0.55 - 11 * dpr, hx, y + railH - 1 * dpr, handleCol, active ? 2 : 1.2, 1);
-    g.fillStyle = handleCol; g.beginPath();
-    g.moveTo(hx - 5.5 * dpr, y + railH - 1 * dpr);
-    g.lineTo(hx + 5.5 * dpr, y + railH - 1 * dpr);
-    g.lineTo(hx, y + railH - 7 * dpr); g.closePath(); g.fill();
-    if (label)
-      this.txt(label, X1 + 8 * dpr, y + railH * 0.55, Math.round(9.5 * dpr),
-        active ? T.ink : T.dim, 'left', 'middle');
-  }
-
-  logTicks(X, lo, hi, labels = true) {
-    const out = [];
-    for (let d = Math.floor(Math.log10(lo)); d <= Math.ceil(Math.log10(hi)); d++) {
-      const b = Math.pow(10, d);
-      for (let m = 1; m < 10; m++) {
-        const v = b * m;
-        if (v < lo * 0.999 || v > hi * 1.001) continue;
-        const major = m === 1, mid = m === 2 || m === 5;
-        out.push({x: X(v), major, mid,
-          label: (labels && (major || (!this.geo.narrow && mid && v >= 10)))
-            ? (v < 1000 ? v : `${v / 1000}s`) : null});
-        const steps = m < 3 ? 10 : 5;
-        for (let s = 1; s < steps; s++) {
-          const vv = v + b * s / steps;
-          if (vv > hi) break;
-          out.push({x: X(vv)});
-        }
-      }
-    }
-    return out;
-  }
-
-  nameT(ms) {
-    if (!this.sync()) return fmtMs(ms);
-    const d = this.divisions().find(d => Math.abs(d.ms - ms) < 0.01);
-    return d ? d.name : fmtMs(ms);
+  /** The parameters the zone under the pointer (or in hand) moves, so their rails
+   * light up; keyboard focus lights its own. */
+  hotParams() {
+    const z = this.drag ? this.drag.z : this.zones.find(q => q.key === this.hover);
+    if (z) return new Set(this.drag && z.byAxis && this.drag.axis ? [z.byAxis[this.drag.axis]] : z.params || []);
+    const focus = FOCUS[this.focusZone];
+    return new Set(focus ? [focus] : []);
   }
 
   /** Draws the face, and reports whether it could. A plug-in window starts with no
@@ -657,270 +504,411 @@ export class SlideFace extends HTMLElement {
     if (!this.meta.size) return false;
     const box = this.rect || (this.rect = this.canvas.getBoundingClientRect());
     if (!(box.width > 0 && box.height > 0)) return false;
-    this.geo = this.layout();
+    const c = this.canvas, dpr = Math.min(2, devicePixelRatio || 1);
+    const W = Math.round(box.width * dpr), H = Math.round(box.height * dpr);
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+    this.dpr = dpr;
     this.readTheme();
     const g = this.g, T = this.theme;
-    const {W, H, dpr, top, axisY, X0, X1, Y, HMAX, XD, narrow} = this.geo;
-    this.zones = [];
     g.clearRect(0, 0, W, H);
-
-    const {left: TL, right: TR} = this.times();
-    this.lastTimes = {left: TL, right: TR};
-    const hold = this.hold(), sync = this.sync(), link = this.link(), mode = this.mode();
-    const tap = mode === 2 ? 'R' : mode === 3 ? 'L' : false;
-    const count = this.repeats(), shape = this.shape();
-    const blur = this.blur01(), tone = this.tone11(), wear = this.wear01(), mix = this.mix01();
-    const D = laws.toneLaw(blur, tone, hold);
-    const tail = this.tail(), xTail = XD(Math.min(tail, laws.holdTailMs));
-    const which = this.drag ? this.drag.which : (this.hover ?? this.focusKey());
-    const nMax = this.range('repeats')[1];
-
-    const boxes = this.layoutChips();
-    this.placeChips(boxes);
-
-    // ---- top band
-    this.txt('S L I D E', 16 * dpr, 22 * dpr, Math.round(12 * dpr), T.ink, 'left', 'middle', MONO, 500);
-    { // the Wear rail after the medium word
-      const {x0: bx, w: bw, y: by} = boxes.wearRail;
-      const on = which === 'wearRail';
-      this.line(bx, by, bx + bw, by, T.hair, 1, on ? 1 : 0.55);
-      for (let i = 0; i <= 8; i++)
-        this.line(bx + bw * i / 8, by, bx + bw * i / 8, by - (i % 4 ? 2.5 : 5) * dpr, T.dim, 0.8, 0.7);
-      const hx = bx + bw * wear;
-      this.line(hx, by - 7 * dpr, hx, by + 5 * dpr, wear === 0 ? T.dim : T.ink, on ? 2.2 : 1.4);
-      if (on) this.txt(`${Math.round(wear * 100)}`, bx + bw + 6 * dpr, by, Math.round(9 * dpr), T.dim, 'left', 'middle');
-      this.zones.push({x: bx - 6 * dpr, y: by - 12 * dpr, w: bw + 12 * dpr, h: 24 * dpr,
-        key: 'wearRail', rail: {x0: bx, w: bw}});
-    }
-    { // Mix: a tiny rail in the band, left of Hold
-      const {x0: mx, w: mw, y: my} = boxes.mixRail;
-      this.line(mx, my, mx + mw, my, T.hair, 1, which === 'mix' ? 1 : 0.55);
-      for (let i = 0; i <= 10; i++)
-        this.line(mx + mw * i / 10, my, mx + mw * i / 10, my - (i % 5 ? 2.5 : 5) * dpr, T.dim, 0.8, 0.7);
-      const hx = mx + mw * mix;
-      this.line(hx, my - 7 * dpr, hx, my + 5 * dpr, T.ink, which === 'mix' ? 2.2 : 1.4);
-      this.txt(this.meta.get('mix').name, mx - 6 * dpr, my, Math.round(9 * dpr), T.dim, 'right', 'middle');
-      this.zones.push({x: mx - 8 * dpr, y: my - 12 * dpr, w: mw + 16 * dpr, h: 24 * dpr,
-        key: 'mix', rail: {x0: mx, w: mw}});
-    }
-
-    // ---- axis
-    this.line(X0, axisY, X1, axisY, T.hair);
-    if (sync) {
-      let plainIndex = -1;
-      for (const d of this.divisions()) {
-        const x = XD(d.ms), plain = d.kind === 'plain';
-        if (plain) plainIndex++;
-        const show = narrow ? (plain && plainIndex % 2 === 1) : true;
-        this.line(x, axisY, x, axisY + (plain ? 7 : 4) * dpr, plain ? T.ink2 : T.dim, 1, plain ? 1 : 0.6);
-        this.line(x, top + 6 * dpr, x, axisY, T.hair, 1, plain ? 0.5 : 0.2);
-        if (show) this.txt(d.name, x, axisY + (plain ? 8 : 20) * dpr,
-          Math.round((plain ? 10 : 8.5) * dpr), plain ? T.dim : T.hair, 'center', 'top');
-      }
-      for (const v of [5000, 10000, 20000, 50000, 100000]) {
-        const x = XD(v);
-        this.line(x, axisY, x, axisY + 5 * dpr, T.dim, 1, 0.6);
-        this.txt(`${v / 1000} s`, x, axisY + 8 * dpr, Math.round(10 * dpr), T.dim, 'center', 'top');
-      }
-    } else {
-      for (const t of this.logTicks(XD, 1, laws.holdTailMs)) {
-        if (t.major || t.mid)
-          this.line(t.x, axisY, t.x, axisY + (t.major ? 7 : 4) * dpr, t.major ? T.ink2 : T.dim, 1, t.major ? 1 : 0.6);
-        else this.line(t.x, axisY, t.x, axisY + 2 * dpr, T.dim, 0.7, 0.4);
-        if (t.label != null)
-          this.txt(String(t.label).replace('s', ' s') + (t.label === 1 ? ' ms' : ''),
-            t.x, axisY + 8 * dpr, Math.round(10 * dpr), T.dim, 'center', 'top');
-      }
-    }
-
-    // ---- picture
-    this.line(X0, Y, X1, Y, T.hair);
-    const xFirst = XD(Math.min(TL, TR));
-    g.fillStyle = T.band; g.globalAlpha = 0.5;
-    g.fillRect(xFirst, Y - HMAX, Math.max(0, xTail - xFirst), 2 * HMAX);
-    g.globalAlpha = 1;
-    if (which === 'field' || which === 'all') {
-      g.globalAlpha = 0.1; g.fillStyle = T.acc;
-      g.fillRect(xFirst, Y - HMAX, Math.max(0, xTail - xFirst), 2 * HMAX);
-      g.globalAlpha = 1;
-    }
-    const toneK = Math.pow(clamp((Math.log10(D.highCutHz) - Math.log10(200)) / 2, 0, 1), 0.6);
-    const thin = tone > 0 ? 1 - tone * 0.6 : 1;
-    const early = D.early / 0.62, diff = D.diffusion / 0.62;
-    for (const q of this.repeatList()) {
-      const x = XD(q.t) + this.drift(q.n, q.side) * this.geo.perDec;
-      if (x > X1) continue;
-      const frac = clamp((dB(q.a) + 66) / 66, 0, 1);
-      if (frac <= 0) continue;
-      const h = HMAX * frac, lv = Math.pow(frac, 0.7);
-      const fade = (1 - (1 - toneK) * Math.min(1, q.n / 6)) * lv;
-      const smear = (early * 18 + diff * (3 + q.n * 2.2)) * dpr * 0.5;
-      for (let s = -smear; s <= smear; s += Math.max(1, smear / 6)) {
-        const a = (smear > 0 ? (1 - Math.abs(s) / (smear + 1)) / (1 + smear / 8) : 1) * (0.25 + 0.75 * fade);
-        this.line(x + s, Y, x + s, q.side === 0 ? Y - h : Y + h, T.ink, 1.5 * dpr * thin, a);
-        if (smear === 0) break;
-      }
-    }
-    const nh = HMAX * clamp((dB(Math.SQRT1_2) + 66) / 66, 0, 1);
-    this.line(X0 + 2, Y - nh, X0 + 2, Y + nh, T.ink, 2.5 * dpr);
-    if (this.level.in > 0.001) {
-      const lh = HMAX * clamp((dB(this.level.in) + 60) / 60, 0, 1);
-      this.line(X0 + 2, Y - lh, X0 + 2, Y + lh, T.acc, 4 * dpr, 0.9);
-    }
-    if (this.level.out > 0.001) {
-      g.globalAlpha = clamp((dB(this.level.out) + 60) / 60, 0, 1) * 0.22;
-      g.fillStyle = T.acc;
-      g.fillRect(xFirst, Y - HMAX, Math.max(0, xTail - xFirst), 2 * HMAX);
-      g.globalAlpha = 1;
-    }
-
-    const hot = k => which === k;
-    const bracket = (x, up, key, label) => {
-      const on = hot(key), y = up ? Y - HMAX - 2 : Y + HMAX + 2;
-      if (on) {
-        g.globalAlpha = 0.16; g.fillStyle = T.acc;
-        g.fillRect(x - 14 * dpr, up ? top : Y, 28 * dpr, up ? Y - top : axisY - Y);
-        g.globalAlpha = 1;
-      }
-      this.line(x - 5 * dpr, y, x, up ? y - 5 * dpr : y + 5 * dpr, on ? T.acc : T.ink, (on ? 2 : 1.2) * dpr);
-      this.line(x, up ? y - 5 * dpr : y + 5 * dpr, x + 5 * dpr, y, on ? T.acc : T.ink, (on ? 2 : 1.2) * dpr);
-      if (label && (on || this.drag))
-        this.txt(label, x, up ? y - 8 * dpr : y + 8 * dpr, Math.round(11 * dpr), T.ink,
-          'center', up ? 'bottom' : 'top', SANS, 500);
-    };
-    const rl = sync ? this.nameT(TR)
-      : link === 0 ? ratioName(TR / TL)
-      : link === 1 ? `${TR - TL >= 0 ? '+' : '−'}${fmtMs(Math.abs(TR - TL))}`
-      : fmtMs(TR);
-    bracket(XD(TL), true, 'time', (tap === 'L' ? 'tap ' : '') + this.nameT(TL));
-    bracket(XD(TR), false, 'tr', (tap === 'R' ? 'tap ' : '') + rl);
-    {
-      const on = hot('rep');
-      if (on) {
-        g.globalAlpha = 0.16; g.fillStyle = T.acc;
-        g.fillRect(xTail - 14 * dpr, Y - HMAX - 2, 28 * dpr, axisY - (Y - HMAX - 2));
-        g.globalAlpha = 1;
-      }
-      this.line(xTail, Y - HMAX - 2, xTail, axisY, T.acc, (on ? 2.5 : 1) * dpr);
-      g.fillStyle = T.acc; g.beginPath();
-      g.moveTo(xTail - 5 * dpr, Y - HMAX - 2);
-      g.lineTo(xTail + 5 * dpr, Y - HMAX - 2);
-      g.lineTo(xTail, Y - HMAX + 5 * dpr); g.closePath(); g.fill();
-      if (on || this.drag)
-        this.txt(hold ? 'holding' : `${count} × · ${fmtMs(tail)}`,
-          xTail + (xTail > W * 0.8 ? -6 : 6) * dpr, Y + HMAX + 2, Math.round(11 * dpr),
-          T.acc, xTail > W * 0.8 ? 'right' : 'left', 'top', SANS, 500);
-    }
-    if (which === 'wash' || which === 'shapeM') {
-      const mid = (xFirst + xTail) / 2;
-      g.globalAlpha = 0.08; g.fillStyle = T.acc;
-      if (which === 'wash') g.fillRect(X0, Y - HMAX, mid - X0, 2 * HMAX);
-      else g.fillRect(mid, Y - HMAX, X1 - mid, 2 * HMAX);
-      g.globalAlpha = 1;
-      this.txt(which === 'wash' ? `${this.meta.get('blur').name} ${Math.round(blur * 100)} · ↕`
-        : `${this.meta.get('shape').name} · ↕`,
-        which === 'wash' ? (X0 + mid) / 2 : (mid + X1) / 2, Y - HMAX - 4 * dpr,
-        Math.round(11 * dpr), T.dim, 'center', 'bottom');
-    }
-
-    // ---- rails under the axis, slide-rule style
-    const rL = this.geo.railY(0), rR = this.geo.railY(1), rN = this.geo.railY(2);
-    const perDec = this.geo.perDec;
-    this.rail(rL, this.meta.get('left').name, this.logTicks(XD, 1, this.range('left')[1], false),
-      XD(TL), T.ink, hot('time') || hot('all'), this.nameT(TL));
-    { // Right: a ratio scale whose index sits under Left, and slides with it
-      const XR = r => XD(TL) + Math.log10(r) * perDec;
-      const [rMin, rMax] = this.range('ratio');
-      const majors = new Set([0.5, 1, 1.5, 2, 3]);
-      const labels = new Map([[0.5, '½'], [1.5, '3:2'], [2, '2'], [3, '3'], [rMax, String(rMax)]]);
-      const ticks = [];
-      for (const r of [...laws.niceRatios, rMax])
-        ticks.push({x: XR(r), major: majors.has(r), mid: !majors.has(r), label: labels.get(r) ?? null});
-      for (let r = rMin; r <= rMax; r *= 1.0594) ticks.push({x: XR(r)});
-      this.rail(rR, this.meta.get('right').name, ticks, XD(TR), T.ink,
-        hot('tr') || hot('all'), rl, XR(1));
-    }
-    { // Repeats: a count scale whose index sits under the later of Left and Right
-      const base = tap === 'R' ? TL : tap === 'L' ? TR : Math.max(TL, TR);
-      const XN = n => XD(base * n);
-      const ticks = [];
-      const majors = [1, 2, 4, 8, 16, 32, 64], mids = [3, 6, 12, 24, 48, 96];
-      const shown = narrow ? majors : [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96];
-      for (let n = 1; n <= nMax; n++)
-        ticks.push({x: XN(n), major: majors.includes(n), mid: mids.includes(n),
-          label: shown.includes(n) ? String(n) : null});
-      const xInf = Math.min(X1 - 4 * dpr, XN(nMax) + 16 * dpr);
-      this.txt('∞', xInf, rN + this.geo.railH * 0.55 - 11 * dpr, Math.round(9 * dpr),
-        hold ? T.acc : T.dim, 'center', 'bottom');
-      this.rail(rN, this.meta.get('repeats').name, ticks, hold ? xInf : XN(count), T.acc,
-        hot('rep'), hold ? this.meta.get('hold').name : `${count} ×`, null);
-    }
-
-    // ---- vertical rails: Blur as a smear strip, Shape and Tone as scales
-    const {vx, vTop, vBot} = this.geo, vh = vBot - vTop;
-    {
-      const x = vx.wash, on = hot('wash'), medium = this.medium();
-      for (let i = 0; i <= 24; i++) {
-        const u = i / 24, y = vBot - u * vh, sm = u * u * 10 * dpr;
-        const n = 1 + Math.round(sm / 1.2);
-        for (let s = 0; s < n; s++) {
-          let off = n > 1 ? (s / (n - 1) - 0.5) * sm * 2 : 0;
-          let x0 = x - 9 * dpr, x1 = x + 9 * dpr;
-          let al = (on ? 1 : 0.55) * (0.9 / n + 0.1);
-          if (medium === 1) { off += rnd(i * 31 + s) * sm * 0.8; x0 += rnd(i * 17 + s) * 3 * dpr * u; x1 += rnd(i * 23 + s) * 3 * dpr * u; }
-          else if (medium === 2) { off = Math.round(off / (2.5 * dpr)) * (2.5 * dpr); al *= 0.85; }
-          else if (medium === 3) { off += Math.sin(u * 9 + s) * sm * 0.3; }
-          else if (medium === 0) { x0 -= u * 2 * dpr; x1 += u * 2 * dpr; }
-          this.line(x0, y + off, x1, y + off, T.ink2, 0.9, al);
-        }
-      }
-      const hy = vBot - blur * vh;
-      this.line(x - 13 * dpr, hy, x + 13 * dpr, hy, T.ink, on ? 2.2 : 1.4);
-      this.txt('Sharp', x, vBot + 8 * dpr, Math.round(8.5 * dpr), on ? T.ink : T.dim, 'center', 'top');
-      this.txt('Blur', x, vTop - 6 * dpr, Math.round(8.5 * dpr), on ? T.ink : T.dim, 'center', 'bottom');
-      if (on || this.drag)
-        this.txt(String(Math.round(blur * 100)), x + 14 * dpr, hy, Math.round(9 * dpr), T.ink, 'left', 'middle');
-      this.zones.push({x: x - 17 * dpr, y: vTop - 4 * dpr, w: 34 * dpr, h: vh + 8 * dpr, key: 'wash'});
-    }
-    for (const [key, x, value, col, hiLabel, loLabel, midLabel] of [
-      ['shape', vx.shape, shape, T.acc, 'Swell', 'Fade', 'Flat'],
-      ['tone', vx.tone, tone, T.ink, 'Thin', 'Dark', 'Full']]) {
-      const on = hot(key);
-      this.line(x, vTop, x, vBot, T.hair, 1, on ? 1 : 0.55);
-      for (let i = 0; i <= 20; i++) {
-        const y = vBot - i / 20 * vh, maj = i % 10 === 0, mid = i % 5 === 0;
-        this.line(x - (maj ? 7 : mid ? 5 : 3) * dpr, y, x + (maj ? 7 : mid ? 5 : 3) * dpr, y,
-          T.dim, maj ? 1 : 0.7, (on ? 1 : 0.55) * (maj ? 1 : 0.7));
-      }
-      this.txt(hiLabel, x, vTop - 6 * dpr, Math.round(8.5 * dpr), on ? T.ink : T.dim, 'center', 'bottom');
-      this.txt(loLabel, x, vBot + 8 * dpr, Math.round(8.5 * dpr), on ? T.ink : T.dim, 'center', 'top');
-      if (on) this.txt(midLabel, x + 11 * dpr, (vTop + vBot) / 2, Math.round(8.5 * dpr), T.dim, 'left', 'middle');
-      const hy = vBot - (value + 1) / 2 * vh;
-      this.line(x - 11 * dpr, hy, x + 11 * dpr, hy, col, on ? 2.2 : 1.4);
-      this.zones.push({x: x - 17 * dpr, y: vTop - 4 * dpr, w: 34 * dpr, h: vh + 8 * dpr, key});
-    }
-
-    // ---- the hairline joining the handle in use to the thing it moves
-    if (this.drag) {
-      const w = this.drag.which;
-      g.setLineDash([3 * dpr, 3 * dpr]);
-      if (w === 'time' || w === 'all') this.line(XD(TL), top, XD(TL), rL + this.geo.railH, T.acc, 1, 0.7);
-      if (w === 'tr' || w === 'all') this.line(XD(TR), top, XD(TR), rR + this.geo.railH, T.acc, 1, 0.7);
-      if (w === 'rep') this.line(xTail, top, xTail, rN + this.geo.railH, T.acc, 1, 0.7);
-      if (w === 'wash') { const hy = vBot - blur * vh; this.line(xFirst, hy, vx.wash - 13 * dpr, hy, T.acc, 1, 0.7); }
-      if (w === 'shape' || w === 'shapeM') { const hy = vBot - (shape + 1) / 2 * vh; this.line(xTail, hy, vx.shape - 11 * dpr, hy, T.acc, 1, 0.7); }
-      if (w === 'tone') { const hy = vBot - (tone + 1) / 2 * vh; this.line(xTail, hy, vx.tone - 11 * dpr, hy, T.acc, 1, 0.7); }
-      g.setLineDash([]);
-    }
+    this.zones = [];
+    this.drawFace(W, H, dpr, g, T);
     return true;
   }
 
-  /** The zone a keyboard focus lights up, so the invisible semantic elements still
-   * show where they are. */
-  focusKey() {
-    return {left: 'time', right: 'tr', ratio: 'tr', difference: 'tr',
-      left_division: 'time', right_division: 'tr', repeats: 'rep', shape: 'shape',
-      blur: 'wash', tone: 'tone', mix: 'mix', wear: 'wearRail'}[this.focusZone] ?? null;
+  drawFace(W, H, dpr, g, T) {
+    const zone = z => this.zones.push(z);
+    const ln = (x1, y1, x2, y2, col, w = 1, a = 1) => { g.strokeStyle = col; g.lineWidth = w * dpr; g.globalAlpha = a;
+      g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); g.globalAlpha = 1; };
+    const tx = (s, x, y, col, size = 10, align = 'center', base = 'middle', font = MONO, weight = 400) => {
+      g.fillStyle = col; g.font = `${weight} ${Math.round(size * dpr)}px ${font}`; g.textAlign = align; g.textBaseline = base; g.fillText(s, x, y); };
+    const tri = (x, y, s, up, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(x - s, y); g.lineTo(x + s, y);
+      g.lineTo(x, up ? y - s * 1.3 : y + s * 1.3); g.closePath(); g.fill(); };
+    const rect = (x, y, w, h, col, a = 1) => { g.fillStyle = col; g.globalAlpha = a; g.fillRect(x, y, w, h); g.globalAlpha = 1; };
+    // Names start with a capital and are set in NAMES; the scale letters L and R are
+    // mono capitals, as on a rule.
+    const name = (s, x, y, col, size = 9.5, align = 'center', base = 'middle') => {
+      if (/^[LR]$/.test(s)) tx(s, x, y, col, size + 0.5, align, base, MONO, 500);
+      else tx(s, x, y, col, size + 0.5, align, base, NAMES, 500);
+    };
+    // A compost button laid over a drawn control, at its box in device pixels.
+    const overlay = (id, x, y, w, h) => {
+      const b = this.buttons.get(id);
+      if (b) Object.assign(b.style, {left: `${x / dpr}px`, top: `${y / dpr}px`, width: `${w / dpr}px`, height: `${h / dpr}px`});
+      return b;
+    };
+    // A label on a scale: it is left out rather than drawn over another label of the
+    // same row, so a crowded scale thins its numbers instead of smudging them.
+    const taken = new Map();
+    const label = (s, x, y, col, size, align = 'center', base = 'bottom', gap = 4) => {
+      g.font = `400 ${Math.round(size * dpr)}px ${MONO}`;
+      const w = g.measureText(s).width, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+      const row = taken.get(y) ?? [];
+      if (row.some(([a, b]) => x0 < b + gap * dpr && x0 + w > a - gap * dpr)) return false;
+      row.push([x0, x0 + w]); taken.set(y, row);
+      tx(s, x, y, col, size, align, base);
+      return true;
+    };
+    const dash = (x1, y1, x2, y2) => { g.setLineDash([3 * dpr, 3 * dpr]); ln(x1, y1, x2, y2, T.acc, 1, 0.75); g.setLineDash([]); };
+
+    // An engraved rail: fine graduations, 0/50/100 at the majors, and a handle.
+    const hRail = (x0, x1, y, value01, label, readout, on, ticks = 10) => {
+      ln(x0, y, x1, y, T.hair, 1, on ? 1 : 0.7);
+      const n = ticks * 5;
+      for (let i = 0; n && i <= n; i++) { const x = x0 + (x1 - x0) * i / n, major = i % (n / 2) === 0, mid = i % 5 === 0;
+        ln(x, y, x, y - (major ? 7 : mid ? 4.5 : 2.2) * dpr, T.dim, major ? 0.9 : 0.6, major ? 0.9 : 0.6);
+        if (major) tx(`${Math.round(i / n * 100)}`, x, y - 9 * dpr, T.dim, 8.5, 'center', 'bottom'); }
+      const hx = x0 + (x1 - x0) * clamp(value01, 0, 1);
+      ln(hx, y - 8 * dpr, hx, y + 5 * dpr, on ? T.acc : T.ink, on ? 2.4 : 1.6);
+      if (label) name(label, x0 - 7 * dpr, y, T.dim, 9.5, 'right');
+      if (readout) tx(readout, x1 + 7 * dpr, y, on ? T.ink : T.ink2, 10, 'left');
+    };
+    const vRail = (x, y0, y1, value01, top, bottom, on, label) => {
+      ln(x, y0, x, y1, T.hair, 1, on ? 1 : 0.7);
+      for (let i = 0; i <= 50; i++) { const y = y1 - (y1 - y0) * i / 50, major = i % 25 === 0, mid = i % 5 === 0, s = (major ? 7 : mid ? 4.5 : 2.2) * dpr;
+        ln(x - s, y, x + s, y, T.dim, major ? 0.9 : 0.6, major ? 0.9 : 0.55); }
+      const hy = y1 - (y1 - y0) * clamp(value01, 0, 1);
+      ln(x - 11 * dpr, hy, x + 11 * dpr, hy, on ? T.acc : T.ink, on ? 2.4 : 1.6);
+      name(top, x, y0 - 8 * dpr, T.dim, 9, 'center', 'bottom'); name(bottom, x, y1 + 8 * dpr, T.dim, 9, 'center', 'top');
+      if (label) tx(label, x + 14 * dpr, hy, T.ink, 10, 'left');
+    };
+    // A blur rail: its graduations smear more the higher they sit, sharp at the foot
+    // and blurred at the head, in the Mod type's own manner (A spreads, B jitters, C
+    // steps), with the same handle as every other rail.
+    const blurRail = (x, y0, y1, value01, title, on) => {
+      const type = this.modType();
+      for (let i = 0; i <= 24; i++) {
+        const u = i / 24, y = y1 - u * (y1 - y0), sm = u * u * 10 * dpr, n = 1 + Math.round(sm / (1.2 * dpr));
+        for (let k = 0; k < n; k++) {
+          let off = n > 1 ? (k / (n - 1) - 0.5) * sm * 2 : 0, x0 = x - 9 * dpr, x1 = x + 9 * dpr;
+          if (type === 1) { off += rnd(i * 31 + k) * sm * 0.8; x0 += rnd(i * 17 + k) * 3 * dpr * u; x1 += rnd(i * 23 + k) * 3 * dpr * u; }
+          else if (type === 2) off = Math.round(off / (2.5 * dpr)) * (2.5 * dpr);
+          else { x0 -= u * 2 * dpr; x1 += u * 2 * dpr; }
+          ln(x0, y + off, x1, y + off, T.ink2, 0.8, (on ? 0.85 : 0.45) * (0.8 / n + 0.08));
+        }
+      }
+      const hy = y1 - (y1 - y0) * clamp(value01, 0, 1);
+      ln(x - 13 * dpr, hy, x + 13 * dpr, hy, on ? T.acc : T.ink, on ? 2.4 : 1.6);
+      name(title, x, y0 - 8 * dpr, T.dim, 9, 'center', 'bottom');
+    };
+
+    // ---- geometry: the picture keeps its width margins and stretches with height
+    const X0 = 156 * dpr, X1 = W - 196 * dpr, Xm = X1 - 90 * dpr, top = 70 * dpr, bot = H - 160 * dpr, axisY = bot + 12 * dpr;
+    const X = timeAxis(X0, Xm, X1), [TA, TB] = this.times(), mid = (top + bot) / 2, longer = Math.max(TA, TB);
+    this.lastTimes = [TA, TB];
+    const cross = this.percent('cross'), feed = this.percent('feed'), tone = this.val('tone') / 100;
+    const pre = this.percent('pre_blur'), loop = this.percent('loop_blur'), post = this.percent('post_blur');
+    const repeats = this.repeats(), tail = this.tail();
+    const S = (bot - top) * 0.25, rows = [mid - S, mid + S];
+    const half = (bot - top) * 0.17, list = this.echoes(), xFirst = X(Math.min(TA, TB));
+    const xTail = Math.min(X1, X(tail));
+    const lit = this.hotParams(), on = k => lit.has(k);
+    const vy = v => bot - (bot - top) * clamp(v, 0, 1); // the shared vertical scale
+    const held = this.drag ? this.drag.z.key : this.hover || '';
+    // while a rail is held or hovered, its gesture in the picture shows itself
+    const fromRail = held.endsWith('Rail');
+    const arrow = (x, y, vertical) => { if (!fromRail) return; const s = 9 * dpr;
+      g.strokeStyle = T.acc; g.fillStyle = T.acc; g.lineWidth = 1.6 * dpr; g.beginPath();
+      if (vertical) { g.moveTo(x, y - s); g.lineTo(x, y + s); } else { g.moveTo(x - s, y); g.lineTo(x + s, y); } g.stroke();
+      for (const k of [-1, 1]) { g.beginPath();
+        if (vertical) { g.moveTo(x, y + k * (s + 4 * dpr)); g.lineTo(x - 4 * dpr, y + k * s); g.lineTo(x + 4 * dpr, y + k * s); }
+        else { g.moveTo(x + k * (s + 4 * dpr), y); g.lineTo(x + k * s, y - 4 * dpr); g.lineTo(x + k * s, y + 4 * dpr); }
+        g.closePath(); g.fill(); } };
+    const cw = 30 * dpr, gTop = top - 8 * dpr, gBot = axisY, afterX = Math.min(X1, xTail + cw / 2);
+    // Cross reads 0–100 up to the middle, where each echo splits equally between the
+    // lines, then on towards swap, where every echo changes line.
+    const crossWord = () => cross > 0.995 ? 'swap' : cross <= 0.5 ? `${Math.round(cross * 200)}` : `→ swap ${Math.round((cross - 0.5) * 200)}`;
+    const toneWord = () => Math.abs(tone) < 0.01 ? 'full' : `${tone < 0 ? 'dark' : 'thin'} ${Math.round(Math.abs(tone) * 100)}`;
+    const feedWords = () => Math.abs(feed) < 0.005 ? 'into L and R' : feed <= -0.995 ? 'into L only' : feed >= 0.995 ? 'into R only'
+      : feed < 0 ? `L 100 · R ${Math.round((1 + feed) * 100)}` : `L ${Math.round((1 - feed) * 100)} · R 100`;
+
+    // ---- top band: the name, Mod, Mix
+    g.letterSpacing = `${(4 * dpr).toFixed(1)}px`;
+    tx('Slide', 16 * dpr, 24 * dpr, T.ink, 13, 'left', 'middle', NAMES, 500);
+    g.letterSpacing = '0px';
+    const mix = this.percent('mix'), type = this.modType();
+    // Mod: one thin amount scale per type, stacked like a rule's A, B, C scales. Each
+    // keeps its own amount; the chosen one is engraved and carries the cursor, the
+    // others show where theirs was left. A row's letter picks it.
+    g.font = `500 ${Math.round(10 * dpr)}px ${NAMES}`;
+    name('Mod', 104 * dpr, 30 * dpr, T.dim, 9.5, 'left');
+    const r0 = 104 * dpr + g.measureText('Mod').width + 34 * dpr, r1 = r0 + 140 * dpr, ys = [17, 30, 43].map(v => v * dpr);
+    const modButton = overlay('mod_type', 104 * dpr, 6 * dpr, r0 - 104 * dpr - 4 * dpr, 44 * dpr);
+    ['A', 'B', 'C'].forEach((w, i) => {
+      const y = ys[i], chosen = i === type, amount = this.modAmount(i) / 100, hx = r0 + (r1 - r0) * amount;
+      tx(w, r0 - 8 * dpr, y, chosen ? T.ink : T.dim, 10, 'right', 'middle', NAMES, 500);
+      ln(r0, y, r1, y, T.hair, 1, chosen ? 1 : 0.45);
+      if (chosen) for (let k = 0; k <= 20; k++) { const x = r0 + (r1 - r0) * k / 20;
+        ln(x, y, x, y - (k % 10 === 0 ? 5 : k % 2 === 0 ? 3 : 1.6) * dpr, T.dim, 0.7, 0.8); }
+      ln(hx, y - (chosen ? 6 : 3) * dpr, hx, y + (chosen ? 5 : 3) * dpr, chosen ? (on('mod') ? T.acc : T.ink) : T.dim,
+        chosen ? (on('mod') ? 2.4 : 1.6) : 1, chosen ? 1 : 0.6);
+      if (chosen) tx(amount < 0.005 ? 'clean' : `${Math.round(amount * 100)}`, r1 + 7 * dpr, y, on('mod') ? T.ink : T.ink2, 10, 'left');
+      const pick = (p, d, dr) => { if (dr.done) return; dr.done = true; if (i !== type) modButton?.setValue(i, true, 'face'); };
+      if (chosen) zone({x: r0 - 6 * dpr, y: y - 7 * dpr, w: r1 - r0 + 12 * dpr, h: 14 * dpr, key: 'modRail', params: ['mod'], cursor: 'ew-resize',
+        move: p => this.write(MOD_AMOUNTS[i], clamp((p.x - r0) / (r1 - r0), 0, 1) * 100),
+        dbl: () => this.write(MOD_AMOUNTS[i], this.initial(MOD_AMOUNTS[i]))});
+      else zone({x: r0 - 6 * dpr, y: y - 7 * dpr, w: r1 - r0 + 12 * dpr, h: 14 * dpr, key: 'modPick', cursor: 'pointer', move: pick});
+      zone({x: r0 - 22 * dpr, y: y - 7 * dpr, w: 18 * dpr, h: 14 * dpr, key: 'modPick', cursor: 'pointer', move: pick});
+    });
+    const mr = [W - 170 * dpr, W - 50 * dpr];
+    hRail(mr[0], mr[1], 30 * dpr, mix, 'Mix', `${Math.round(mix * 100)}`, on('mix'));
+
+    // ---- picture: before the echoes is the input's (Pre), the band is the loop's
+    // (Loop), after the glass is the output's (Post)
+    if (on('pre')) rect(X0, top, Math.max(0, xFirst - X0), bot - top, T.acc, 0.07);
+    rect(xFirst, top, Math.max(0, Math.min(xTail, X1) - xFirst), bot - top, T.band, on('loop') || (on('L') && on('R')) ? 0.95 : 0.55);
+    if (on('post')) rect(afterX, top, Math.max(0, X1 - afterX), bot - top, T.acc, 0.07);
+    for (const r of rows) {
+      ln(X0, r, X1, r, T.hair, 1, 0.6);
+      for (const d of [10, 100, 1000]) for (let m = 1; m < 10; m++) { const x = X(d * m);
+        ln(x, r - (m === 1 ? 4 : 2) * dpr, x, r + (m === 1 ? 4 : 2) * dpr, T.dim, 0.6, 0.5); }
+    }
+    this.drawEchoes(list, X, rows, half, X1, dpr, ln);
+
+    // axis: log to 10 s, then the perspective stretch to ∞
+    ln(X0, axisY, Xm, axisY, T.hair);
+    for (const d of [10, 100, 1000]) for (let m = 1; m < 10; m++) for (let k = 0; k < (m < 5 ? 5 : 2); k++) {
+      const v = d * (m + k / (m < 5 ? 5 : 2)); if (v > AXIS_END) continue; ln(X(v), axisY, X(v), axisY + (k ? 2 : 3.5) * dpr, T.dim, 0.6, 0.6); }
+    for (const v of [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
+      const x = X(v), major = [10, 100, 1000, 10000].includes(v);
+      ln(x, axisY, x, axisY + (major ? 6 : 3.5) * dpr, major ? T.ink2 : T.dim, 1);
+    }
+    g.setLineDash([2 * dpr, 3 * dpr]); ln(Xm, axisY, X1, axisY, T.hair); g.setLineDash([]);
+    for (const t of [20000, 60000]) ln(X(t), axisY, X(t), axisY + 4 * dpr, T.dim, 1);
+    ln(X1, axisY, X1, axisY + 4 * dpr, T.dim, 1);
+    // labels in order of importance: the ends and decades first, then what fits
+    for (const [t, s] of [[10, '10 ms'], [Infinity, '∞'], [100, '100'], [1000, '1 s'], [10000, '10 s'], [20000, '20 s'],
+      [50, '50'], [500, '500'], [5000, '5 s'], [60000, '1 min']])
+      label(s, t === Infinity ? X1 : X(t), axisY + 9 * dpr, T.dim, 9.5, 'center', 'top');
+
+    // pointers on the first echoes: sideways is time, up/down pulls the rows together
+    for (const [line, t] of [[0, TA], [1, TB]]) {
+      const x = X(t), k = line ? 'Rp' : 'Lp', hot = held === k || on(line ? 'R' : 'L') || on('cross');
+      tri(x, line ? rows[1] + half + 4 * dpr : rows[0] - half - 4 * dpr, (hot ? 6.5 : 5) * dpr, line === 1, line ? T.lineb : T.ink);
+      if (hot) tx(this.drag?.axis === 'y' ? `Cross ${crossWord()}` : line ? `R = ${this.relWord()}` : `L ${this.nameT(t)}`, x + 10 * dpr,
+        line ? rows[1] + half + 16 * dpr : rows[0] - half - 14 * dpr, line ? T.lineb : T.ink, 11, 'left', 'middle', NAMES, 500);
+    }
+
+    // the glass: a flat cursor window whose hairline is the tail (Repeats)
+    const gx = Math.min(xTail, X1 - cw / 2), glassHot = on('repeats') || on('tone');
+    rect(gx - cw / 2, gTop, cw, gBot - gTop, T.glass);
+    g.strokeStyle = glassHot ? T.acc : T.ink2; g.lineWidth = (glassHot ? 1.4 : 1) * dpr; g.globalAlpha = 0.8;
+    g.strokeRect(gx - cw / 2 + 0.5, gTop + 0.5, cw - 1, gBot - gTop - 1); g.globalAlpha = 1;
+    rect(gx - cw / 2 - 2 * dpr, gTop - 5 * dpr, cw + 4 * dpr, 5 * dpr, T.ink2, 0.8);
+    rect(gx - cw / 2 - 2 * dpr, gBot, cw + 4 * dpr, 5 * dpr, T.ink2, 0.8);
+    ln(gx, gTop + 3 * dpr, gx, gBot - 3 * dpr, T.acc, on('repeats') ? 2.4 : 1.3);
+    // Tone: a level line inside the glass, level with its rail
+    ln(gx - cw / 2, vy((tone + 1) / 2), gx + cw / 2, vy((tone + 1) / 2), on('tone') ? T.acc : T.ink2, on('tone') ? 2.2 : 1.2);
+    // Post: a level line across the space after the glass, the output's side
+    if (afterX < X1) ln(afterX + 4 * dpr, vy(post), X1, vy(post), on('post') ? T.acc : T.ink2, on('post') ? 2 : 1, on('post') ? 1 : 0.5);
+    if (on('repeats')) tx(`${fmtCount(repeats)} repeats${Number.isFinite(tail) ? ` · ${fmt(tail)}` : ''}`,
+      gx - cw / 2 - 8 * dpr, gTop + 12 * dpr, T.acc, 11, 'right', 'middle', NAMES, 500);
+
+    // gesture hints for whichever rail is in hand
+    if (on('pre')) arrow((X0 + xFirst) / 2, vy(pre), true);
+    if (on('loop')) arrow((xFirst + Math.min(xTail, X1)) / 2, vy(loop), true);
+    if (on('post') && afterX < X1) arrow((afterX + X1) / 2, vy(post), true);
+    if (on('tone')) arrow(gx - cw / 2 - 16 * dpr, vy((tone + 1) / 2), true);
+    if (on('L')) arrow(X(TA), rows[0] - half - 22 * dpr, false);
+    if (on('R')) arrow(X(TB), rows[1] + half + 30 * dpr, false);
+    if (on('cross')) { arrow(X(TA) - 18 * dpr, rows[0] - half - 4 * dpr, true); arrow(X(TB) - 18 * dpr, rows[1] + half + 4 * dpr, true); }
+    if (on('repeats')) arrow(gx, gTop - 12 * dpr, false);
+    if (on('feed')) arrow(X0 - 70 * dpr, (rows[0] + rows[1]) / 2, true);
+
+    // ---- left: Pre blur, level with the space before the echoes, and the in line
+    const px = X0 - 100 * dpr, fx = X0 - 44 * dpr;
+    blurRail(px, top, bot, pre, 'Pre-blur', on('pre'));
+    if (on('pre')) tx(`${Math.round(pre * 100)}`, px, top - 22 * dpr, T.acc, 10);
+    if (on('pre')) dash(px + 11 * dpr, vy(pre), Math.max(px + 12 * dpr, xFirst - 4 * dpr), vy(pre));
+    ln(fx, rows[0], fx, rows[1], T.hair, 1, on('feed') ? 1 : 0.7);
+    name('L', fx, rows[0] - 10 * dpr, T.ink, 10, 'center', 'bottom');
+    name('R', fx, rows[1] + 10 * dpr, T.lineb, 10, 'center', 'top');
+    const fy = rows[0] + (rows[1] - rows[0]) * (feed + 1) / 2;
+    ln(fx - 10 * dpr, fy, fx + 10 * dpr, fy, on('feed') ? T.acc : T.ink, on('feed') ? 3 : 2);
+    name('In', fx + 14 * dpr, fy, T.dim, 9.5, 'left');
+    if (on('feed')) tx(feedWords(), fx + 30 * dpr, fy, T.ink, 11, 'left', 'middle', NAMES, 500);
+
+    // ---- right: Blur, Post-blur, Cross and Tone, each level with its gesture
+    const loopX = X1 + 34 * dpr, postX = X1 + 74 * dpr, crossX = X1 + 114 * dpr, toneX = X1 + 154 * dpr;
+    blurRail(loopX, top, bot, loop, 'Blur', on('loop'));
+    if (on('loop')) { dash(Math.max(xFirst, X0), vy(loop), loopX - 11 * dpr, vy(loop)); tx(`${Math.round(loop * 100)}`, loopX, top - 22 * dpr, T.acc, 10); }
+    blurRail(postX, top, bot, post, 'Post-blur', on('post'));
+    if (on('post')) { dash(X1, vy(post), postX - 11 * dpr, vy(post)); tx(`${Math.round(post * 100)}`, postX, top - 22 * dpr, T.acc, 10); }
+    // Cross: a plain rail, 0 at the foot, an equal split at the middle, swap at the
+    // head. Its gesture is up and down on either line's pointer; the picture shows it
+    // as the rows' colours mixing and the ties between them.
+    vRail(crossX, top, bot, cross, 'Cross', '', on('cross'), '');
+    tx('swap', crossX + 9 * dpr, top, T.dim, 8.5, 'left', 'middle');
+    tx('100', crossX + 9 * dpr, mid, T.dim, 8.5, 'left', 'middle');
+    tx('0', crossX + 9 * dpr, bot, T.dim, 8.5, 'left', 'middle');
+    if (on('cross')) dash(X(TB) + 8 * dpr, vy(cross), crossX - 11 * dpr, vy(cross));
+    if (on('cross')) tx(crossWord(), crossX, top - 22 * dpr, T.acc, 10);
+    vRail(toneX, top, bot, (tone + 1) / 2, 'Thin', 'Dark', on('tone'), '');
+    if (on('tone')) { const y = vy((tone + 1) / 2); dash(gx + cw / 2, y, toneX - 11 * dpr, y); tx(toneWord(), toneX, top - 22 * dpr, T.acc, 10); }
+
+    // ---- bottom rails: L time (with Sync), R relation (with Link), Repeats
+    const rY = k => axisY + (46 + k * 38) * dpr;
+    hRail(X0, Xm, rY(0), (X(TA) - X0) / (Xm - X0), 'L', this.nameT(TA), on('L'), 0);
+    // Sync and Link sit just after their readouts, beside what they change: Sync a
+    // toggle, Link a Ratio | Diff switch.
+    {
+      const sync = this.sync(), sx = Xm + 76 * dpr, h = 18 * dpr;
+      g.font = `500 ${Math.round(10.5 * dpr)}px ${NAMES}`; const w = g.measureText('Sync').width + 14 * dpr;
+      if (sync) rect(sx, rY(0) - h / 2, w, h, T.ink);
+      else { g.strokeStyle = held === 'syncBtn' ? T.ink : T.hair; g.lineWidth = dpr; g.strokeRect(sx + 0.5, rY(0) - h / 2 + 0.5, w - 1, h - 1); }
+      tx('Sync', sx + w / 2, rY(0), sync ? T.panel : T.ink, 10.5, 'center', 'middle', NAMES, 500);
+      const b = overlay('sync', sx, rY(0) - h / 2, w, h);
+      zone({x: sx, y: rY(0) - h / 2, w, h, key: 'syncBtn', cursor: 'pointer',
+        move: (p, d, dr) => { if (dr.done) return; dr.done = true; b?.setValue(sync ? 0 : 1, true, 'face'); }});
+    }
+    // R's scale, on the time axis so its handle sits under R's first echo: a tick at
+    // every nice ratio (or a spread of differences) from L. Labels go on a lower tier,
+    // then an upper one, the common ratios first; one that fits on neither is left
+    // as a tick, and the picture names the ratio while R moves.
+    const rx = X(TB);
+    const relTicks = this.ratioMode() ? NICE.filter(([r]) => TA * r >= laws.minTimeMs && TA * r <= laws.maxTimeMs)
+      .map(([r, n]) => [X(TA * r), n, true]).sort((a, b) => RAIL_RATIOS.indexOf(a[1]) - RAIL_RATIOS.indexOf(b[1]))
+      : [-1000, -500, -200, -100, -50, -20, 0, 20, 50, 100, 200, 500, 1000].filter(d => TA + d >= laws.minTimeMs && TA + d <= laws.maxTimeMs)
+        .map(d => [X(TA + d), d ? `${d > 0 ? '+' : '−'}${Math.abs(d)}` : '0', [0, -200, 200, -1000, 1000, -50, 50].includes(d)]);
+    ln(X0, rY(1), Xm, rY(1), T.hair, 1, 0.7);
+    for (const first of [true, false])
+      for (const [x, name, primary] of relTicks) {
+        if (primary !== first) continue;
+        if (label(name, x, rY(1) - 9 * dpr, T.dim, 9, 'center', 'bottom', 3) || label(name, x, rY(1) - 20 * dpr, T.dim, 9, 'center', 'bottom', 3))
+          ln(x, rY(1), x, rY(1) - 6 * dpr, T.dim, 0.9, primary ? 1 : 0.7);
+        else ln(x, rY(1), x, rY(1) - 3 * dpr, T.dim, 0.9);
+      }
+    ln(rx, rY(1) - 8 * dpr, rx, rY(1) + 5 * dpr, on('R') ? T.acc : T.lineb, 2.2);
+    name('R', X0 - 7 * dpr, rY(1), T.lineb, 9.5, 'right'); tx(this.relWord(), Xm + 7 * dpr, rY(1), on('R') ? T.ink : T.ink2, 10, 'left');
+    {
+      const ratioOn = this.ratioMode(), h = 18 * dpr;
+      let lx = Xm + 76 * dpr;
+      g.font = `500 ${Math.round(10.5 * dpr)}px ${NAMES}`;
+      const cells = [['Ratio', 0], ['Diff', 1]].map(([w, v]) => ({w, v, width: g.measureText(w).width + 14 * dpr}));
+      const total = cells.reduce((a, c) => a + c.width, 0), b = overlay('link', lx, rY(1) - h / 2, total, h);
+      g.strokeStyle = T.hair; g.lineWidth = dpr; g.strokeRect(lx + 0.5, rY(1) - h / 2 + 0.5, total - 1, h - 1);
+      for (const c of cells) {
+        const chosen = (c.v === 0) === ratioOn;
+        if (chosen) rect(lx, rY(1) - h / 2, c.width, h, T.ink);
+        tx(c.w, lx + c.width / 2, rY(1), chosen ? T.panel : T.dim, 10.5, 'center', 'middle', NAMES, 500);
+        zone({x: lx, y: rY(1) - h / 2, w: c.width, h, key: 'linkBtn', cursor: 'pointer', move: () => { if (!chosen) b?.setValue(c.v, true, 'face'); }});
+        lx += c.width;
+      }
+    }
+    // Repeats' rail ends where its top (1000) puts the tail, on the time axis
+    const xRepMax = X(longer * laws.maxRepeats);
+    ln(X0, rY(2), Math.min(Xm, xRepMax), rY(2), T.hair, 1, on('repeats') ? 1 : 0.7);
+    if (xRepMax > Xm) { g.setLineDash([2 * dpr, 3 * dpr]); ln(Xm, rY(2), xRepMax, rY(2), T.hair, 1, on('repeats') ? 1 : 0.7); g.setLineDash([]); }
+    label('1000', xRepMax, rY(2) - 8 * dpr, T.dim, 9);
+    ln(xRepMax, rY(2), xRepMax, rY(2) - 5 * dpr, T.dim, 0.9);
+    for (const n of [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]) { const x = X(longer * n); if (x < X0 || x > xRepMax - 6 * dpr) continue;
+      ln(x, rY(2), x, rY(2) - 5 * dpr, T.dim, 0.9); label(`${n}`, x, rY(2) - 8 * dpr, T.dim, 9); }
+    ln(xTail, rY(2) - 8 * dpr, xTail, rY(2) + 5 * dpr, on('repeats') ? T.acc : T.ink, on('repeats') ? 2.4 : 1.6);
+    name('Repeats', X0 - 7 * dpr, rY(2), T.dim, 9.5, 'right'); tx(`${fmtCount(repeats)} ×`, X1 + 7 * dpr, rY(2), on('repeats') ? T.ink : T.ink2, 10, 'left');
+
+    // ---- zones, back to front
+    const level = p => clamp((bot - p.y) / (bot - top), 0, 1);
+    const toneAt = v => { const t = v * 2 - 1; return Math.abs(t) < 0.03 ? 0 : t * 100; };
+    const repeatsAt = x => {
+      return clamp(X.inv(x) / Math.max(...this.times()), 1, laws.maxRepeats);
+    };
+    const railX = (x0, x1, id) => ({cursor: 'ew-resize', move: p => this.write(id, clamp((p.x - x0) / (x1 - x0), 0, 1) * 100),
+      dbl: () => this.write(id, this.initial(id))});
+    zone({x: mr[0] - 6 * dpr, y: 14 * dpr, w: mr[1] - mr[0] + 12 * dpr, h: 26 * dpr, key: 'mixRail', params: ['mix'], ...railX(mr[0], mr[1], 'mix')});
+    zone({x: xFirst, y: top, w: Math.max(0, Math.min(xTail, X1) - xFirst), h: bot - top, key: 'band', lock: 'xy', cursor: 'move',
+      params: ['L', 'R', 'loop'], byAxis: {x: 'L', y: 'loop'},
+      move: (p, d, dr) => dr.axis === 'x' ? this.moveBoth(X.inv(X(dr.snap.L) + d.dx), d.free) : this.write('loop_blur', level(p) * 100),
+      dbl: () => this.write('loop_blur', this.initial('loop_blur'))});
+    zone({x: X0, y: top, w: Math.max(0, xFirst - X0 - 14 * dpr), h: bot - top, key: 'preZone', params: ['pre'], cursor: 'ns-resize',
+      move: p => this.write('pre_blur', level(p) * 100), dbl: () => this.write('pre_blur', this.initial('pre_blur'))});
+    if (afterX < X1) zone({x: afterX, y: top, w: X1 - afterX, h: bot - top, key: 'postZone', params: ['post'], cursor: 'ns-resize',
+      move: p => this.write('post_blur', level(p) * 100), dbl: () => this.write('post_blur', this.initial('post_blur'))});
+    // up and down on a pointer is Cross: towards the other line raises it
+    const crossBy = (sign, dr, d) => this.write('cross', clamp(dr.snap.cross + sign * d.dy / (bot - top), 0, 1) * 100);
+    zone({x: X(TA) - 14 * dpr, y: top, w: 28 * dpr, h: rows[0] + half + 14 * dpr - top, key: 'Lp', lock: 'xy', cursor: 'move',
+      params: ['L', 'cross'], byAxis: {x: 'L', y: 'cross'},
+      move: (p, d, dr) => dr.axis === 'x' ? this.moveL(X.inv(X(dr.snap.L) + d.dx), dr.snap.R, d.free) : crossBy(1, dr, d),
+      dbl: () => this.resetL()});
+    zone({x: X(TB) - 14 * dpr, y: rows[1] - half - 4 * dpr, w: 28 * dpr, h: bot - rows[1] + half + 4 * dpr, key: 'Rp', lock: 'xy', cursor: 'move',
+      params: ['R', 'cross'], byAxis: {x: 'R', y: 'cross'},
+      move: (p, d, dr) => dr.axis === 'x' ? this.moveR(X.inv(X(dr.snap.R) + d.dx), d.free) : crossBy(-1, dr, d),
+      dbl: () => this.resetR()});
+    zone({x: gx - cw / 2, y: gTop, w: cw, h: gBot - gTop, key: 'glass', lock: 'xy', cursor: 'move',
+      params: ['repeats', 'tone'], byAxis: {x: 'repeats', y: 'tone'},
+      move: (p, d, dr) => dr.axis === 'x'
+        ? this.write('repeats', repeatsAt(X(Math.max(...this.times()) * dr.snap.repeats) + d.dx))
+        : this.write('tone', toneAt(level(p))),
+      dbl: () => { this.write('repeats', this.initial('repeats')); this.write('tone', 0); }});
+    zone({x: fx - 18 * dpr, y: rows[0] - 10 * dpr, w: 50 * dpr, h: rows[1] - rows[0] + 20 * dpr, key: 'in', params: ['feed'], cursor: 'ns-resize',
+      move: p => { const f = clamp(((p.y - rows[0]) / (rows[1] - rows[0])) * 2 - 1, -1, 1); this.write('feed', Math.abs(f) < 0.04 ? 0 : f * 100); },
+      dbl: () => this.write('feed', 0)});
+    // the rails themselves
+    const vZone = (x, key, id, set) => zone({x: x - 16 * dpr, y: top - 6 * dpr, w: 32 * dpr, h: bot - top + 12 * dpr, key: `${key}Rail`,
+      params: [key], cursor: 'ns-resize', move: p => set(level(p)), dbl: () => this.write(id, this.initial(id))});
+    vZone(px, 'pre', 'pre_blur', v => this.write('pre_blur', v * 100));
+    vZone(loopX, 'loop', 'loop_blur', v => this.write('loop_blur', v * 100));
+    vZone(postX, 'post', 'post_blur', v => this.write('post_blur', v * 100));
+    vZone(toneX, 'tone', 'tone', v => this.write('tone', toneAt(v)));
+    vZone(crossX, 'cross', 'cross', v => this.write('cross', v * 100));
+    zone({x: X0 - 4 * dpr, y: rY(0) - 13 * dpr, w: Xm - X0 + 8 * dpr, h: 26 * dpr, key: 'LRail', params: ['L'], cursor: 'ew-resize',
+      move: (p, d, dr) => this.moveL(X.inv(X(dr.snap.L) + d.dx), dr.snap.R, d.free), dbl: () => this.resetL()});
+    zone({x: X0 - 4 * dpr, y: rY(1) - 13 * dpr, w: Xm - X0 + 8 * dpr, h: 26 * dpr, key: 'RRail', params: ['R'], cursor: 'ew-resize',
+      move: (p, d, dr) => this.moveR(X.inv(X(dr.snap.R) + d.dx), d.free),
+      dbl: () => this.resetR()});
+    zone({x: X0 - 4 * dpr, y: rY(2) - 13 * dpr, w: xRepMax - X0 + 8 * dpr, h: 26 * dpr, key: 'repeatsRail', params: ['repeats'], cursor: 'ew-resize',
+      move: p => this.write('repeats', repeatsAt(p.x)), dbl: () => this.write('repeats', this.initial('repeats'))});
+  }
+
+  /** Echoes as strokes around a row, the loudest per pixel column; a smear is drawn
+   * as several faint copies side by side. Past the last echo the model listed, each
+   * line carries on as an envelope falling by the pass gain, out into the
+   * perspective stretch, so a long tail never just stops. */
+  drawEchoes(list, X, rows, half, xMax, dpr, ln) {
+    const T = this.theme;
+    // An echo keeps the colour of the line it started on, mixed by how much of it
+    // came from each, so Cross shows as the rows mixing; Tone then tints it.
+    const rgb = h => { const v = parseInt(h.replace('#', ''), 16); return [v >> 16 & 255, v >> 8 & 255, v & 255]; };
+    const inkRGB = rgb(T.ink), bRGB = rgb(T.lineb);
+    const colourOf = (e, shade) => {
+      const s = clamp(e.aL / Math.max(e.a, 1e-12), 0, 1), to = shade.tint > 0 ? 255 : 0, k = 0.7 * Math.abs(shade.tint);
+      return `rgb(${inkRGB.map((c, i) => Math.round((c * s + bRGB[i] * (1 - s)) * (1 - k) + to * k)).join(',')})`; };
+    const ref = Math.max(...list.map(e => e.a), 1e-9), cols = new Map(), wob = this.wobbleNow();
+    for (const e of list) { const x = X(e.t * (1 + wob[e.line])); if (x > xMax) continue;
+      const k = `${e.line}:${Math.round(x / (1.5 * dpr))}`, ex = cols.get(k); if (!ex || e.a > ex.e.a) cols.set(k, {e, x}); }
+    const times = this.times();
+    for (const line of [0, 1]) {
+      const mine = list.filter(e => e.line === line); if (!mine.length || !(list.g > 0)) continue;
+      const last = mine[mine.length - 1], T0 = times[line], per = Math.log10(list.g) / T0;
+      for (let x = Math.ceil(X(last.t) + 2 * dpr); x <= xMax; x += 1.5 * dpr) {
+        const t = X.inv(x); if (!Number.isFinite(t)) break;
+        const a = last.a * Math.pow(10, per * (t - last.t));
+        const frac = clamp((20 * Math.log10(a / ref) + 60) / 60, 0, 1); if (frac <= 0) break;
+        const fake = {n: last.n + (t - last.t) / T0, a: 1, aL: line ? 0 : 1}, shade = this.shadeOf(fake);
+        ln(x, rows[line] - half * frac, x, rows[line] + half * frac, colourOf(fake, shade), 1.2 * shade.width,
+          (0.25 + 0.75 * Math.pow(frac, 0.7)) * 0.6);
+      }
+    }
+    { // ties: a diagonal from an echo to the one it seeds on the other row, as strong
+      // as the share Cross sends across times how loud the echo is
+      const share = this.percent('cross');
+      if (share > 0) for (const {e, x} of cols.values()) {
+        if (!e.hop) continue;
+        const frac = clamp((20 * Math.log10(e.a / ref) + 60) / 60, 0, 1), alpha = 0.8 * share * frac;
+        if (alpha < 0.01) continue;
+        const px = X(e.hop.t * (1 + wob[e.hop.line])), y0 = rows[e.hop.line] + (e.line > e.hop.line ? half : -half) * 0.4,
+          y1 = rows[e.line] + (e.line > e.hop.line ? -half : half) * 0.4;
+        ln(px, y0, x, y1, T.acc, 1, alpha);
+      }
+    }
+    for (const {e, x} of cols.values()) {
+      const frac = clamp((20 * Math.log10(e.a / ref) + 60) / 60, 0, 1); if (frac <= 0) continue;
+      const shade = this.shadeOf(e), h = half * frac, col = colourOf(e, shade), sm = this.smearOf(e) * dpr;
+      const alpha = 0.25 + 0.75 * Math.pow(frac, 0.7);
+      if (sm <= 0.5) { ln(x, rows[e.line] - h, x, rows[e.line] + h, col, 1.5 * shade.width, alpha); continue; }
+      const steps = Math.max(2, Math.round(sm / 2));
+      for (let s = -steps; s <= steps; s++) ln(x + s * sm / steps, rows[e.line] - h, x + s * sm / steps, rows[e.line] + h, col, 1.2 * shade.width,
+        alpha * (1 - Math.abs(s) / (steps + 1)) / (1 + steps / 6));
+    }
   }
 
   // ---- hit testing and gestures ---------------------------------------------
@@ -931,170 +919,59 @@ export class SlideFace extends HTMLElement {
             y: (e.clientY - r.top) / r.height * this.canvas.height};
   }
 
-  zoneAt(p) {
-    const hit = this.zones.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h);
-    if (hit) return hit.key;
-    const {X0, X1, Y, HMAX, top, axisY, XD, dpr, railH} = this.geo;
-    for (const [k, i] of [['time', 0], ['tr', 1], ['rep', 2]]) {
-      const y = this.geo.railY(i);
-      if (p.y >= y && p.y <= y + railH && p.x >= X0 - 30 * dpr && p.x <= X1 + 60 * dpr) return k;
+  hit(p) {
+    for (let i = this.zones.length - 1; i >= 0; i--) {
+      const z = this.zones[i];
+      if (p.x >= z.x && p.x <= z.x + z.w && p.y >= z.y && p.y <= z.y + z.h) return z;
     }
-    if (p.y < top || p.y > axisY || p.x < X0 - 10 * dpr || p.x > X1 + 10 * dpr) return null;
-    const {left: TL, right: TR} = this.times();
-    const tail = Math.min(this.tail(), laws.holdTailMs);
-    if (Math.abs(p.x - XD(tail)) < 14 * dpr) return 'rep';
-    const nearL = Math.abs(p.x - XD(TL)) < 24 * dpr, nearR = Math.abs(p.x - XD(TR)) < 24 * dpr;
-    const inBand = p.x > XD(Math.min(TL, TR)) && p.x < XD(tail) && Math.abs(p.y - Y) < HMAX;
-    if (!nearL && !nearR && inBand) return 'field';
-    if (!nearL && !nearR)
-      return p.x < (XD(Math.min(TL, TR)) + XD(tail)) / 2 ? 'wash' : 'shapeM';
-    return p.y < Y ? 'time' : 'tr';
+    return null;
   }
 
   onPointerMove(e) {
-    if (!this.geo) return;
     const p = this.point(e);
-    if (this.drag) { this.move(p, e); return; }
-    const h = this.zoneAt(p);
-    if (h === this.hover) return;
-    this.hover = h;
-    this.invalidate();
-    this.canvas.style.cursor =
-      h === 'wash' ? CUR.wash : h === 'shape' || h === 'shapeM' ? CUR.shape
-      : h === 'tone' ? 'ns-resize' : h === 'rep' ? 'col-resize' : h === 'field' ? 'move'
-      : h === 'wearRail' ? 'ew-resize' : h ? 'ew-resize' : 'default';
+    const drag = this.drag;
+    if (drag) {
+      const d = {dx: p.x - drag.p0.x, dy: p.y - drag.p0.y, free: e.metaKey || e.ctrlKey || e.shiftKey};
+      // a two-way zone picks its axis from the first few pixels of movement
+      if (drag.z.lock === 'xy' && !drag.axis) {
+        if (Math.max(Math.abs(d.dx), Math.abs(d.dy)) < 4 * this.dpr) return;
+        drag.axis = Math.abs(d.dx) >= Math.abs(d.dy) ? 'x' : 'y';
+      }
+      drag.z.move?.(p, d, drag);
+      this.invalidate();
+      return;
+    }
+    const z = this.hit(p), k = z?.key ?? null;
+    this.canvas.style.cursor = z?.cursor ?? 'default';
+    if (k !== this.hover) { this.hover = k; this.invalidate(); }
   }
 
   onPointerDown(e) {
-    if (e.button !== 0 || !this.geo) return;
-    const p = this.point(e);
-    const k = this.zoneAt(p);
-    if (!k) return;
-
-    // The three side rails are plain relative drags, which is exactly what compost
-    // does; hand the gesture straight to the control.
-    if (k === 'wash' || k === 'shape' || k === 'tone') {
-      const id = k === 'wash' ? 'blur' : k;
-      const control = this.controls.get(id);
-      if (!control) return;
-      control.configure({drag: {axis: 'y', mode: 'relative',
-        distance: 2 * this.geo.HMAX / this.geo.dpr}});
-      this.drag = {which: k};
-      this.invalidate();
-      control.startPointerDrag(e);
-      return;
-    }
-
+    if (e.button !== 0) return;
+    const p = this.point(e), z = this.hit(p);
+    if (!z) return;
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* no live pointer */ }
-    const {left: TL, right: TR} = this.times();
-    const tail = Math.min(this.tail(), laws.holdTailMs);
-    const half = k === 'field'
-      ? (p.x < (this.geo.XD(Math.min(TL, TR)) + this.geo.XD(tail)) / 2 ? 'wash' : 'shapeM')
-      : null;
-    const hit = this.zones.find(h => p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h);
-    this.drag = {
-      which: k, pending: k === 'field' || k === 'rep', half,
-      x0: p.x, y0: p.y, tl0: TL, tr0: TR, c0: this.repeats(), s0: this.shape(),
-      b0: this.val('blur'),
-      rail: hit?.rail, started: new Set()
-    };
+    const [L, R] = this.times();
     this.held = 0;
-    if (k === 'mix' || k === 'wearRail') this.move(p, e);
+    this.drag = {z, p0: p, axis: z.lock === 'xy' ? null : z.lock, started: new Set(),
+      snap: {L, R, repeats: this.repeats(), cross: this.percent('cross')}};
+    // a one-way rail jumps to the pointer at once; a two-way zone waits for its axis
+    if (!z.lock) z.move?.(p, {dx: 0, dy: 0, free: e.metaKey || e.ctrlKey || e.shiftKey}, this.drag);
     this.invalidate();
   }
 
   onPointerUp() {
     if (!this.drag) return;
-    for (const id of this.drag.started ?? []) this.endEdit(id);
+    for (const id of this.drag.started) this.controls.get(id)?.endGesture(false, 'face');
     this.drag = null;
     this.invalidate();
   }
 
-  start(id) {
-    if (!this.drag.started.has(id)) { this.drag.started.add(id); this.beginEdit(id); }
-  }
-
-  write(id, value) {
-    this.start(id);
-    const control = this.controls.get(id);
-    if (control) control.setValue(value, true, 'face');
-  }
-
-  /** Left in ms, written through whichever parameter owns it right now. */
-  writeLeft(ms) {
-    const [lo, hi] = this.range('left');
-    if (this.sync()) {
-      const d = this.nearestDivision(clamp(ms, lo, hi));
-      if (d) this.write('left_division', d.index);
-    } else this.write('left', clamp(ms, lo, hi));
-  }
-
-  writeRight(ms, bypassSnap) {
-    const [lo, hi] = this.range('left');
-    const raw = clamp(ms, lo, hi);
-    const link = this.link();
-    if (link === 0) { this.writeLeft(raw / Math.max(1e-9, this.val('ratio'))); return; }
-    if (link === 1) { this.writeLeft(raw - this.val('difference')); return; }
-    if (this.sync()) {
-      const d = this.nearestDivision(raw);
-      if (d) this.write('right_division', d.index);
-      return;
-    }
-    const {left} = this.times();
-    if (bypassSnap) { this.held = 0; this.write('right', raw); return; }
-    const snapped = laws.nearestNiceRatio(raw / left, this.held);
-    this.held = snapped.newHeld;
-    this.write('right', clamp(left * snapped.value, lo, hi));
-  }
-
-  move(p, e) {
-    const {dpr, HMAX, perDec} = this.geo;
-    const d = this.drag;
-    if (d.pending) {
-      const dx = Math.abs(p.x - d.x0), dy = Math.abs(p.y - d.y0);
-      if (Math.max(dx, dy) < 4 * dpr) return;
-      if (d.which === 'rep') d.which = dx >= dy ? 'rep' : 'shapeM';
-      else if (d.which === 'field') d.which = dx >= dy ? 'all' : d.half;
-      d.pending = false;
-    }
-    const bypass = e?.metaKey || e?.ctrlKey;
-    const w = d.which;
-
-    if (w === 'wearRail' || w === 'mix') {
-      const id = w === 'mix' ? 'mix' : 'wear';
-      const [, max] = this.range(id);
-      const spec = this.meta.get(id);
-      const raw = clamp((p.x - d.rail.x0) / d.rail.w, 0, 1) * max;
-      this.write(id, spec.step > 0 ? Math.round(raw / spec.step) * spec.step : raw);
-      this.invalidate();
-      return;
-    }
-
-    const k = Math.pow(10, (p.x - d.x0) / perDec);
-    const [lo, hi] = this.range('left');
-    if (w === 'all') {
-      const kk = clamp(k, lo / Math.min(d.tl0, d.tr0), hi / Math.max(d.tl0, d.tr0));
-      this.writeLeft(d.tl0 * kk);
-      if (this.link() === 2 && !this.sync()) this.write('right', clamp(d.tr0 * kk, lo, hi));
-      else if (this.link() === 2) {
-        const div = this.nearestDivision(clamp(d.tr0 * kk, lo, hi));
-        if (div) this.write('right_division', div.index);
-      }
-    } else if (w === 'time') this.writeLeft(d.tl0 * k);
-    else if (w === 'tr') this.writeRight(d.tr0 * k, bypass);
-    else if (w === 'rep') {
-      const nMax = this.range('repeats')[1];
-      const raw = d.c0 * k;
-      if (raw > nMax * 1.6) { this.write('repeats', nMax); this.setSwitch('hold', true); }
-      else { this.setSwitch('hold', false); this.write('repeats', clamp(Math.round(raw), 1, nMax)); }
-    } else if (w === 'shapeM') {
-      const [sLo, sHi] = this.range('shape');
-      this.write('shape', clamp(d.s0 - (p.y - d.y0) / (HMAX * 1.2), sLo, sHi));
-    } else if (w === 'wash') {
-      // the left half of the band, once the pending gesture has locked to vertical
-      const [bLo, bHi] = this.range('blur');
-      this.write('blur', clamp(d.b0 + (d.y0 - p.y) / (HMAX * 2) * (bHi - bLo), bLo, bHi));
-    }
+  /** Double-click puts back the default of whatever is under the pointer. */
+  onDoubleClick(e) {
+    const z = this.hit(this.point(e));
+    this.onPointerUp();
+    z?.dbl?.();
     this.invalidate();
   }
 }

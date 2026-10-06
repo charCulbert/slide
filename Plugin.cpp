@@ -31,13 +31,6 @@ namespace
 enum class EditType { begin, value, end };
 struct Edit { EditType type; clap_id id; double value; };
 
-// One telemetry snapshot on its way to the face (DESIGN §4).
-struct Frame
-{
-    float inL = 0, inR = 0, wetL = 0, wetR = 0, leftMs = 0, rightMs = 0, bpm = 120;
-    bool hold = false;
-};
-
 class SlidePlugin final : public clap::helpers::Plugin<clap::helpers::MisbehaviourHandler::Terminate,
                                                        clap::helpers::CheckingLevel::Minimal>
 {
@@ -69,9 +62,6 @@ protected:
         if (!(sr > 0)) return false;
         sampleRate = sr;
         engine.prepare(sr);
-        // ~4 ms of audio at 48 kHz; the face pulls the newest of what lands.
-        visualInterval = 192;
-        visualCountdown = visualInterval;
         appliedRevision = 0;
         pushValues();
         return true;
@@ -89,7 +79,7 @@ protected:
 
         emitEdits(block->out_events);
         readTempo(block->transport);
-        pushValues(); // D3: UI edits, state and presets reach the engine here
+        pushValues(); // UI edits, state and presets reach the engine here
 
         const char_clap::ProcessView view { *block };
         const auto asFloat = view.audioOutput<float>(0).channel(0) != nullptr;
@@ -337,8 +327,8 @@ protected:
 private:
     static constexpr clap_id inputPortId = 0x53494e00;  // "SIN\0"
     static constexpr clap_id outputPortId = 0x534f5554; // "SOUT"
-    static constexpr uint32_t defaultWidth = 960, defaultHeight = 560;
-    static constexpr uint32_t minimumWidth = 560, minimumHeight = 320;
+    static constexpr uint32_t defaultWidth = 765, defaultHeight = 530;
+    static constexpr uint32_t minimumWidth = 640, minimumHeight = 460;
 
     struct State { uint32_t magic = stateMagic, version = stateVersion; Values values {}; };
     static_assert(sizeof(State) == 2 * sizeof(uint32_t) + stateValueCount * sizeof(double));
@@ -353,27 +343,8 @@ private:
         const auto* inR = input.channelCount() > 1 ? input.channel(1) : inL;
         auto* outL = output.channelCount() > 0 ? output.channel(0) : nullptr;
         auto* outR = output.channelCount() > 1 ? output.channel(1) : nullptr;
-        auto frames = end - begin;
-        auto offset = begin;
-        while (frames > 0)
-        {
-            const auto slice = std::min(frames, visualCountdown);
-            engine.process(inL ? inL + offset : nullptr, inR ? inR + offset : nullptr,
-                           outL ? outL + offset : nullptr, outR ? outR + offset : nullptr, slice);
-            offset += slice;
-            frames -= slice;
-            visualCountdown -= slice;
-            if (visualCountdown == 0)
-            {
-                visualCountdown = visualInterval;
-                const auto telemetry = engine.telemetry();
-                const Frame frame { telemetry.inPeakL, telemetry.inPeakR, telemetry.wetPeakL,
-                                    telemetry.wetPeakR, telemetry.leftMs, telemetry.rightMs,
-                                    telemetry.bpm, telemetry.hold };
-                // A closed or slow face drops frames; audio never waits for it.
-                (void) visualQueue.tryPush(frame);
-            }
-        }
+        engine.process(inL ? inL + begin : nullptr, inR ? inR + begin : nullptr,
+                       outL ? outL + begin : nullptr, outR ? outR + begin : nullptr, end - begin);
     }
 
     void setValue(clap_id id, double value) noexcept
@@ -389,8 +360,9 @@ private:
         const auto current = revision.load(std::memory_order_acquire);
         if (current == appliedRevision) return;
         appliedRevision = current;
-        for (const auto& p : parameters)
-            engine.set(static_cast<Parameter>(p.id), values[p.id].load(std::memory_order_relaxed));
+        Values now {};
+        for (const auto& p : parameters) now[p.id] = values[p.id].load(std::memory_order_relaxed);
+        engine.setAll(now);
     }
 
     void applyEvent(const clap_event_header_t& event) noexcept
@@ -407,7 +379,6 @@ private:
         if (!findParameter(p.param_id) || p.note_id >= 0 || p.port_index >= 0
             || p.channel >= 0 || p.key >= 0) return;
         setValue(p.param_id, p.value);
-        appliedRevision = revision.load(std::memory_order_relaxed);
         engine.set(static_cast<Parameter>(p.param_id),
                    values[p.param_id].load(std::memory_order_relaxed));
         if (!valuesDirty.exchange(true, std::memory_order_acq_rel)) host->request_callback(host);
@@ -467,31 +438,21 @@ private:
         if (message == "ready")
         {
             uiReady.store(true, std::memory_order_release);
+            sentBpm = 0; // a new face has no tempo yet
             sendMetadata();
             sendValues();
             return true;
         }
         if (message == "visual")
         {
-            Frame latest {}, frame {};
-            bool available = false;
-            for (unsigned i = 0; i < 4 && visualQueue.tryPop(frame); ++i)
-            {
-                latest = frame;
-                available = true;
-            }
-            if (!available) return false;
-            char line[160];
-            std::snprintf(line, sizeof(line), "visual:%.4f,%.4f,%.4f,%.4f,%.2f,%.2f,%d,%.2f",
-                          latest.inL, latest.inR, latest.wetL, latest.wetR, latest.leftMs,
-                          latest.rightMs, latest.hold ? 1 : 0, latest.bpm);
+            // The face only needs the host's tempo, for Sync; send it when it moves.
+            const auto bpm = engine.bpm();
+            if (bpm == sentBpm) return true;
+            sentBpm = bpm;
+            char line[48];
+            std::snprintf(line, sizeof(line), "visual:%.3f", bpm);
             ui.send(line);
             return true;
-        }
-        if (message.substr(0, 7) == "preset:")
-        {
-            const std::string key(message.substr(7));
-            return presetLoadFromLocation(CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, key.c_str());
         }
         const std::string text(message);
         unsigned id = 0;
@@ -510,7 +471,7 @@ private:
         return false;
     }
 
-    // D10: the face hard-codes no ranges, so the table travels to it whole.
+    // The face hard-codes no ranges, so the table travels to it whole.
     void sendMetadata() const
     {
         for (const auto& p : parameters)
@@ -554,11 +515,10 @@ private:
     Engine engine;
     std::array<std::atomic<double>, stateValueCount> values;
     clap::helpers::ParamQueue<Edit, 128> edits;
-    clap::helpers::ParamQueue<Frame, 4> visualQueue;
     std::atomic<bool> uiReady { false }, valuesDirty { false };
     std::atomic<uint64_t> revision { 1 };
     uint64_t appliedRevision = 0;
-    uint32_t visualInterval = 192, visualCountdown = 192;
+    double sentBpm = 0;
 };
 
 uint32_t pluginCount(const clap_plugin_factory_t*) { return 1; }
@@ -576,7 +536,7 @@ const clap_plugin_t* createPlugin(const clap_plugin_factory_t*, const clap_host_
 }
 
 // The presets ship inside the plug-in, so the provider declares a single
-// factory-content location with no path and hands the indexer the table (D1).
+// factory-content location with no path and hands the indexer the table.
 struct PresetProvider
 {
     clap_preset_discovery_provider_t provider;
@@ -590,8 +550,8 @@ struct PresetProvider
     static const clap_preset_discovery_provider_descriptor_t& providerDescriptor()
     {
         static const clap_preset_discovery_provider_descriptor_t value {
-            CLAP_VERSION, "com.charlieculbert.slide.presets",
-            "Slide Presets", "Charlie Culbert"
+            CLAP_VERSION, "com.charlieculbert.slide-lab.presets",
+            "Slide Lab Presets", "Charlie Culbert"
         };
         return value;
     }
@@ -665,7 +625,7 @@ const clap_plugin_descriptor_t& descriptor() noexcept
         CLAP_PLUGIN_FEATURE_STEREO, nullptr
     };
     static const clap_plugin_descriptor_t value {
-        CLAP_VERSION, pluginId, "Slide", "Charlie Culbert",
+        CLAP_VERSION, pluginId, "Slide Lab", "Charlie Culbert",
         "", "", "", "1.0.0",
         "A stereo delay whose face is a picture of the repeats", features
     };

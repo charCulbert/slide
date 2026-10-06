@@ -1,9 +1,9 @@
-// The bridge (DESIGN §4). Text over postMessage in both directions; the face never
+// The bridge. Text over postMessage in both directions; the face never
 // talks to the plugin itself, and the plugin never knows how the face is drawn.
 //
 //   UI  -> plugin : ready | begin:<id> | value:<id>:<v> | end:<id> | visual
 //   plugin -> UI  : parameter<TAB>… lines, metadata-end, values:<id>=<v>;…,
-//                   visual:<inL>,<inR>,<wetL>,<wetR>,<leftMs>,<rightMs>,<hold>,<bpm>
+//                   visual:<bpm>
 
 import './face.js';
 
@@ -69,14 +69,10 @@ addEventListener('message', ({data, source}) => {
     }
     return;
   }
-  if (text.startsWith('visual:')) {
-    const [inL, inR, wetL, wetR, leftMs, rightMs, hold, bpm] =
-      text.slice(7).split(',').map(Number);
-    face.setTelemetry({inL, inR, wetL, wetR, leftMs, rightMs, hold, bpm});
-  }
+  if (text.startsWith('visual:')) face.setTelemetry({bpm: Number(text.slice(7))});
 });
 
-// D9: telemetry is pulled on the animation clock, and only while the face is visible.
+// The tempo is pulled on the animation clock, and only while the face is visible.
 const pull = () => {
   requestAnimationFrame(pull);
   if (!document.hidden) send('visual');

@@ -7,11 +7,11 @@
 namespace slide
 {
 
-inline constexpr char pluginId[] = "com.charlieculbert.slide";
-// "SLID", version 1. The header is written first so a later version can grow the
-// blob without breaking readers that only know this much (D1).
+inline constexpr char pluginId[] = "com.charlieculbert.slide-lab";
+// "SLID", then the version. The header is written first so a later version can grow
+// the blob without breaking readers that only know this much.
 inline constexpr uint32_t stateMagic = 0x534c4944;
-inline constexpr uint32_t stateVersion = 1;
+inline constexpr uint32_t stateVersion = 2;
 
 const clap_plugin_descriptor_t& descriptor() noexcept;
 bool entryInit(const char* path);
