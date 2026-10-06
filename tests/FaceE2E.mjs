@@ -30,8 +30,7 @@ async function table() {
     .map(([, key, identifier, name, unit, min, max, initial, step, mid, digits]) => {
       const spec = {id: ids[key], identifier, name, unit, min: number(min), max: number(max), initial: number(initial),
         step: number(step), mid: number(mid), digits: Number(digits), options: enums[key] ?? []};
-      spec.hasMid = spec.mid > spec.min && spec.mid < spec.max;
-      spec.curve = spec.min > 0 && spec.hasMid ? 'log' : 'linear';
+      spec.curve = spec.min > 0 && spec.mid > spec.min && spec.mid < spec.max ? 'log' : 'linear';
       return spec;
     });
 }

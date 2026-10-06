@@ -40,7 +40,7 @@ addEventListener('parameter-end', ({detail}) => {
 
 onMessage(message => {
   if (message.type === 'metadata') {
-    face.setMetadata(message.parameters.map(p => ({...p, hasMid: p.mid > p.min && p.mid < p.max})));
+    face.setMetadata(message.parameters);
   } else if (message.type === 'values') {
     message.values.forEach((value, id) => {
       if (!editing.has(id)) face.setValue(id, value);

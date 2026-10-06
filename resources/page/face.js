@@ -115,33 +115,26 @@ export class SlideFace extends HTMLElement {
     this.now = 0;
     this.frame = {bpm: 120};
 
-    this.onPointerMove = this.onPointerMove.bind(this);
-    this.onPointerDown = this.onPointerDown.bind(this);
-    this.onPointerUp = this.onPointerUp.bind(this);
     this.invalidate = this.invalidate.bind(this);
     this.markTheme = () => { this.themeDirty = true; this.invalidate(); };
-  }
 
-  wire() {
     const c = this.canvas;
-    c.addEventListener('pointermove', this.onPointerMove);
-    c.addEventListener('pointerdown', this.onPointerDown);
-    c.addEventListener('pointerup', this.onPointerUp);
-    c.addEventListener('pointercancel', this.onPointerUp);
+    c.addEventListener('pointermove', e => this.onPointerMove(e));
+    c.addEventListener('pointerdown', e => this.onPointerDown(e));
+    c.addEventListener('pointerup', e => this.onPointerUp(e));
+    c.addEventListener('pointercancel', e => this.onPointerUp(e));
     c.addEventListener('dblclick', e => this.onDoubleClick(e));
     c.addEventListener('pointerleave', () => {
       if (!this.drag && this.hover) { this.hover = null; this.invalidate(); }
     });
     addEventListener('scroll', () => { this.rect = null; }, true);
-    this.wired = true;
   }
 
   // Moving the face from one parent to another disconnects and reconnects it. Both
   // callbacks must therefore be reversible: they start and stop the clock and the
   // observers, and never touch the value controls, whose ARIA and gesture state have
-  // to survive the move. The canvas's own listeners are wired once, in wire().
+  // to survive the move. The canvas's own listeners are wired once, in the constructor.
   connectedCallback() {
-    if (!this.wired) this.wire();
     this.resizeObserver = new ResizeObserver(() => { this.rect = null; this.invalidate(); });
     this.resizeObserver.observe(this.canvas);
     this.scheme = matchMedia('(prefers-color-scheme: dark)');
@@ -182,8 +175,8 @@ export class SlideFace extends HTMLElement {
   }
 
   /** A value from the plugin: silent, no event back. */
-  setValue(idOrIdentifier, value) {
-    const spec = this.metaByID.get(String(idOrIdentifier)) || this.meta.get(idOrIdentifier);
+  setValue(id, value) {
+    const spec = this.metaByID.get(String(id));
     if (!spec || !Number.isFinite(value)) return;
     this.controls.get(spec.identifier)?.setValue(value, false, 'bridge');
     this.buttons.get(spec.identifier)?.setValue(value, false, 'bridge');
@@ -216,7 +209,7 @@ export class SlideFace extends HTMLElement {
         label: spec.name,
         min: spec.min,
         max: spec.max,
-        mid: spec.hasMid ? spec.mid : null,
+        mid: spec.mid,
         curve: spec.curve,
         step: spec.step,
         unit: spec.unit,
@@ -240,7 +233,6 @@ export class SlideFace extends HTMLElement {
       const button = document.createElement('compost-button');
       button.setAttribute('mode', chip.mode);
       button.setAttribute('parameter-id', String(spec.id));
-      button.setAttribute('label', spec.name);
       button.setAttribute('aria-label', spec.name);
       if (chip.mode === 'switch') button.toggleAttribute('pressed', spec.initial >= 0.5);
       else {
@@ -270,37 +262,33 @@ export class SlideFace extends HTMLElement {
 
   initial(identifier) { return this.meta.get(identifier)?.initial ?? 0; }
 
-  /** One complete edit: begin, value, end. */
-  once(identifier, value) {
+  /** Inside a drag: the first write to a parameter opens its gesture, and the drag's
+   * end closes every gesture it opened. Outside one, a write is a complete edit:
+   * begin, value, end, and nothing at all when the value is unchanged. */
+  write(identifier, value) {
     const control = this.controls.get(identifier);
     const spec = this.meta.get(identifier);
     if (!control || !spec || !Number.isFinite(value)) return;
     const next = clamp(value, spec.min, spec.max);
-    if (next === control.value) return;
-    control.beginGesture('face');
-    control.setValue(next, true, 'face');
-    control.endGesture(false, 'face');
-  }
-
-  /** Inside a drag: the first write to a parameter opens its gesture, and the drag's
-   * end closes every gesture it opened. Outside one, a write is a complete edit. */
-  write(identifier, value) {
-    if (!this.drag) { this.once(identifier, value); return; }
-    const control = this.controls.get(identifier);
-    const spec = this.meta.get(identifier);
-    if (!control || !spec || !Number.isFinite(value)) return;
-    if (!this.drag.started.has(identifier)) {
-      this.drag.started.add(identifier);
+    if (!this.drag) {
+      if (next === control.value) return;
       control.beginGesture('face');
+      control.setValue(next, true, 'face');
+      control.endGesture(false, 'face');
+    } else {
+      if (!this.drag.started.has(identifier)) {
+        this.drag.started.add(identifier);
+        control.beginGesture('face');
+      }
+      control.setValue(next, true, 'face');
     }
-    control.setValue(clamp(value, spec.min, spec.max), true, 'face');
   }
 
   /** A chip that changes what the times mean re-bases them first, so nothing on
    * screen or in the sound moves: Link and Sync both keep both lines put. */
   chipChanged(id) {
     const [l, r] = this.lastTimes ?? this.times();
-    if (id === 'link') { this.once('ratio', r / l); this.once('difference', r - l); }
+    if (id === 'link') { this.write('ratio', r / l); this.write('difference', r - l); }
     else if (id === 'sync') this.writeLeft(l, true);
     this.invalidate();
   }
@@ -876,11 +864,9 @@ export class SlideFace extends HTMLElement {
     const T = this.theme;
     // An echo keeps the colour of the line it started on, mixed by how much of it
     // came from each, so Cross shows as the rows mixing; Tone then tints it.
-    const rgb = h => { const v = parseInt(h.replace('#', ''), 16); return [v >> 16 & 255, v >> 8 & 255, v & 255]; };
-    const inkRGB = rgb(T.ink), bRGB = rgb(T.lineb);
     const colourOf = (e, shade) => {
-      const s = clamp(e.aL / Math.max(e.a, 1e-12), 0, 1), to = shade.tint > 0 ? 255 : 0, k = 0.7 * Math.abs(shade.tint);
-      return `rgb(${inkRGB.map((c, i) => Math.round((c * s + bRGB[i] * (1 - s)) * (1 - k) + to * k)).join(',')})`; };
+      const s = clamp(e.aL / Math.max(e.a, 1e-12), 0, 1), k = 0.7 * Math.abs(shade.tint);
+      return `color-mix(in srgb, color-mix(in srgb, ${T.ink} ${s * 100}%, ${T.lineb}) ${(1 - k) * 100}%, ${shade.tint > 0 ? 'white' : 'black'})`; };
     const ref = Math.max(...list.map(e => e.a), 1e-9), cols = new Map(), wob = this.wobbleNow();
     for (const e of list) { const x = X(e.t * (1 + wob[e.line])); if (x > xMax) continue;
       const k = `${e.line}:${Math.round(x / (1.5 * dpr))}`, ex = cols.get(k); if (!ex || e.a > ex.e.a) cols.set(k, {e, x}); }
