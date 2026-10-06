@@ -892,19 +892,30 @@ export class SlideFace extends HTMLElement {
       // few listed echoes (their median), so it doesn't jump with whichever echo
       // happens to be last, and is drawn exactly as they are.
       const per = this.percent('cross') > 0 ? -3 / (longer * Math.max(1, this.repeats() - 1)) : Math.log10(list.g) / T0;
-      const tailEnd = mine.slice(-24), levels = tailEnd.map(e => e.a).sort((p, q) => p - q);
-      const end = {a: levels[levels.length >> 1], t: tailEnd.reduce((acc, e) => acc + e.t, 0) / tailEnd.length};
+      // the outline the eye reads is the taller echoes, so start from the upper
+      // quartile of the last listed ones
+      const tailEnd = mine.slice(-48), levels = tailEnd.map(e => e.a).sort((p, q) => p - q);
+      const end = {a: levels[Math.min(levels.length - 1, Math.floor(levels.length * 0.9))], t: tailEnd.reduce((acc, e) => acc + e.t, 0) / tailEnd.length};
       const mixL = tailEnd.reduce((acc, e) => acc + e.aL, 0) / Math.max(1e-12, tailEnd.reduce((acc, e) => acc + e.a, 0));
-      const shift = 1 + wob[line];
-      // one stroke per pass of the line, as the echoes themselves are spaced; where
-      // they crowd closer than a column, the column keeps the first
-      let lastX = X(last.t * shift);
-      for (let t = last.t + T0, k = 0; k < 20000; t += T0, k++) {
+      const shift = 1 + wob[line], other = times[1 - line], crossed = this.percent('cross') > 0;
+      // strokes where echoes arrive: every pass of this line, and with Cross up every
+      // pass of the other line too, as the listed echoes do; where they crowd closer
+      // than a column, the column keeps the first
+      let lastX = X(last.t * shift), own = last.t + T0, across = last.t + other;
+      for (let k = 0; k < 40000; k++) {
+        const t = crossed ? Math.min(own, across) : own, fromAcross = t !== own;
+        if (fromAcross) across += other; else own += T0;
         const x = X(t * shift); if (!Number.isFinite(x) || x > xMax) break;
         if (x - lastX < 1.5 * dpr) continue;
         lastX = x;
         const a = end.a * Math.pow(10, per * (t - end.t));
         if (!stroke({line, n: last.n + (t - last.t) / T0, a, aL: a * mixL}, x)) break;
+        // an echo that came across gets its tie, as the listed ones do
+        const tie = fromAcross ? 0.8 * this.percent('cross') * clamp((20 * Math.log10(a / ref) + 60) / 60, 0, 1) : 0;
+        if (tie >= 0.01) {
+          const from = 1 - line, hx = X((t - T0) * (1 + wob[from]));
+          ln(hx, rows[from] + (line > from ? half : -half) * 0.4, x, rows[line] + (line > from ? -half : half) * 0.4, T.acc, 1, tie);
+        }
       }
     }
     { // ties: a diagonal from an echo to the one it seeds on the other row, as strong
