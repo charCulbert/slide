@@ -402,20 +402,20 @@ export class SlideFace extends HTMLElement {
   // ---- the picture's model --------------------------------------------------
 
   /** Every echo, as the engine makes them: routes through L (i passes) and R (j
-   * passes) land at i·L + j·R; routes landing at the same moment on a line add as
-   * amplitudes. */
+   * passes) land at i·L + j·R. */
   echoes() {
     const [TA, TB] = this.times(), x = this.percent('cross'), f = this.percent('feed');
     const g = laws.passGain(this.repeats(), x, TA, TB);
     const out = [], heap = [], key = new Map(), FLOOR = Math.pow(10, -66 / 20);
-    // routes that land at the same moment on the same line add up, as they do in the
-    // sound: at a nice ratio many do. Ones that merely land near each other stay apart.
-    const K = e => `${e.line}:${Math.round(e.t * 100)}`;
+    // each route is its own echo, even where routes land together at a nice ratio, so
+    // the picture draws a ratio and its near neighbours the same way and nothing pops
+    // as a drag snaps on or off one (each pixel column shows its loudest echo)
+    const K = e => `${e.line}:${e.i}:${e.j}`;
     const up = i => { while (i > 0) { const p = (i - 1) >> 1; if (heap[p].t <= heap[i].t) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
     const down = i => { for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
       if (l < heap.length && heap[l].t < heap[m].t) m = l; if (r < heap.length && heap[r].t < heap[m].t) m = r;
       if (m === i) return; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } };
-    const push = e => { if (e.a < FLOOR || e.t > 12000 || heap.length > 10000) return; const k = K(e), ex = key.get(k);
+    const push = e => { if (e.a < FLOOR || heap.length > 10000) return; const k = K(e), ex = key.get(k);
       if (ex) { ex.a += e.a; ex.aL += e.aL; if (e.hop && !ex.hop) ex.hop = e.hop; return; }
       key.set(k, e); heap.push(e); up(heap.length - 1); };
     const a0 = 0.7 * Math.min(1, 1 - f), b0 = 0.7 * Math.min(1, 1 + f);
@@ -868,6 +868,18 @@ export class SlideFace extends HTMLElement {
       const s = clamp(e.aL / Math.max(e.a, 1e-12), 0, 1), k = 0.7 * Math.abs(shade.tint);
       return `color-mix(in srgb, color-mix(in srgb, ${T.ink} ${s * 100}%, ${T.lineb}) ${(1 - k) * 100}%, ${shade.tint > 0 ? 'white' : 'black'})`; };
     const ref = Math.max(...list.map(e => e.a), 1e-9), cols = new Map(), wob = this.wobbleNow();
+    // one echo's stroke: its height and strength from its level, shaded by the loop's
+    // filters, smeared by the blurs as faint copies side by side
+    const stroke = (e, x) => {
+      const frac = clamp((20 * Math.log10(e.a / ref) + 60) / 60, 0, 1); if (frac <= 0) return false;
+      const shade = this.shadeOf(e), h = half * frac, col = colourOf(e, shade), sm = this.smearOf(e) * dpr;
+      const alpha = 0.25 + 0.75 * Math.pow(frac, 0.7);
+      if (sm <= 0.5) { ln(x, rows[e.line] - h, x, rows[e.line] + h, col, 1.5 * shade.width, alpha); return true; }
+      const steps = Math.max(2, Math.round(sm / 2));
+      for (let s = -steps; s <= steps; s++) ln(x + s * sm / steps, rows[e.line] - h, x + s * sm / steps, rows[e.line] + h, col, 1.2 * shade.width,
+        alpha * (1 - Math.abs(s) / (steps + 1)) / (1 + steps / 6));
+      return true;
+    };
     for (const e of list) { const x = X(e.t * (1 + wob[e.line])); if (x > xMax) continue;
       const k = `${e.line}:${Math.round(x / (1.5 * dpr))}`, ex = cols.get(k); if (!ex || e.a > ex.e.a) cols.set(k, {e, x}); }
     const times = this.times();
@@ -876,11 +888,13 @@ export class SlideFace extends HTMLElement {
       const last = mine[mine.length - 1], T0 = times[line], longer = Math.max(...times);
       // Where the listed echoes end, the tail goes on at the rate Repeats sets: 60 dB
       // over Repeats times the longer line, the loop's slowest decay (uncrossed, each
-      // line simply falls by its own pass gain). It starts from the loudest of the last
-      // few listed echoes, so it doesn't jump with whichever echo happens to be last.
+      // line simply falls by its own pass gain). It starts from a typical level of the last
+      // few listed echoes (their median), so it doesn't jump with whichever echo
+      // happens to be last, and is drawn exactly as they are.
       const per = this.percent('cross') > 0 ? -3 / (longer * Math.max(1, this.repeats() - 1)) : Math.log10(list.g) / T0;
-      const end = mine.slice(-24).reduce((best, e) => e.a > best.a ? e : best, last);
-      const mixL = mine.slice(-24).reduce((acc, e) => acc + e.aL, 0) / Math.max(1e-12, mine.slice(-24).reduce((acc, e) => acc + e.a, 0));
+      const tailEnd = mine.slice(-24), levels = tailEnd.map(e => e.a).sort((p, q) => p - q);
+      const end = {a: levels[levels.length >> 1], t: tailEnd.reduce((acc, e) => acc + e.t, 0) / tailEnd.length};
+      const mixL = tailEnd.reduce((acc, e) => acc + e.aL, 0) / Math.max(1e-12, tailEnd.reduce((acc, e) => acc + e.a, 0));
       const shift = 1 + wob[line];
       // one stroke per pass of the line, as the echoes themselves are spaced; where
       // they crowd closer than a column, the column keeps the first
@@ -890,10 +904,7 @@ export class SlideFace extends HTMLElement {
         if (x - lastX < 1.5 * dpr) continue;
         lastX = x;
         const a = end.a * Math.pow(10, per * (t - end.t));
-        const frac = clamp((20 * Math.log10(a / ref) + 60) / 60, 0, 1); if (frac <= 0) break;
-        const fake = {n: last.n + (t - last.t) / T0, a: 1, aL: mixL}, shade = this.shadeOf(fake);
-        ln(x, rows[line] - half * frac, x, rows[line] + half * frac, colourOf(fake, shade), 1.5 * shade.width,
-          0.25 + 0.75 * Math.pow(frac, 0.7));
+        if (!stroke({line, n: last.n + (t - last.t) / T0, a, aL: a * mixL}, x)) break;
       }
     }
     { // ties: a diagonal from an echo to the one it seeds on the other row, as strong
@@ -908,15 +919,7 @@ export class SlideFace extends HTMLElement {
         ln(px, y0, x, y1, T.acc, 1, alpha);
       }
     }
-    for (const {e, x} of cols.values()) {
-      const frac = clamp((20 * Math.log10(e.a / ref) + 60) / 60, 0, 1); if (frac <= 0) continue;
-      const shade = this.shadeOf(e), h = half * frac, col = colourOf(e, shade), sm = this.smearOf(e) * dpr;
-      const alpha = 0.25 + 0.75 * Math.pow(frac, 0.7);
-      if (sm <= 0.5) { ln(x, rows[e.line] - h, x, rows[e.line] + h, col, 1.5 * shade.width, alpha); continue; }
-      const steps = Math.max(2, Math.round(sm / 2));
-      for (let s = -steps; s <= steps; s++) ln(x + s * sm / steps, rows[e.line] - h, x + s * sm / steps, rows[e.line] + h, col, 1.2 * shade.width,
-        alpha * (1 - Math.abs(s) / (steps + 1)) / (1 + steps / 6));
-    }
+    for (const {e, x} of cols.values()) stroke(e, x);
   }
 
   // ---- hit testing and gestures ---------------------------------------------
