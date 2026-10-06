@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <numbers>
 #include <string>
 #include <utility>
 #include <vector>
@@ -198,11 +199,11 @@ void parameterTable()
         CHECK(isLogarithmic(p) == (p.id == leftTime || p.id == ratio || p.id == leftBeats
                                    || p.id == repeats));
 
-    CHECK(enumNames(link).count == 2 && std::strcmp(enumNames(link).names[1], "Difference") == 0);
-    CHECK(enumNames(modType).count == 3 && std::strcmp(enumNames(modType).names[1], "B") == 0);
-    CHECK(std::strcmp(enumNames(modType).names[2], "C") == 0);
-    CHECK(enumNames(sync).count == 2);
-    CHECK(enumNames(repeats).names == nullptr && enumNames(cross).names == nullptr);
+    CHECK(enumNames(link).size() == 2 && std::strcmp(enumNames(link)[1], "Difference") == 0);
+    CHECK(enumNames(modType).size() == 3 && std::strcmp(enumNames(modType)[1], "B") == 0);
+    CHECK(std::strcmp(enumNames(modType)[2], "C") == 0);
+    CHECK(enumNames(sync).size() == 2);
+    CHECK(enumNames(repeats).empty() && enumNames(cross).empty());
 
     CHECK(clampParameter(leftTime, 1e9) == 3000 && clampParameter(leftTime, -5) == 10);
     CHECK(clampParameter(leftTime, std::nan("")) == 350);
@@ -233,7 +234,7 @@ void parameterText()
         CHECK(info.flags & CLAP_PARAM_IS_AUTOMATABLE);
         CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_STEPPED) == p.stepped);
         CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_MODULATABLE) == !p.stepped);
-        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_ENUM) == (enumNames(p.id).names != nullptr));
+        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_ENUM) == !enumNames(p.id).empty());
 
         double current = 0;
         CHECK(params->get_value(plugin.p, p.id, &current) && current == p.initial);
@@ -291,10 +292,10 @@ void parameterText()
     for (const auto& p : parameters)
     {
         const auto names = enumNames(p.id);
-        for (size_t i = 0; i < names.count; ++i)
+        for (size_t i = 0; i < names.size(); ++i)
         {
             double value = 0;
-            CHECK(params->text_to_value(plugin.p, p.id, names.names[i], &value));
+            CHECK(params->text_to_value(plugin.p, p.id, names[i], &value));
             CHECK(value == static_cast<double>(i));
         }
     }
@@ -1073,7 +1074,7 @@ void crossMovesSmoothly()
         Block block(frames);
         for (size_t i = 0; i < frames; ++i)
             block.l[i] = block.r[i] =
-                0.2f * static_cast<float>(std::sin(2 * M_PI * 200.0 * (from + i) / rig.rate));
+                0.2f * static_cast<float>(std::sin(2 * std::numbers::pi * 200.0 * (from + i) / rig.rate));
         return block;
     };
     auto before = run(rig, tone(seconds, 0));
@@ -1101,7 +1102,7 @@ void bucketCompander()
     const auto frames = rig.samples(2000);
     Block input(frames);
     for (size_t i = 0; i < frames; ++i)
-        input.l[i] = input.r[i] = 0.2f * static_cast<float>(std::sin(2 * M_PI * 150.0 * i / rig.rate));
+        input.l[i] = input.r[i] = 0.2f * static_cast<float>(std::sin(2 * std::numbers::pi * 150.0 * i / rig.rate));
     const auto out = run(rig, input);
     CHECK(finite(out));
     const auto in = energy(input, frames / 2, frames);

@@ -12,6 +12,8 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <numbers>
+#include <random>
 
 // Lab engine: two lines, left and right, each a feedback loop. Each pass runs the
 // line through the Mod's loss and drive, Tone's two cuts, the Loop blur and a
@@ -207,14 +209,15 @@ public:
         }
     }
 
+    // the longer line's last counted echo, which is 60 dB down
     double tailSeconds() const noexcept
     {
-        return tailMs() / 1000.0;
+        return std::max(effectiveMs[0], effectiveMs[1]) * std::max(1.0, values[repeats]) / 1000.0;
     }
 
 private:
     // ------------------------------------------------------------------ constants
-    static constexpr double pi = 3.14159265358979323846;
+    static constexpr double pi = std::numbers::pi;
     static constexpr double smoothingMs = 20.0;      // times, feedback, tone, mix
     static constexpr double openCutoffHz = 19000;    // at or above this a filter is a wire
     static constexpr double compandMs = 10.0;        // Bucket's detector
@@ -223,20 +226,13 @@ private:
     static constexpr double blurRateHz = 0.4;        // how fast a moving Mod sweeps the blurs
     static constexpr float denormalFloor = 1.0e-20f;
 
-    // A Lehmer generator.
+    // Uniform in -1..1.
     struct Random
     {
         explicit Random(double seed = 0.37) noexcept
-            : state(static_cast<int64_t>(seed * 2147483647.0))
-        {
-            if (state == 0) state = 1;
-        }
-        double next() noexcept
-        {
-            state = state * 48271 % 2147483647;
-            return static_cast<double>(state) / 2147483647.0 * 2.0 - 1.0;
-        }
-        int64_t state;
+            : engine(static_cast<std::uint_fast32_t>(seed * 2147483647.0)) {}
+        double next() noexcept { return engine() / 2147483647.0 * 2.0 - 1.0; }
+        std::minstd_rand engine;
     };
 
     // 20 ms one-pole.
@@ -253,12 +249,6 @@ private:
     };
 
     // ------------------------------------------------------------------ derivation
-    double tailMs() const noexcept
-    {
-        // the longer line's last counted echo, which is 60 dB down
-        return std::max(effectiveMs[0], effectiveMs[1]) * std::max(1.0, values[repeats]);
-    }
-
     double leftMs() const noexcept
     {
         return values[sync] == 0 ? values[leftTime] : values[leftBeats] * 60000.0 / tempo;

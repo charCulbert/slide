@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <span>
 
 namespace slide
 {
@@ -84,30 +85,23 @@ inline constexpr std::array<ParameterInfo, 18> parameters {{
     { modC,       "mod_c",      "Mod C",      "%",  0, 100, 35, 1, 0, 0, false }
 }};
 
-// The option list of a stepped parameter whose steps are words; `names` is null for
-// every other parameter.
-struct EnumNames
-{
-    const char* const* names = nullptr;
-    std::size_t count = 0;
-};
-
-inline constexpr EnumNames enumNames(clap_id id) noexcept
+// The option list of a stepped parameter whose steps are words; empty for every
+// other parameter.
+inline constexpr std::span<const char* const> enumNames(clap_id id) noexcept
 {
     switch (id)
     {
-        case link:          return { linkNames.data(), linkNames.size() };
-        case sync:          return { switchNames.data(), switchNames.size() };
-        case modType:       return { modTypeNames.data(), modTypeNames.size() };
+        case link:          return linkNames;
+        case sync:          return switchNames;
+        case modType:       return modTypeNames;
         default:            return {};
     }
 }
 
+// Ids are table indices.
 inline constexpr const ParameterInfo* findParameter(clap_id id) noexcept
 {
-    for (const auto& p : parameters)
-        if (p.id == id) return &p;
-    return nullptr;
+    return id < parameters.size() ? &parameters[id] : nullptr;
 }
 
 inline bool isLogarithmic(const ParameterInfo& p) noexcept

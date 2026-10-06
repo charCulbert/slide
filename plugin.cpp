@@ -144,7 +144,7 @@ static const clap_plugin_params_t extensionParams = {
         info->id = p.id;
         info->flags = CLAP_PARAM_IS_AUTOMATABLE;
         info->flags |= p.stepped ? CLAP_PARAM_IS_STEPPED : CLAP_PARAM_IS_MODULATABLE;
-        if (enumNames(p.id).names)
+        if (!enumNames(p.id).empty())
             info->flags |= CLAP_PARAM_IS_ENUM;
         info->min_value = p.min;
         info->max_value = p.max;
@@ -169,19 +169,9 @@ static const clap_plugin_params_t extensionParams = {
             return false;
         value = clampParameter(id, value);
         const auto options = enumNames(id);
-        int written;
-        if (options.names)
-            written = snprintf(text, size, "%s", options.names[(size_t)value]);
-        else if (!strcmp(p->unit, "ms"))
-            written = snprintf(text, size, "%.*f ms", p->digits, value);
-        else if (!strcmp(p->unit, "x"))
-            written = snprintf(text, size, "%.*f x", p->digits, value);
-        else if (!strcmp(p->unit, "%"))
-            written = snprintf(text, size, "%.*f%%", p->digits, value);
-        else if (p->stepped)
-            written = snprintf(text, size, "%d", (int)value);
-        else
-            written = snprintf(text, size, "%.*f", p->digits, value);
+        const int written = !options.empty()
+            ? snprintf(text, size, "%s", options[(size_t)value])
+            : snprintf(text, size, "%.*f%s%s", p->digits, value, *p->unit && strcmp(p->unit, "%") ? " " : "", p->unit);
         return written >= 0 && (uint32_t)written < size;
     },
 
@@ -191,8 +181,8 @@ static const clap_plugin_params_t extensionParams = {
         if (!p)
             return false;
         const auto options = enumNames(id);
-        for (size_t i = 0; i < options.count; i++)
-            if (!strcmp(options.names[i], text))
+        for (size_t i = 0; i < options.size(); i++)
+            if (!strcmp(options[i], text))
             {
                 *value = (double)i;
                 return true;
@@ -246,6 +236,21 @@ static const clap_plugin_tail_t extensionTail = {
     },
 };
 
+// All of `size` bytes, however the host splits the writes.
+static bool writeAll(const clap_ostream_t *stream, const void *data, uint64_t size)
+{
+    const char *bytes = (const char *)data;
+    while (size)
+    {
+        const int64_t written = stream->write(stream, bytes, size);
+        if (written <= 0)
+            return false;
+        bytes += written;
+        size -= (uint64_t)written;
+    }
+    return true;
+}
+
 // The state is State above, written as it lies in memory. Nothing is applied
 // until the whole of it is known good, so a corrupt state leaves the plugin
 // exactly as it was.
@@ -256,17 +261,7 @@ static const clap_plugin_state_t extensionState = {
         State state;
         for (const auto &p : parameters)
             state.values[p.id] = plugin->values[p.id].load(std::memory_order_relaxed);
-        const unsigned char *data = (const unsigned char *)&state;
-        uint64_t remaining = sizeof(state);
-        while (remaining)
-        {
-            const int64_t written = stream->write(stream, data, remaining);
-            if (written <= 0)
-                return false;
-            data += written;
-            remaining -= (uint64_t)written;
-        }
-        return true;
+        return writeAll(stream, &state, sizeof(state));
     },
 
     .load = [](const clap_plugin_t *_plugin, const clap_istream_t *stream) -> bool
@@ -338,17 +333,7 @@ static const clap_plugin_webview_t extensionWebview = {
         if (!resource || resource->mime.size() >= mimeCapacity)
             return false;
         strcpy(mime, resource->mime.c_str());
-        const char *bytes = resource->bytes.data();
-        uint64_t remaining = resource->bytes.size();
-        while (remaining)
-        {
-            const int64_t written = stream->write(stream, bytes, remaining);
-            if (written <= 0)
-                return false;
-            bytes += written;
-            remaining -= (uint64_t)written;
-        }
-        return true;
+        return writeAll(stream, resource->bytes.data(), resource->bytes.size());
     },
 
     .receive = [](const clap_plugin_t *_plugin, const void *buffer, uint32_t size) -> bool
@@ -465,9 +450,8 @@ static void PluginSendMetadata(MyPlugin *plugin)
     for (const auto &p : parameters)
     {
         core::Value::Array options;
-        const auto names = enumNames(p.id);
-        for (size_t i = 0; i < names.count; i++)
-            options.push_back(names.names[i]);
+        for (const auto *name : enumNames(p.id))
+            options.push_back(name);
         list.push_back(core::Value::Map{
             {"id", (double)p.id}, {"identifier", p.identifier}, {"name", p.name}, {"unit", p.unit},
             {"min", p.min}, {"max", p.max}, {"initial", p.initial}, {"step", p.step},

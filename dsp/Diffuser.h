@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <numbers>
 #include <vector>
 
 namespace slide
@@ -104,7 +105,7 @@ public:
     }
 
 private:
-    static constexpr double pi = 3.14159265358979323846;
+    static constexpr double pi = std::numbers::pi;
     static constexpr double spread = 0.4;
     static constexpr double maximumModulationMs = 2.0;
     static constexpr std::array<double, maximumStages> baseMs {
