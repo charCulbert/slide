@@ -995,6 +995,15 @@ void linkAndSync()
     rig.set(ratio, 1.618);
     rig.engine.setTempo(120);
     CHECK(at(500, 809));
+    // Synced left with right by Difference: right is a fixed offset in ms from the
+    // note, at any tempo.
+    rig.set(link, 1);
+    rig.set(difference, 12);
+    CHECK(at(500, 512));
+    rig.engine.setTempo(100);
+    CHECK(at(600, 612));
+    rig.engine.setTempo(120);
+    rig.set(link, 0);
     CHECK(near(rig.engine.bpm(), 120, 1e-9));
     rig.engine.setTempo(60);
     rig.set(ratio, 1);

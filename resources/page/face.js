@@ -345,8 +345,11 @@ export class SlideFace extends HTMLElement {
     return Math.abs(Math.log(n.ms / ms)) < 0.003 ? n.name : fmt(ms);
   }
 
+  /** What R reads as: its note under Sync with Ratio, otherwise its relation to L
+   * (under Sync with Diff, L is on the grid and R a fixed offset from it). */
   relWord() {
     const [l, r] = this.times();
+    if (this.sync() && this.ratioMode()) return this.nameT(r);
     return this.ratioMode() ? `L × ${ratioName(r / l)}` : `L ${r - l >= 0 ? '+' : '−'} ${fmt(Math.abs(r - l))}`;
   }
 
@@ -388,10 +391,10 @@ export class SlideFace extends HTMLElement {
   /** Moves R alone: the relation changes, L stays. */
   moveR(ms, free) {
     const l = this.times()[0], r = clamp(ms, laws.minTimeMs, laws.maxTimeMs);
-    if (this.ratioMode()) {
-      const [rMin, rMax] = this.range('ratio');
-      this.write('ratio', clamp(this.snapRatio(r / l, free), rMin, rMax));
-    } else this.write('difference', r - l);
+    const [rMin, rMax] = this.range('ratio');
+    if (this.ratioMode()) // under Sync, R snaps to notes; otherwise to nice ratios
+      this.write('ratio', clamp(this.sync() ? (free ? r : this.nearestNote(r).ms) / l : this.snapRatio(r / l, free), rMin, rMax));
+    else this.write('difference', r - l);
   }
 
   /** Moves both: L goes, and R keeps its ratio or difference to it. */
@@ -766,7 +769,12 @@ export class SlideFace extends HTMLElement {
     // then an upper one, the common ratios first; one that fits on neither is left
     // as a tick, and the picture names the ratio while R moves.
     const rx = X(TB);
-    const relTicks = this.ratioMode() ? NICE.filter(([r]) => TA * r >= laws.minTimeMs && TA * r <= laws.maxTimeMs)
+    // Under Sync with Ratio the scale is note values instead: plain notes first,
+    // dotted and triplet after.
+    const plain = name => !name.endsWith('.') && !name.endsWith('T');
+    const relTicks = this.sync() && this.ratioMode() ? NOTES.map(([beats, n]) => [beats * this.beatMs(), n]).filter(([ms]) => ms >= laws.minTimeMs && ms <= laws.maxTimeMs)
+      .map(([ms, n]) => [X(ms), n, plain(n)])
+      : this.ratioMode() ? NICE.filter(([r]) => TA * r >= laws.minTimeMs && TA * r <= laws.maxTimeMs)
       .map(([r, n]) => [X(TA * r), n, true]).sort((a, b) => RAIL_RATIOS.indexOf(a[1]) - RAIL_RATIOS.indexOf(b[1]))
       : [-1000, -500, -200, -100, -50, -20, 0, 20, 50, 100, 200, 500, 1000].filter(d => TA + d >= laws.minTimeMs && TA + d <= laws.maxTimeMs)
         .map(d => [X(TA + d), d ? `${d > 0 ? '+' : '−'}${Math.abs(d)}` : '0', [0, -200, 200, -1000, 1000, -50, 50].includes(d)]);
@@ -860,9 +868,11 @@ export class SlideFace extends HTMLElement {
   }
 
   /** Echoes as strokes around a row, the loudest per pixel column; a smear is drawn
-   * as several faint copies side by side. Past the last echo the model listed, each
-   * line carries on as an envelope falling by the pass gain, out into the
-   * perspective stretch, so a long tail never just stops. */
+   * as several faint copies side by side. The model lists only so many echoes, so
+   * past the last one each line carries on as an envelope, out into the perspective
+   * stretch, so a long tail never just stops. The envelope starts at the level the
+   * listed echoes end on, falls at the rate they were falling, and is drawn the way
+   * they are, so the join does not show. */
   drawEchoes(list, X, rows, half, xMax, dpr, ln) {
     const T = this.theme;
     // An echo keeps the colour of the line it started on, mixed by how much of it
@@ -878,14 +888,27 @@ export class SlideFace extends HTMLElement {
     const times = this.times();
     for (const line of [0, 1]) {
       const mine = list.filter(e => e.line === line); if (!mine.length || !(list.g > 0)) continue;
-      const last = mine[mine.length - 1], T0 = times[line], per = Math.log10(list.g) / T0;
-      for (let x = Math.ceil(X(last.t) + 2 * dpr); x <= xMax; x += 1.5 * dpr) {
-        const t = X.inv(x); if (!Number.isFinite(t)) break;
-        const a = last.a * Math.pow(10, per * (t - last.t));
+      const last = mine[mine.length - 1], T0 = times[line], longer = Math.max(...times);
+      // Where the listed echoes end, the tail goes on at the rate Repeats sets: 60 dB
+      // over Repeats times the longer line, the loop's slowest decay (uncrossed, each
+      // line simply falls by its own pass gain). It starts from the loudest of the last
+      // few listed echoes, so it doesn't jump with whichever echo happens to be last.
+      const per = this.percent('cross') > 0 ? -3 / (longer * Math.max(1, this.repeats() - 1)) : Math.log10(list.g) / T0;
+      const end = mine.slice(-24).reduce((best, e) => e.a > best.a ? e : best, last);
+      const mixL = mine.slice(-24).reduce((acc, e) => acc + e.aL, 0) / Math.max(1e-12, mine.slice(-24).reduce((acc, e) => acc + e.a, 0));
+      const shift = 1 + wob[line];
+      // one stroke per pass of the line, as the echoes themselves are spaced; where
+      // they crowd closer than a column, the column keeps the first
+      let lastX = X(last.t * shift);
+      for (let t = last.t + T0, k = 0; k < 20000; t += T0, k++) {
+        const x = X(t * shift); if (!Number.isFinite(x) || x > xMax) break;
+        if (x - lastX < 1.5 * dpr) continue;
+        lastX = x;
+        const a = end.a * Math.pow(10, per * (t - end.t));
         const frac = clamp((20 * Math.log10(a / ref) + 60) / 60, 0, 1); if (frac <= 0) break;
-        const fake = {n: last.n + (t - last.t) / T0, a: 1, aL: line ? 0 : 1}, shade = this.shadeOf(fake);
-        ln(x, rows[line] - half * frac, x, rows[line] + half * frac, colourOf(fake, shade), 1.2 * shade.width,
-          (0.25 + 0.75 * Math.pow(frac, 0.7)) * 0.6);
+        const fake = {n: last.n + (t - last.t) / T0, a: 1, aL: mixL}, shade = this.shadeOf(fake);
+        ln(x, rows[line] - half * frac, x, rows[line] + half * frac, colourOf(fake, shade), 1.5 * shade.width,
+          0.25 + 0.75 * Math.pow(frac, 0.7));
       }
     }
     { // ties: a diagonal from an echo to the one it seeds on the other row, as strong
