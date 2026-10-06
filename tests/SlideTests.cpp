@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1301,94 +1303,37 @@ std::vector<Section> buildFixture()
     return sections;
 }
 
-std::string fixturePath()
+std::string renderFixture()
 {
-    return std::string(SLIDE_SOURCE_DIR) + "/tests/laws-fixture.json";
-}
-
-bool writeFixture(const char* path)
-{
-    auto* file = std::fopen(path, "w");
-    if (!file) return false;
     const auto sections = buildFixture();
-    std::fputs("{\n", file);
+    std::string out = "{\n";
+    char number[32];
     for (size_t s = 0; s < sections.size(); ++s)
     {
-        std::fprintf(file, "  \"%s\": [\n", sections[s].name);
+        out += std::string("  \"") + sections[s].name + "\": [\n";
         for (size_t r = 0; r < sections[s].rows.size(); ++r)
         {
-            std::fputs("    {", file);
+            out += "    {";
             const auto& row = sections[s].rows[r];
             for (size_t i = 0; i < row.size(); ++i)
-                std::fprintf(file, "%s\"%s\": %.15g", i ? ", " : "", row[i].first, row[i].second);
-            std::fprintf(file, "}%s\n", r + 1 < sections[s].rows.size() ? "," : "");
+            {
+                std::snprintf(number, sizeof(number), "%.15g", row[i].second);
+                out += std::string(i ? ", " : "") + "\"" + row[i].first + "\": " + number;
+            }
+            out += r + 1 < sections[s].rows.size() ? "},\n" : "}\n";
         }
-        std::fprintf(file, "  ]%s\n", s + 1 < sections.size() ? "," : "");
+        out += s + 1 < sections.size() ? "  ],\n" : "  ]\n";
     }
-    std::fputs("}\n", file);
-    return std::fclose(file) == 0;
+    return out + "}\n";
 }
 
-// A scanner rather than a parser: the fixture is written by the function above, so
-// the shape is known and only the numbers have to come back.
-struct Scanner
-{
-    std::string text;
-    size_t pos = 0;
-
-    bool seek(const std::string& needle)
-    {
-        const auto found = text.find(needle, pos);
-        if (found == std::string::npos) return false;
-        pos = found + needle.size();
-        return true;
-    }
-};
-
+// The committed fixture is exactly what Laws.h produces now.
 void checkFixture()
 {
-    const auto path = fixturePath();
-    auto* file = std::fopen(path.c_str(), "rb");
+    std::ifstream file(SLIDE_SOURCE_DIR "/tests/laws-fixture.json", std::ios::binary);
     CHECK(file);
-    Scanner scanner;
-    char buffer[4096];
-    size_t read = 0;
-    while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0) scanner.text.append(buffer, read);
-    std::fclose(file);
-
-    size_t rowCount = 0;
-    for (const auto& section : buildFixture())
-    {
-        CHECK(scanner.seek(std::string("\"") + section.name + "\": ["));
-        for (const auto& row : section.rows)
-        {
-            const auto open = scanner.text.find('{', scanner.pos);
-            const auto close = scanner.text.find('}', scanner.pos);
-            CHECK(open != std::string::npos && close != std::string::npos && open < close);
-            size_t cursor = open + 1;
-            for (const auto& field : row)
-            {
-                const auto quote = scanner.text.find('"', cursor);
-                CHECK(quote != std::string::npos && quote < close);
-                const auto end = scanner.text.find('"', quote + 1);
-                CHECK(end != std::string::npos && end < close);
-                CHECK(scanner.text.compare(quote + 1, end - quote - 1, field.first) == 0);
-                const auto colon = scanner.text.find(':', end);
-                CHECK(colon != std::string::npos && colon < close);
-                char* stop = nullptr;
-                const auto stored = std::strtod(scanner.text.c_str() + colon + 1, &stop);
-                CHECK(stop != scanner.text.c_str() + colon + 1);
-                CHECK(std::abs(stored - field.second) <= 1e-9);
-                cursor = static_cast<size_t>(stop - scanner.text.c_str());
-            }
-            // Nothing in the row beyond the fields the laws produce.
-            CHECK(scanner.text.find_first_not_of(" \t", cursor) == close);
-            scanner.pos = close + 1;
-            ++rowCount;
-        }
-    }
-    CHECK(rowCount >= 100 && rowCount <= 500);
-    std::printf("fixture: %zu rows, %zu bytes\n", rowCount, scanner.text.size());
+    const std::string committed { std::istreambuf_iterator<char>(file), {} };
+    CHECK(committed == renderFixture());
 }
 } // namespace
 
@@ -1396,7 +1341,7 @@ int main(int argc, char** argv)
 {
     if (argc == 3 && std::strcmp(argv[1], "--write-fixture") == 0)
     {
-        CHECK(writeFixture(argv[2]));
+        CHECK(std::ofstream(argv[2], std::ios::binary) << renderFixture());
         std::printf("wrote %s\n", argv[2]);
         return 0;
     }
