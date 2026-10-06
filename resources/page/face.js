@@ -49,7 +49,8 @@ const RAIL_RATIOS = ['1:1', '2:1', '1:2', '3:2', '2:3', '3:1', '4:3', '3:4', 'φ
 const NAMES = '"Barlow Semi Condensed", "IBM Plex Sans Condensed", system-ui, sans-serif';
 const MOD_AMOUNTS = ['mod_a', 'mod_b', 'mod_c'];
 
-const AXIS_END = 10000; // where the log axis gives way to the perspective stretch
+// The axis runs to two minutes; a longer tail pins the glass to the edge.
+const AXIS_MAX = 120000;
 
 // Which picture key each parameter identifier lights, for keyboard focus.
 const FOCUS = {left_time: 'L', left_beats: 'L', ratio: 'R', difference: 'R', repeats: 'repeats',
@@ -63,16 +64,12 @@ const fmt = ms => !Number.isFinite(ms) || ms > 3.6e6 ? '∞' : ms >= 60000 ? `${
   : ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)} s` : `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`;
 const fmtCount = n => n < 10 ? n.toFixed(1) : `${Math.round(n)}`;
 
-// The time axis: log from 10 ms to 10 s, then a perspective stretch to the right
-// edge where a time t sits 1 − 10 s/t of the way along, so 20 s is halfway, 40 s
-// three quarters, and the edge is ∞.
-function timeAxis(x0, xEnd, x1) {
-  const lo = laws.minTimeMs, dec = Math.log10(AXIS_END / lo);
-  const X = t => t <= AXIS_END ? x0 + Math.log10(Math.max(lo, t) / lo) / dec * (xEnd - x0)
-    : xEnd + (x1 - xEnd) * (1 - AXIS_END / t);
-  X.inv = x => x <= xEnd ? lo * Math.pow(10, (x - x0) / (xEnd - x0) * dec)
-    : AXIS_END / Math.max(1e-6, 1 - (x - xEnd) / (x1 - xEnd));
-  X.over = x1;
+// The time axis: log from 10 ms to two minutes across the whole width, one scale
+// throughout, so echoes close up evenly however long the tail runs.
+function timeAxis(x0, x1) {
+  const lo = laws.minTimeMs, dec = Math.log10(AXIS_MAX / lo);
+  const X = t => x0 + Math.log10(clamp(t, lo, AXIS_MAX) / lo) / dec * (x1 - x0);
+  X.inv = x => lo * Math.pow(10, (x - x0) / (x1 - x0) * dec);
   return X;
 }
 
@@ -583,8 +580,9 @@ export class SlideFace extends HTMLElement {
     };
 
     // ---- geometry: the picture keeps its width margins and stretches with height
-    const X0 = 156 * dpr, X1 = W - 196 * dpr, Xm = X1 - 90 * dpr, top = 70 * dpr, bot = H - 160 * dpr, axisY = bot + 12 * dpr;
-    const X = timeAxis(X0, Xm, X1), [TA, TB] = this.times(), mid = (top + bot) / 2, longer = Math.max(TA, TB);
+    const X0 = 156 * dpr, X1 = W - 196 * dpr, top = 70 * dpr, bot = H - 160 * dpr, axisY = bot + 12 * dpr;
+    const X = timeAxis(X0, X1), [TA, TB] = this.times(), mid = (top + bot) / 2, longer = Math.max(TA, TB);
+    const Xm = X(10000); // the L and R rails run to 10 s, past the longest time
     this.lastTimes = [TA, TB];
     const cross = this.percent('cross'), feed = this.percent('feed'), tone = this.val('tone') / 100;
     const pre = this.percent('pre_blur'), loop = this.percent('loop_blur'), post = this.percent('post_blur');
@@ -655,21 +653,15 @@ export class SlideFace extends HTMLElement {
     }
     this.drawEchoes(list, X, rows, half, X1, dpr, ln);
 
-    // axis: log to 10 s, then the perspective stretch to ∞
-    ln(X0, axisY, Xm, axisY, T.hair);
-    for (const d of [10, 100, 1000]) for (let m = 1; m < 10; m++) for (let k = 0; k < (m < 5 ? 5 : 2); k++) {
-      const v = d * (m + k / (m < 5 ? 5 : 2)); if (v > AXIS_END) continue; ln(X(v), axisY, X(v), axisY + (k ? 2 : 3.5) * dpr, T.dim, 0.6, 0.6); }
-    for (const v of [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
-      const x = X(v), major = [10, 100, 1000, 10000].includes(v);
-      ln(x, axisY, x, axisY + (major ? 6 : 3.5) * dpr, major ? T.ink2 : T.dim, 1);
-    }
-    g.setLineDash([2 * dpr, 3 * dpr]); ln(Xm, axisY, X1, axisY, T.hair); g.setLineDash([]);
-    for (const t of [20000, 60000]) ln(X(t), axisY, X(t), axisY + 4 * dpr, T.dim, 1);
-    ln(X1, axisY, X1, axisY + 4 * dpr, T.dim, 1);
+    // axis: log from 10 ms to two minutes
+    ln(X0, axisY, X1, axisY, T.hair);
+    for (let d = 10; d < AXIS_MAX; d *= 10) for (let m = 1; m < 10; m++) { const v = d * m; if (v > AXIS_MAX) break;
+      ln(X(v), axisY, X(v), axisY + (m === 1 ? 6 : m === 5 ? 3.5 : 2) * dpr, m === 1 ? T.ink2 : T.dim, m === 1 ? 1 : 0.6, m === 1 ? 1 : 0.6); }
+    ln(X1, axisY, X1, axisY + 6 * dpr, T.ink2, 1);
     // labels in order of importance: the ends and decades first, then what fits
-    for (const [t, s] of [[10, '10 ms'], [Infinity, '∞'], [100, '100'], [1000, '1 s'], [10000, '10 s'], [20000, '20 s'],
-      [50, '50'], [500, '500'], [5000, '5 s'], [60000, '1 min']])
-      label(s, t === Infinity ? X1 : X(t), axisY + 9 * dpr, T.dim, 9.5, 'center', 'top');
+    for (const [t, s] of [[10, '10 ms'], [AXIS_MAX, '2 min'], [100, '100'], [1000, '1 s'], [10000, '10 s'], [60000, '1 min'],
+      [50, '50'], [500, '500'], [5000, '5 s']])
+      label(s, X(t), axisY + 9 * dpr, T.dim, 9.5, 'center', 'top');
 
     // pointers on the first echoes: sideways is time, up/down pulls the rows together
     for (const [line, t] of [[0, TA], [1, TB]]) {
@@ -792,8 +784,7 @@ export class SlideFace extends HTMLElement {
     }
     // Repeats' rail ends where its top (1000) puts the tail, on the time axis
     const xRepMax = X(longer * laws.maxRepeats);
-    ln(X0, rY(2), Math.min(Xm, xRepMax), rY(2), T.hair, 1, on('repeats') ? 1 : 0.7);
-    if (xRepMax > Xm) { g.setLineDash([2 * dpr, 3 * dpr]); ln(Xm, rY(2), xRepMax, rY(2), T.hair, 1, on('repeats') ? 1 : 0.7); g.setLineDash([]); }
+    ln(X0, rY(2), xRepMax, rY(2), T.hair, 1, on('repeats') ? 1 : 0.7);
     label('1000', xRepMax, rY(2) - 8 * dpr, T.dim, 9);
     ln(xRepMax, rY(2), xRepMax, rY(2) - 5 * dpr, T.dim, 0.9);
     for (const n of [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]) { const x = X(longer * n); if (x < X0 || x > xRepMax - 6 * dpr) continue;
@@ -804,9 +795,9 @@ export class SlideFace extends HTMLElement {
     // ---- zones, back to front
     const level = p => clamp((bot - p.y) / (bot - top), 0, 1);
     const toneAt = v => { const t = v * 2 - 1; return Math.abs(t) < 0.03 ? 0 : t * 100; };
-    const repeatsAt = x => {
-      return clamp(X.inv(x) / Math.max(...this.times()), 1, laws.maxRepeats);
-    };
+    // the count whose tail lands at x; the rail's end always means the top, even
+    // when that tail runs past the axis
+    const repeatsAt = x => x >= xRepMax - dpr ? laws.maxRepeats : clamp(X.inv(x) / Math.max(...this.times()), 1, laws.maxRepeats);
     const railX = (x0, x1, id) => ({cursor: 'ew-resize', move: p => this.write(id, clamp((p.x - x0) / (x1 - x0), 0, 1) * 100),
       dbl: () => this.write(id, this.initial(id))});
     zone({x: mr[0] - 6 * dpr, y: 14 * dpr, w: mr[1] - mr[0] + 12 * dpr, h: 26 * dpr, key: 'mixRail', params: ['mix'], ...railX(mr[0], mr[1], 'mix')});
@@ -901,12 +892,24 @@ export class SlideFace extends HTMLElement {
       // strokes where echoes arrive: every pass of this line, and with Cross up every
       // pass of the other line too, as the listed echoes do; where they crowd closer
       // than a column, the column keeps the first
-      let lastX = X(last.t * shift), own = last.t + T0, across = last.t + other;
+      // how densely the listed echoes filled the pixel columns just before the join;
+      // where they filled them all, the continuation fills every column too, so the
+      // texture carries on instead of opening into stripes
+      const col = 1.5 * dpr, endX = X(last.t * shift), seen = new Set();
+      for (const e of mine) { const ex = X(e.t * shift); if (ex > endX - 40 * dpr) seen.add(Math.round(ex / col)); }
+      const filled = seen.size / Math.max(1, Math.round(40 * dpr / col));
+      let lastX = endX, own = last.t + T0, across = last.t + other;
       for (let k = 0; k < 40000; k++) {
-        const t = crossed ? Math.min(own, across) : own, fromAcross = t !== own;
-        if (fromAcross) across += other; else own += T0;
+        let t, fromAcross = false;
+        if (filled > 0.6) { // dense: one stroke per column
+          t = X.inv(lastX + col) / shift; if (!Number.isFinite(t)) break;
+          fromAcross = crossed && ((t - last.t) / other) % 1 < ((t - last.t) / T0) % 1;
+        } else {
+          t = crossed ? Math.min(own, across) : own; fromAcross = t !== own;
+          if (fromAcross) across += other; else own += T0;
+        }
         const x = X(t * shift); if (!Number.isFinite(x) || x > xMax) break;
-        if (x - lastX < 1.5 * dpr) continue;
+        if (x - lastX < col * 0.99) continue;
         lastX = x;
         const a = end.a * Math.pow(10, per * (t - end.t));
         if (!stroke({line, n: last.n + (t - last.t) / T0, a, aL: a * mixL}, x)) break;
