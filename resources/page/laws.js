@@ -1,5 +1,6 @@
 // The pure formulas the face shares with Laws.h, the same code function for function
-// (Laws.h also has the blur and Bucket laws, which only the engine needs). Every function
+// (Laws.h also has the blur and Bucket laws, which only the engine needs; the snap
+// lock is the face's alone). Every function
 // is total: it clamps or substitutes rather than returning a non-finite number, so
 // the face can call it while a gesture is still mid-flight. tests/laws.test.mjs
 // checks this file against tests/laws-fixture.json, which the C++ tests write from

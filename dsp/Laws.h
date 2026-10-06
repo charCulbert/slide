@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 
 // The pure formulas shared by the engine and the face. Every function here is
@@ -15,14 +14,6 @@ inline constexpr double minTimeMs = 10, maxTimeMs = 3000;
 inline constexpr double openHighCutHz = 20000;
 // Repeats' top: the thousandth echo of the longer line is 60 dB down.
 inline constexpr double maxRepeats = 1000;
-
-// 1:4, 1:3, 1:2, 2:3, 3:4, 1:1, 5:4, 4:3, 3:2, phi, 2:1, 3:1, 4:1
-inline constexpr std::array<double, 13> niceRatios {
-    0.25, 1.0 / 3, 0.5, 2.0 / 3, 0.75, 1.0, 1.25, 4.0 / 3, 1.5, 1.6180339887498949, 2.0, 3.0, 4.0
-};
-
-inline constexpr double snapCapture = 0.012; // in log ratio
-inline constexpr double snapRelease = 0.025;
 
 inline double finiteOr(double value, double fallback) noexcept
 {
@@ -112,31 +103,6 @@ inline Blur blurAt(BlurPlace place, double amount01) noexcept
         case BlurPlace::loop: return { 0.85 * a, 0.5 + 2.6 * a, 4 + static_cast<int>(std::lround(12 * a)) };
         default:              return { 0.70 * a, 0.6 + 2.6 * a, 6 + static_cast<int>(std::lround(10 * a)) };
     }
-}
-
-/// The snap lock: a raw ratio captures a nice ratio within 1.2 % in log ratio and
-/// only lets go past 2.5 %. `held` and `newHeld` are 0 when nothing is held.
-inline double nearestNiceRatio(double raw, double held, double& newHeld) noexcept
-{
-    const auto value = finiteOr(raw, 1.0);
-    if (!(value > 0))
-    {
-        newHeld = 0;
-        return value;
-    }
-    if (held > 0 && std::abs(std::log(value / held)) < snapRelease)
-    {
-        newHeld = held;
-        return held;
-    }
-    for (const auto candidate : niceRatios)
-        if (std::abs(std::log(value / candidate)) < snapCapture)
-        {
-            newHeld = candidate;
-            return candidate;
-        }
-    newHeld = 0;
-    return value;
 }
 
 /// The per-pass gain for Repeats n with Cross x and line times a and b (ms). At

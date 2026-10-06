@@ -37,13 +37,25 @@ test('toneCuts', () => {
   }
 });
 
+// The snap lock lives only in the face, so it is pinned here by hand.
 test('nearestNiceRatio', () => {
-  for (const row of fixture.nearestNiceRatio) {
-    const what = JSON.stringify(row);
-    const out = laws.nearestNiceRatio(row.raw, row.held);
-    close(out.value, row.out, `value ${what}`);
-    close(out.newHeld, row.newHeld, `newHeld ${what}`);
-  }
+  const snap = (raw, held, value, newHeld) => {
+    const out = laws.nearestNiceRatio(raw, held);
+    close(out.value, value, `value ${raw} held ${held}`);
+    close(out.newHeld, newHeld, `newHeld ${raw} held ${held}`);
+  };
+  snap(1.5, 0, 1.5, 1.5);
+  snap(1.5 * Math.exp(0.02), 1.5, 1.5, 1.5);                     // still held
+  snap(1.5 * Math.exp(0.03), 1.5, 1.5 * Math.exp(0.03), 0);      // released past 2.5 %
+  snap(1.5 * Math.exp(0.02), 0, 1.5 * Math.exp(0.02), 0);        // not captured
+  snap(1.5 * Math.exp(0.01), 0, 1.5, 1.5);                       // captured within 1.2 %
+  snap(2.5, 0, 2.5, 0);
+  snap(0.252, 0, 0.25, 0.25);
+  snap(1 / 3 * 1.005, 0, 1 / 3, 1 / 3);
+  snap(3.98, 0, 4, 4);
+  snap(1.02, 1, 1, 1);
+  assert.equal(laws.niceRatios.length, 13);
+  for (let i = 1; i < laws.niceRatios.length; ++i) assert.ok(laws.niceRatios[i] > laws.niceRatios[i - 1]);
 });
 
 test('wobbleReferenceMs', () => {

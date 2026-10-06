@@ -687,22 +687,6 @@ void lawsByHand()
     // Every setting dies away: no pass ever keeps everything.
     for (double x : { 0.0, 0.5, 1.0 }) CHECK(passGain(1e9, x, 300, 450) <= 0.999);
 
-    // Snap lock: capture at 1.2 %, release at 2.5 %, in log ratio.
-    double held = 0;
-    CHECK(near(nearestNiceRatio(1.5, 0, held), 1.5) && held == 1.5);
-    CHECK(near(nearestNiceRatio(1.5 * std::exp(0.02), 1.5, held), 1.5) && held == 1.5); // still held
-    const auto released = nearestNiceRatio(1.5 * std::exp(0.03), 1.5, held);
-    CHECK(near(released, 1.5 * std::exp(0.03)) && held == 0);
-    CHECK(near(nearestNiceRatio(1.5 * std::exp(0.02), 0, held), 1.5 * std::exp(0.02)) && held == 0);
-    CHECK(near(nearestNiceRatio(1.5 * std::exp(0.01), 0, held), 1.5) && held == 1.5); // captured
-    held = 0;
-    CHECK(near(nearestNiceRatio(2.5, 0, held), 2.5) && held == 0);
-    CHECK(niceRatios.size() == 13 && near(niceRatios[9], 1.6180339887498949));
-    for (size_t i = 1; i < niceRatios.size(); ++i) CHECK(niceRatios[i] > niceRatios[i - 1]);
-    CHECK(near(nearestNiceRatio(0.252, 0, held), 0.25) && held == 0.25);
-    CHECK(near(nearestNiceRatio(1.0 / 3 * 1.005, 0, held), 1.0 / 3) && near(held, 1.0 / 3));
-    CHECK(near(nearestNiceRatio(3.98, 0, held), 4) && held == 4);
-
     // Wobble reference and the bucket's loss.
     CHECK(near(wobbleReferenceMs(10), 40) && near(wobbleReferenceMs(2000), 400));
     CHECK(near(wobbleReferenceMs(120), 120));
@@ -1298,19 +1282,6 @@ std::vector<Section> buildFixture()
             rows.push_back({ { "tone", tone }, { "highCutHz", cuts.highCutHz }, { "lowCutHz", cuts.lowCutHz } });
         }
         sections.push_back({ "toneCuts", std::move(rows) });
-    }
-    {
-        std::vector<Row> rows;
-        for (double held : { 0.0, 1.0, 1.5 })
-            for (double raw : { 0.25, 0.3, 0.335, 0.5, 0.995, 1.0, 1.008, 1.02, 1.04, 1.49, 1.5, 1.53, 1.56,
-                                2.0, 3.1, 3.97 })
-            {
-                double newHeld = 0;
-                const auto out = nearestNiceRatio(raw, held, newHeld);
-                rows.push_back({ { "raw", raw }, { "held", held }, { "out", out },
-                    { "newHeld", newHeld } });
-            }
-        sections.push_back({ "nearestNiceRatio", std::move(rows) });
     }
     {
         std::vector<Row> rows;
