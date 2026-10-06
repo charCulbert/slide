@@ -1,0 +1,105 @@
+// The pure formulas the face shares with Laws.h, the same code function for function
+// (Laws.h also has the blur and Bucket laws, which only the engine needs). Every function
+// is total: it clamps or substitutes rather than returning a non-finite number, so
+// the face can call it while a gesture is still mid-flight. tests/laws.test.mjs
+// checks this file against tests/laws-fixture.json, which the C++ tests write from
+// Laws.h.
+
+export const minTimeMs = 10;
+export const maxTimeMs = 3000;
+export const openHighCutHz = 20000;
+export const maxRepeats = 1000; // Repeats' top: the 1000th echo is 60 dB down
+
+// 1:4, 1:3, 1:2, 2:3, 3:4, 1:1, 5:4, 4:3, 3:2, phi, 2:1, 3:1, 4:1
+export const niceRatios = [
+  0.25, 1 / 3, 0.5, 2 / 3, 0.75, 1, 1.25, 4 / 3, 1.5, 1.6180339887498949, 2, 3, 4
+];
+
+export const snapCapture = 0.012; // in log ratio
+export const snapRelease = 0.025;
+
+const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+
+export function finiteOr(value, fallback) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+const cleanRecipe = Object.freeze({
+  sine: 0, sineHz: 0, rand: 0, randHz: 0, lossHz: openHighCutHz, lossTracksTime: false,
+  hiss: 0, drive: 0, compand: 0
+});
+
+/** Tape (0), Oil can (1) or Bucket (2) at a Wear of 0–1. `rand` is the depth before
+ * the engine's ×6, `drive` of 0 means no saturation, and `compand` is how far toward
+ * 2:1 the compander works. */
+export function recipeAt(medium, wear01) {
+  const w = clamp(finiteOr(wear01, 0), 0, 1);
+  if (!(w > 0) || medium < 0 || medium > 2) return { ...cleanRecipe };
+
+  // Oil can is the wildest medium, so its Wear is scaled by 0.7.
+  const amt = Math.pow(medium === 1 ? 0.7 * w : w, 1.8) * 5;
+  let recipe, loss;
+  if (medium === 0) { // Tape: a slow drift with a little flutter
+    recipe = { ...cleanRecipe, sine: 0.0025, sineHz: 0.7, rand: 0.0012, randHz: 6, hiss: 0.0003 };
+    loss = 9000;
+  } else if (medium === 1) { // Oil can: the disc's rotation, an irregular lurch, and grit
+    recipe = { ...cleanRecipe, sine: 0.005, sineHz: 2.3, rand: 0.015, randHz: 1.4, hiss: 0.0004,
+      drive: 1 + 0.5 * amt };
+    loss = 2600;
+  } else { // Bucket: a steady clock, so no wobble; hiss that breathes under the compander
+    recipe = { ...cleanRecipe, lossTracksTime: true, hiss: 0.0015, compand: Math.min(1, amt * 2) };
+    loss = 8000;
+  }
+  recipe.sine *= amt;
+  recipe.rand *= amt;
+  // Oil can's hiss takes one more 0.7 on its Wear.
+  const hissAmt = medium === 1 ? Math.pow(0.49 * w, 1.8) * 5 : amt;
+  recipe.hiss *= Math.min(4, 0.9 * hissAmt);
+  recipe.lossHz = loss + (openHighCutHz - loss) * (1 - Math.min(1, amt * 2));
+  return recipe;
+}
+
+/** Tone's two cuts in the loop: dark (below 0) lowers a high cut from 12 kHz, thin
+ * (above 0) raises a low cut from 20 Hz up to 2.5 kHz. */
+export function toneCuts(tone11) {
+  const t = clamp(finiteOr(tone11, 0), -1, 1);
+  return {
+    highCutHz: t < 0 ? 12000 * Math.pow(2, 5.5 * t) : openHighCutHz,
+    lowCutHz: t > 0 ? Math.min(2500, 20 * Math.pow(2, 7 * t)) : 20
+  };
+}
+
+/** The snap lock: a raw ratio captures a nice ratio within 1.2 % in log ratio and
+ * only lets go past 2.5 %. `held` and the returned `newHeld` are 0 when nothing is
+ * held. */
+export function nearestNiceRatio(raw, held) {
+  const value = finiteOr(raw, 1);
+  if (!(value > 0)) return { value, newHeld: 0 };
+  if (held > 0 && Math.abs(Math.log(value / held)) < snapRelease)
+    return { value: held, newHeld: held };
+  for (const candidate of niceRatios)
+    if (Math.abs(Math.log(value / candidate)) < snapCapture)
+      return { value: candidate, newHeld: candidate };
+  return { value, newHeld: 0 };
+}
+
+/** The per-pass gain for Repeats n with Cross x and line times a and b; see Laws.h. */
+export function passGain(repeats, cross, a, b) {
+  const passes = Math.max(1, finiteOr(repeats, 1)) - 1;
+  if (passes < 1e-3) return 0;
+  const plain = Math.pow(10, -3 / passes), cap = 0.999; // a pass always loses a little
+  const x = clamp(finiteOr(cross, 0), 0, 1), s = 1 - x;
+  if (x <= 0) return Math.min(plain, cap);
+  const ta = Math.max(minTimeMs, finiteOr(a, minTimeMs)), tb = Math.max(minTimeMs, finiteOr(b, minTimeMs));
+  const longer = Math.max(ta, tb);
+  const pa = Math.pow(plain, -ta / longer), pb = Math.pow(plain, -tb / longer);
+  const qa = s * pa, qb = s * pb, c = x * x * pa * pb;
+  const A = qa * qb - c, B = qa + qb;
+  const g = 2 / (B + Math.sqrt(Math.max(0, B * B - 4 * A))); // the smaller root, stably
+  return Number.isFinite(g) ? clamp(g, 0, cap) : Math.min(plain, cap);
+}
+
+/** Wobble depth is relative to the delay time, but only between 40 and 400 ms. */
+export function wobbleReferenceMs(timeMs) {
+  return clamp(finiteOr(timeMs, minTimeMs), 40, 400);
+}

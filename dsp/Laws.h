@@ -1,0 +1,184 @@
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+
+// The pure formulas shared by the engine and the face. Every function here is
+// total: it clamps or substitutes rather than returning a non-finite number, so the
+// face can call it while a gesture is still mid-flight. `ui/laws.js` is the same
+// code in JavaScript and `tests/laws-fixture.json` pins the two together.
+namespace slide::laws
+{
+
+inline constexpr double minTimeMs = 10, maxTimeMs = 3000;
+inline constexpr double openHighCutHz = 20000;
+// Repeats' top: the thousandth echo of the longer line is 60 dB down.
+inline constexpr double maxRepeats = 1000;
+
+// 1:4, 1:3, 1:2, 2:3, 3:4, 1:1, 5:4, 4:3, 3:2, phi, 2:1, 3:1, 4:1
+inline constexpr std::array<double, 13> niceRatios {
+    0.25, 1.0 / 3, 0.5, 2.0 / 3, 0.75, 1.0, 1.25, 4.0 / 3, 1.5, 1.6180339887498949, 2.0, 3.0, 4.0
+};
+
+inline constexpr double snapCapture = 0.012; // in log ratio
+inline constexpr double snapRelease = 0.025;
+
+inline double finiteOr(double value, double fallback) noexcept
+{
+    return std::isfinite(value) ? value : fallback;
+}
+
+/// One medium's constants at this Wear. `rand` is the depth before the engine's ×6,
+/// `drive` of 0 means no saturation, and `compand` is how far toward 2:1 the
+/// compander works.
+struct Recipe
+{
+    double sine, sineHz, rand, randHz, lossHz;
+    bool lossTracksTime;
+    double hiss, drive, compand;
+};
+
+inline constexpr Recipe cleanRecipe { 0, 0, 0, 0, openHighCutHz, false, 0, 0, 0 };
+
+/// Mod A (0), B (1) or C (2) at an amount of 0–1.
+inline Recipe recipeAt(int medium, double wear01) noexcept
+{
+    const auto w = std::clamp(finiteOr(wear01, 0.0), 0.0, 1.0);
+    if (w <= 0 || medium < 0 || medium > 2) return cleanRecipe;
+
+    // Oil can is the wildest medium, so its Wear is scaled by 0.7.
+    const auto amt = std::pow(medium == 1 ? 0.7 * w : w, 1.8) * 5.0;
+    Recipe recipe = cleanRecipe;
+    double loss = openHighCutHz;
+    switch (medium)
+    {
+        case 0: // Tape: a slow drift with a little flutter
+            recipe = { 0.0025, 0.7, 0.0012, 6.0, 0, false, 0.0003, 0, 0 };
+            loss = 9000;
+            break;
+        case 1: // Oil can: the disc's rotation, an irregular lurch, and the grit of an analog loop
+            recipe = { 0.005, 2.3, 0.015, 1.4, 0, false, 0.0004, 1.0 + 0.5 * amt, 0 };
+            loss = 2600;
+            break;
+        default: // Bucket: a steady clock, so no wobble; hiss that breathes under the compander
+            recipe = { 0, 0, 0, 0, 0, true, 0.0015, 0, std::min(1.0, amt * 2.0) };
+            loss = 8000;
+            break;
+    }
+    recipe.sine *= amt;
+    recipe.rand *= amt;
+    // Oil can's hiss takes one more 0.7 on its Wear.
+    const auto hissAmt = medium == 1 ? std::pow(0.49 * w, 1.8) * 5.0 : amt;
+    recipe.hiss *= std::min(4.0, 0.9 * hissAmt);
+    recipe.lossHz = loss + (openHighCutHz - loss) * (1.0 - std::min(1.0, amt * 2.0));
+    return recipe;
+}
+
+/// Tone's two cuts in the loop: dark (below 0) lowers a high cut from 12 kHz,
+/// thin (above 0) raises a low cut from 20 Hz up to 2.5 kHz.
+struct ToneCuts
+{
+    double highCutHz, lowCutHz;
+};
+
+inline ToneCuts toneCuts(double tone11) noexcept
+{
+    const auto t = std::clamp(finiteOr(tone11, 0.0), -1.0, 1.0);
+    return { t < 0 ? 12000.0 * std::pow(2.0, 5.5 * t) : openHighCutHz,
+             t > 0 ? std::min(2500.0, 20.0 * std::pow(2.0, 7.0 * t)) : 20.0 };
+}
+
+/// Where a blur sits: on the input (Pre), in the loop (Loop) or on the output (Post).
+enum class BlurPlace { pre = 0, loop = 1, post = 2 };
+
+/// One blur's diffuser at an amount of 0–1: its allpass gain, how far its stage
+/// times are stretched, and how many of the 16 stages run. The rail's top is 0.7
+/// of the diffuser's range, past which it rings. Below half a percent a blur is off.
+struct Blur
+{
+    double gain, size;
+    int stages;
+};
+
+inline Blur blurAt(BlurPlace place, double amount01) noexcept
+{
+    const auto v = std::clamp(finiteOr(amount01, 0.0), 0.0, 1.0);
+    if (v <= 0.005) return { 0, 1, 0 };
+    const auto a = 0.7 * v;
+    switch (place)
+    {
+        case BlurPlace::pre:  return { 0.75 * a, 0.6 + 2.0 * a, 4 + static_cast<int>(std::lround(10 * a)) };
+        case BlurPlace::loop: return { 0.85 * a, 0.5 + 2.6 * a, 4 + static_cast<int>(std::lround(12 * a)) };
+        default:              return { 0.70 * a, 0.6 + 2.6 * a, 6 + static_cast<int>(std::lround(10 * a)) };
+    }
+}
+
+/// The snap lock: a raw ratio captures a nice ratio within 1.2 % in log ratio and
+/// only lets go past 2.5 %. `held` and `newHeld` are 0 when nothing is held.
+inline double nearestNiceRatio(double raw, double held, double& newHeld) noexcept
+{
+    const auto value = finiteOr(raw, 1.0);
+    if (!(value > 0))
+    {
+        newHeld = 0;
+        return value;
+    }
+    if (held > 0 && std::abs(std::log(value / held)) < snapRelease)
+    {
+        newHeld = held;
+        return held;
+    }
+    for (const auto candidate : niceRatios)
+        if (std::abs(std::log(value / candidate)) < snapCapture)
+        {
+            newHeld = candidate;
+            return candidate;
+        }
+    newHeld = 0;
+    return value;
+}
+
+/// The per-pass gain for Repeats n with Cross x and line times a and b (ms). At
+/// Cross 0 it is 10^(-3/(n-1)): the longer line's nth echo is 60 dB down. With
+/// Cross the loop's slowest mode would decay faster than that, so the gain is the
+/// one that puts that mode's decay back at the Cross-0 rate. With d the decay per
+/// ms, the loop's characteristic equation at z = d is (1 - g s d^-a)(1 - g s d^-b)
+/// - g^2 x^2 d^-(a+b) = 0, s = 1 - x: a quadratic in g, whose smaller root is taken,
+/// written as 2 / (B + sqrt(D)) so it stays exact where the two roots meet.
+inline double passGain(double repeats, double cross, double a, double b) noexcept
+{
+    const auto passes = std::max(1.0, finiteOr(repeats, 1.0)) - 1.0;
+    if (passes < 1e-3) return 0.0;
+    const auto plain = std::pow(10.0, -3.0 / passes);
+    // a pass always loses a little, so every setting dies away
+    const auto cap = 0.999;
+    const auto x = std::clamp(finiteOr(cross, 0.0), 0.0, 1.0), s = 1.0 - x;
+    if (x <= 0) return std::min(plain, cap);
+    const auto ta = std::max(minTimeMs, finiteOr(a, minTimeMs));
+    const auto tb = std::max(minTimeMs, finiteOr(b, minTimeMs));
+    const auto longer = std::max(ta, tb);
+    // d^-t written as plain^(-t / longer), so nothing overflows
+    const auto pa = std::pow(plain, -ta / longer), pb = std::pow(plain, -tb / longer);
+    const auto qa = s * pa, qb = s * pb, c = x * x * pa * pb;
+    const auto A = qa * qb - c, B = qa + qb;
+    const auto g = 2.0 / (B + std::sqrt(std::max(0.0, B * B - 4.0 * A)));
+    return std::isfinite(g) ? std::clamp(g, 0.0, cap) : std::min(plain, cap);
+}
+
+/// Wobble depth is relative to the delay time, but only between 40 and 400 ms.
+inline double wobbleReferenceMs(double timeMs) noexcept
+{
+    return std::clamp(finiteOr(timeMs, minTimeMs), 40.0, 400.0);
+}
+
+/// Bucket loses more of the top the longer the line is.
+inline double bucketLossHz(double lossHz, double timeMs) noexcept
+{
+    const auto loss = finiteOr(lossHz, openHighCutHz);
+    const auto time = std::max(minTimeMs, finiteOr(timeMs, minTimeMs));
+    // The floor never lifts the cut above the medium's own loss.
+    return std::min(loss, std::max(1200.0, loss * std::sqrt(60.0 / time)));
+}
+
+} // namespace slide::laws

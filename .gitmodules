@@ -1,0 +1,3 @@
+[submodule "libs/chardsp"]
+	path = libs/chardsp
+	url = https://github.com/charCulbert/chardsp.git
