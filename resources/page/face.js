@@ -144,9 +144,6 @@ export class SlideFace extends HTMLElement {
     if (!this.wired) this.wire();
     this.resizeObserver = new ResizeObserver(() => { this.rect = null; this.invalidate(); });
     this.resizeObserver.observe(this.canvas);
-    this.themeObserver = new MutationObserver(this.markTheme);
-    this.themeObserver.observe(document.documentElement,
-      {attributes: true, attributeFilter: ['data-color-scheme', 'class', 'style']});
     this.scheme = matchMedia('(prefers-color-scheme: dark)');
     this.scheme.addEventListener('change', this.markTheme);
     document.fonts?.ready.then(this.invalidate);
@@ -165,7 +162,6 @@ export class SlideFace extends HTMLElement {
   disconnectedCallback() {
     cancelAnimationFrame(this.raf);
     this.resizeObserver?.disconnect();
-    this.themeObserver?.disconnect();
     this.scheme?.removeEventListener('change', this.markTheme);
   }
 
