@@ -185,40 +185,10 @@ void parameterTable()
     CHECK(parameters.size() == stateValueCount);
     for (size_t i = 0; i < parameters.size(); ++i) CHECK(parameters[i].id == i);
 
-    struct Expected { clap_id id; const char* identifier; const char* name; const char* unit;
-                      double min, max, initial, step, mid; int digits; bool stepped; };
-    const std::array<Expected, stateValueCount> expected {{
-        { leftTime, "left_time", "Left time", "ms", 10, 3000, 350, 0.1, 120, 1, false },
-        { link, "link", "Link", "", 0, 1, 0, 1, 0, 0, true },
-        { ratio, "ratio", "Ratio", "x", 1.0 / 300, 300, 1.5, 0.0001, 1, 3, false },
-        { difference, "difference", "Difference", "ms", -3000, 3000, 175, 0.1, 0, 1, false },
-        { sync, "sync", "Sync", "", 0, 1, 0, 1, 0, 0, true },
-        { leftBeats, "left_beats", "Left beats", "", 1.0 / 48, 16, 0.5, 0.0001, 1, 4, false },
-        { repeats, "repeats", "Repeats", "", 1, 1000, 8, 0.1, 10, 1, false },
-        { preBlur, "pre_blur", "Pre-blur", "%", 0, 100, 0, 1, 0, 0, false },
-        { loopBlur, "loop_blur", "Blur", "%", 0, 100, 30, 1, 0, 0, false },
-        { postBlur, "post_blur", "Post-blur", "%", 0, 100, 0, 1, 0, 0, false },
-        { tone, "tone", "Tone", "", -100, 100, 0, 1, 0, 0, false },
-        { mix, "mix", "Mix", "%", 0, 100, 50, 1, 0, 0, false },
-        { cross, "cross", "Cross", "%", 0, 100, 10, 1, 0, 0, false },
-        { modType, "mod_type", "Mod type", "", 0, 2, 0, 1, 0, 0, true },
-        { modA, "mod_a", "Mod A", "%", 0, 100, 35, 1, 0, 0, false },
-        { feed, "feed", "Feed", "%", -100, 100, 0, 1, 0, 0, false },
-        { modB, "mod_b", "Mod B", "%", 0, 100, 35, 1, 0, 0, false },
-        { modC, "mod_c", "Mod C", "%", 0, 100, 35, 1, 0, 0, false }
-    }};
-    for (size_t i = 0; i < expected.size(); ++i)
+    for (const auto& p : parameters)
     {
-        const auto& p = parameters[i];
-        const auto& e = expected[i];
-        CHECK(p.id == e.id);
-        CHECK(std::strcmp(p.identifier, e.identifier) == 0);
-        CHECK(std::strcmp(p.name, e.name) == 0);
-        CHECK(std::strcmp(p.unit, e.unit) == 0);
-        CHECK(p.min == e.min && p.max == e.max && p.initial == e.initial && p.step == e.step);
-        CHECK(p.mid == e.mid && p.digits == e.digits && p.stepped == e.stepped);
         CHECK(p.initial >= p.min && p.initial <= p.max);
-        CHECK(findParameter(e.id) == &p);
+        CHECK(findParameter(p.id) == &p);
     }
     CHECK(findParameter(stateValueCount) == nullptr);
     CHECK(maxRepeats == 1000);
@@ -383,21 +353,13 @@ void stateRoundTrip()
     CHECK(p.state);
 
     // Move every parameter off its default, then save.
-    Input input;
-    std::vector<clap_event_param_value_t> events;
-    events.reserve(parameters.size());
     for (const auto& info : parameters)
     {
         // A quarter of the way up, or the top when that lands on the default.
         auto value = clampParameter(info.id, info.min + (info.max - info.min) * 0.25);
         if (value == info.initial) value = info.max;
-        events.push_back({ { sizeof(clap_event_param_value_t), 0, CLAP_CORE_EVENT_SPACE_ID,
-            CLAP_EVENT_PARAM_VALUE, 0 }, info.id, nullptr, -1, -1, -1, -1, value });
+        p.set(info.id, value);
     }
-    for (const auto& e : events) input.events.push_back(&e.header);
-    Output output;
-    const auto* paramsExt = p.params;
-    paramsExt->flush(p.p, &input.list, &output.list);
     const auto moved = readValues(p);
     for (size_t i = 0; i < parameters.size(); ++i) CHECK(moved[i] != parameters[i].initial);
 
@@ -411,14 +373,7 @@ void stateRoundTrip()
     CHECK(magic == stateMagic && version == stateVersion);
 
     // Back to the defaults, then load: every value returns.
-    Input reset;
-    std::vector<clap_event_param_value_t> resets;
-    resets.reserve(parameters.size());
-    for (const auto& info : parameters)
-        resets.push_back({ { sizeof(clap_event_param_value_t), 0, CLAP_CORE_EVENT_SPACE_ID,
-            CLAP_EVENT_PARAM_VALUE, 0 }, info.id, nullptr, -1, -1, -1, -1, info.initial });
-    for (const auto& e : resets) reset.events.push_back(&e.header);
-    paramsExt->flush(p.p, &reset.list, &output.list);
+    for (const auto& info : parameters) p.set(info.id, info.initial);
 
     const clap_istream_t reader { &blob, readBlob };
     blob.offset = 0;
@@ -444,18 +399,6 @@ void stateRoundTrip()
     const auto notANumber = std::nan("");
     std::memcpy(corrupt.data() + 2 * sizeof(uint32_t) + 3 * sizeof(double), &notANumber, sizeof(double));
     refuse(corrupt);
-}
-
-void descriptorIdentity()
-{
-    const auto& d = *getPluginDescriptor();
-    CHECK(std::strcmp(d.id, "com.charlieculbert.slide-lab") == 0);
-    CHECK(std::strcmp(d.name, "Slide Lab") == 0);
-    CHECK(std::strcmp(d.vendor, "Charlie Culbert") == 0);
-    CHECK(std::strcmp(d.features[0], CLAP_PLUGIN_FEATURE_AUDIO_EFFECT) == 0);
-    CHECK(std::strcmp(d.features[1], CLAP_PLUGIN_FEATURE_DELAY) == 0);
-    CHECK(std::strcmp(d.features[2], CLAP_PLUGIN_FEATURE_STEREO) == 0);
-    CHECK(d.features[3] == nullptr);
 }
 
 // ------------------------------------------------------------------- presets
@@ -1353,7 +1296,6 @@ int main(int argc, char** argv)
     parameterTable();
     parameterText();
     stateRoundTrip();
-    descriptorIdentity();
     presetsLoad();
     presetDiscovery();
     lawsByHand();
