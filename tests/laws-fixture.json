@@ -115,5 +115,8 @@
     {"repeats": 1000, "cross": 1, "a": 300, "b": 300, "out": 0.99310918137498},
     {"repeats": 1000, "cross": 1, "a": 250, "b": 375, "out": 0.994254344819251},
     {"repeats": 1000, "cross": 1, "a": 40, "b": 2900, "out": 0.99650111306707}
+  ],
+  "constants": [
+    {"minTimeMs": 10, "maxTimeMs": 3000, "openHighCutHz": 20000, "maxRepeats": 1000}
   ]
 }

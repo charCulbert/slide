@@ -188,7 +188,6 @@ void pluginDelays()
 void parameterTable()
 {
     using namespace slide;
-    CHECK(parameters.size() == stateValueCount);
     for (size_t i = 0; i < parameters.size(); ++i) CHECK(parameters[i].id == i);
 
     for (const auto& p : parameters)
@@ -1195,6 +1194,8 @@ std::vector<Section> buildFixture()
                         { "b", times.second }, { "out", passGain(repeats, cross, times.first, times.second) } });
         sections.push_back({ "passGain", std::move(rows) });
     }
+    sections.push_back({ "constants", { { { "minTimeMs", minTimeMs }, { "maxTimeMs", maxTimeMs },
+                                          { "openHighCutHz", openHighCutHz }, { "maxRepeats", maxRepeats } } } });
     return sections;
 }
 

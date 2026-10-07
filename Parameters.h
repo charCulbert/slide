@@ -35,8 +35,6 @@ enum Parameter : clap_id
     modC = 17
 };
 
-inline constexpr std::size_t stateValueCount = 18;
-
 inline constexpr Parameter modAmounts[3] { modA, modB, modC };
 using laws::maxRepeats;
 
@@ -56,8 +54,8 @@ inline constexpr std::array<const char*, 2> linkNames { "Ratio", "Difference" };
 inline constexpr std::array<const char*, 2> switchNames { "Off", "On" };
 inline constexpr std::array<const char*, 3> modTypeNames { "A", "B", "C" };
 
-inline constexpr std::array<ParameterInfo, 18> parameters {{
-    { leftTime,   "left_time",  "Left time",  "ms", 10, 3000, 350, 0.1, 120, 1, false },
+inline constexpr auto parameters = std::to_array<ParameterInfo>({
+    { leftTime,   "left_time",  "Left time",  "ms", laws::minTimeMs, laws::maxTimeMs, 350, 0.1, 120, 1, false },
     { link,       "link",       "Link",       "",   0, 1, 0, 1, 0, 0, true },
     { ratio,      "ratio",      "Ratio",      "x",  1.0 / 300, 300, 1.5, 0.0001, 1, 3, false },
     { difference, "difference", "Difference", "ms", -3000, 3000, 175, 0.1, 0, 1, false },
@@ -75,7 +73,14 @@ inline constexpr std::array<ParameterInfo, 18> parameters {{
     { feed,       "feed",       "Feed",       "%",  -100, 100, 0, 1, 0, 0, false },
     { modB,       "mod_b",      "Mod B",      "%",  0, 100, 35, 1, 0, 0, false },
     { modC,       "mod_c",      "Mod C",      "%",  0, 100, 35, 1, 0, 0, false }
-}};
+});
+
+inline constexpr std::size_t stateValueCount = parameters.size();
+static_assert([] {
+    for (std::size_t i = 0; i < parameters.size(); ++i)
+        if (parameters[i].id != i) return false;
+    return true;
+}(), "each row's id must be its index");
 
 inline constexpr std::span<const char* const> enumNames(clap_id id) noexcept
 {

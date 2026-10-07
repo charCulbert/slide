@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
 import {resolve, extname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import * as laws from '../resources/page/laws.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dawRoot = process.env.DAW_ROOT ?? resolve(root, '../wclap-browser-daw');
@@ -17,7 +18,7 @@ async function table() {
     .map(m => [m[1], [...m[2].matchAll(/"([^"]*)"/g)].map(n => n[1])]));
   const enums = {link: lists.linkNames, sync: lists.switchNames, modType: lists.modTypeNames};
   const number = text => text.includes('/') ? text.split('/').map(Number).reduce((a, b) => a / b)
-    : text === 'laws::maxRepeats' ? 1000 : Number(text);
+    : text.startsWith('laws::') ? laws[text.slice(6)] : Number(text);
   return [...source.matchAll(/\{ (\w+),\s+"(\w+)",\s+"([^"]+)",\s+"([^"]*)",\s+([^,]+), ([^,]+), ([^,]+), ([^,]+), ([^,]+), (\d+), (true|false) \}/g)]
     .map(([, key, identifier, name, unit, min, max, initial, step, mid, digits]) => {
       const spec = {id: ids[key], identifier, name, unit, min: number(min), max: number(max), initial: number(initial),
