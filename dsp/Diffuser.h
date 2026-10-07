@@ -37,16 +37,18 @@ public:
     {
         for (auto& s : stages) std::fill(s.buffer.begin(), s.buffer.end(), 0.0f);
         phase = phaseOffset;
+        gainNow = gain;
     }
 
     /// The allpass gain, the stretch of every stage time, how many stages run, and
-    /// the sweep's depth in ms. A gain of 0 turns the blur off.
+    /// the sweep's depth in ms. No stages is off; a gain of 0 leaves a pure delay. The
+    /// gain glides, like the stage times.
     void set(double newGain, double size, int count, double modulationMs) noexcept
     {
         gain = static_cast<float>(std::clamp(newGain, 0.0, 0.95));
         depth = std::clamp(modulationMs, 0.0, maximumModulationMs) * 0.001 * sampleRate;
         for (std::size_t i = 0; i < maximumStages; ++i) stages[i].target = stageSamples(i, size);
-        const auto n = gain > 0 ? static_cast<std::size_t>(std::clamp(count, 0, static_cast<int>(maximumStages))) : 0;
+        const auto n = static_cast<std::size_t>(std::clamp(count, 0, static_cast<int>(maximumStages)));
         for (auto i = active; i < n; ++i)
         {
             auto& stage = stages[i];
@@ -68,11 +70,16 @@ public:
         return lag;
     }
 
+    /// How late the blur's sound is right now, in samples, as its stages actually stand.
+    double lag() const noexcept { return lagNow; }
+
     float process(float x) noexcept
     {
-        if (active == 0) return x;
+        if (active == 0) { lagNow = 0; return x; }
         phase += step;
         if (phase > 2.0 * pi) phase -= 2.0 * pi;
+        gainNow += (gain - gainNow) * static_cast<float>(glide);
+        double lag = 0;
         auto v = x;
         for (std::size_t k = 0; k < active; ++k)
         {
@@ -84,20 +91,26 @@ public:
                 s.delay += (s.target - s.delay) * glide;
                 if (std::abs(s.target - s.delay) < 1.0e-3) s.delay = s.target;
                 const auto d = s.delay + depth * 0.5 * (1.0 + std::sin(phase + static_cast<double>(k) * 1.3));
+                lag += d;
                 const auto position = static_cast<double>(s.write) - d + static_cast<double>(size);
                 const auto i0 = static_cast<std::size_t>(position);
                 const auto f = static_cast<float>(position - std::floor(position));
                 const auto a = s.buffer[i0 % size], b = s.buffer[(i0 + 1) % size];
                 read = a + (b - a) * f;
             }
-            else read = s.buffer[(s.write + size - static_cast<std::size_t>(s.delay)) % size];
-            const auto y = -gain * v + read;
-            auto stored = v + gain * y;
+            else
+            {
+                read = s.buffer[(s.write + size - static_cast<std::size_t>(s.delay)) % size];
+                lag += s.delay;
+            }
+            const auto y = -gainNow * v + read;
+            auto stored = v + gainNow * y;
             if (std::abs(stored) < 1.0e-20f) stored = 0;
             s.buffer[s.write] = stored;
             s.write = (s.write + 1) % size;
             v = y;
         }
+        lagNow = lag;
         return v;
     }
 
@@ -124,7 +137,8 @@ private:
 
     std::array<Stage, maximumStages> stages;
     double sampleRate = 48000, stretch = 1, phaseOffset = 0, phase = 0, depth = 0, step = 0, glide = 0;
-    float gain = 0;
+    float gain = 0, gainNow = 0;
+    double lagNow = 0;
     std::size_t active = 0;
 };
 

@@ -165,6 +165,7 @@ void pluginDelays()
     p.set(preBlur, 0);
     p.set(loopBlur, 0);
     p.set(modA, 0);
+    p.set(modB, 0);
     p.set(repeats, 1);
 
     std::vector<float> inL(1024), inR(1024), outL(1024), outR(1024);
@@ -1041,6 +1042,40 @@ void blursKeepTime()
             }
 }
 
+// Switching the Mod type mid-sound glides into the new medium instead of stepping.
+void modTypeSwitchesSmoothly()
+{
+    using namespace slide;
+    bool smooth = true;
+    for (auto [from, to] : { std::pair { 0, 1 }, { 1, 2 }, { 2, 0 }, { 1, 0 } })
+    {
+        Rig rig;
+        rig.set(repeats, 8);
+        rig.times(300, 450);
+        rig.set(modA, 70); rig.set(modB, 70); rig.set(modC, 70);
+        rig.set(modType, from);
+        const auto tone = [&](size_t frames, size_t at) {
+            Block block(frames);
+            for (size_t i = 0; i < frames; ++i)
+                block.l[i] = block.r[i] = 0.2f * static_cast<float>(std::sin(2 * std::numbers::pi * 210.0 * (at + i) / rig.rate));
+            return block;
+        };
+        const auto second = rig.samples(1000);
+        const auto before = run(rig, tone(second, 0));
+        rig.set(modType, to);
+        const auto after = run(rig, tone(second, second));
+        const auto most = [](const Block& b, size_t from, size_t to) {
+            double m = 0;
+            for (size_t i = std::max<size_t>(from, 1); i < to; ++i) m = std::max(m, static_cast<double>(std::abs(b.l[i] - b.l[i - 1])));
+            return m;
+        };
+        const auto steady = std::max(most(before, before.size() / 2, before.size()), most(after, after.size() / 2, after.size()));
+        const auto change = std::max(most(after, 0, after.size() / 2), static_cast<double>(std::abs(after.l[0] - before.l[before.size() - 1])));
+        smooth = smooth && change <= steady * 1.25;
+    }
+    CHECK(smooth);
+}
+
 void blursChangeTheSound()
 {
     using namespace slide;
@@ -1089,6 +1124,7 @@ void engineByHand()
     bucketDecays();
     blursChangeTheSound();
     blursKeepTime();
+    modTypeSwitchesSmoothly();
 }
 
 

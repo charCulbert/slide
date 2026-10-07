@@ -121,6 +121,9 @@ public:
             const auto mixNow = mixTarget.next(k20);
             const auto crossNow = static_cast<float>(crossTarget.next(k20));
             const auto compandNow = compandTarget.next(k20);
+            const auto sineNow = sineTarget.next(k20), randNow = randTarget.next(k20);
+            const auto driveNow = static_cast<float>(driveTarget.next(k20));
+            const auto hissNow = hissTarget.next(k20);
 
             if (coefficientCountdown-- <= 0)
             {
@@ -143,7 +146,7 @@ public:
                 if (phase[c] >= 1.0) phase[c] -= std::floor(phase[c]);
                 randomState[c] += (noise[c].next() - randomState[c]) * randomCoefficient;
                 randomState2[c] += (randomState[c] - randomState2[c]) * randomCoefficient;
-                drift[c] = (recipe.sine * std::sin(2 * pi * phase[c]) + recipe.rand * 6 * randomState2[c]) * reference;
+                drift[c] = (sineNow * std::sin(2 * pi * phase[c]) + randNow * 6 * randomState2[c]) * reference;
             }
             wobbleNow[0] = drift[0] / timeL;
             wobbleNow[1] = drift[1] / timeR;
@@ -153,12 +156,16 @@ public:
             float read[2], send[2];
             for (int c = 0; c < 2; ++c)
             {
-                const auto loopAt = std::max(1.0, delay[c] - loopLag[c]);
-                const auto outAt = std::max(1.0, delay[c] - outLag[c]);
+                // read early by the blurs' lag as they stand now, so even a gliding blur
+                // leaves every echo on time
+                const auto heard = listen[c][0] + listen[c][1];
+                const auto preLag = heard > 0 ? (listen[c][0] * preBlurs[0].lag() + listen[c][1] * preBlurs[1].lag()) / heard : 0.0;
+                const auto loopAt = std::max(1.0, delay[c] - loopBlurs[c].lag());
+                const auto outAt = std::max(1.0, delay[c] - preLag - postBlurs[c].lag());
                 read[c] = expand(c, 0, readAt(lines[c], outAt), compandNow);
                 auto v = expand(c, 1, readAt(lines[c], loopAt), compandNow);
                 if (!lossOpen[c]) v = lossFilters[c].process(v);
-                v = drive(v);
+                v = drive(v, driveNow);
                 if (!toneOpen) v = toneFilters[c].process(v);
                 if (!cutOpen) v = cutFilters[c].process(v);
                 v = softClip(loopBlurs[c].process(v));
@@ -175,7 +182,7 @@ public:
             float e[2];
             for (int line = 0; line < 2; ++line)
                 e[line] = static_cast<float>(listen[line][0] * blurredL + listen[line][1] * blurredR);
-            const auto hiss = static_cast<float>(recipe.hiss * hissNoise.next());
+            const auto hiss = static_cast<float>(hissNow * hissNoise.next());
 
             const float out[2] { feedbackNow[0] * send[0], feedbackNow[1] * send[1] };
             for (int c = 0; c < 2; ++c)
@@ -248,7 +255,10 @@ private:
         const auto motion = amount01 * (type == 0 ? 0.5 : type == 1 ? 0.9 : 0.0);
         const auto pre = laws::blurAt(laws::BlurPlace::pre, values[preBlur] * 0.01);
         const auto loop = laws::blurAt(laws::BlurPlace::loop, values[loopBlur] * 0.01);
-        const auto post = laws::blurAt(laws::BlurPlace::post, laws::oilSmear(type, amount01));
+        // the output smear keeps the oil can's shape whatever the type, only fading its
+        // strength, so switching type changes nothing but a gliding gain
+        auto post = laws::blurAt(laws::BlurPlace::post, laws::oilSmear(1, values[modB] * 0.01));
+        if (type != 1) post.gain = 0;
 
         const auto x = std::clamp(values[cross] * 0.01, 0.0, 1.0);
         crossTarget.target = x;
@@ -264,20 +274,16 @@ private:
 
         const auto fit = [](Diffuser& d, const laws::Blur& b, double limit, double sweepMs) {
             const auto lag = d.lagSamples(b.size, b.stages, sweepMs);
-            const auto size = lag > limit ? b.size * limit / lag : b.size;
-            d.set(b.gain, size, b.stages, sweepMs);
-            return d.lagSamples(size, b.stages, sweepMs);
+            d.set(b.gain, lag > limit ? b.size * limit / lag : b.size, b.stages, sweepMs);
         };
         const auto samples = [this](double ms) { return ms * 0.001 * sampleRate; };
         const auto shortest = samples(std::min(effectiveMs[0], effectiveMs[1]));
-        const double preLag[2] { fit(preBlurs[0], pre, 0.4 * shortest, 0), fit(preBlurs[1], pre, 0.4 * shortest, 0) };
         for (int c = 0; c < 2; ++c)
         {
             const auto t = samples(effectiveMs[c]);
-            loopLag[c] = fit(loopBlurs[c], loop, 0.8 * t, 2 * motion);
-            const auto heard = listen[c][0] + listen[c][1];
-            const auto preHere = heard > 0 ? (listen[c][0] * preLag[0] + listen[c][1] * preLag[1]) / heard : 0.0;
-            outLag[c] = preHere + fit(postBlurs[c], post, 0.4 * t, 2 * motion);
+            fit(preBlurs[c], pre, 0.4 * shortest, 0);
+            fit(loopBlurs[c], loop, 0.8 * t, 2 * motion);
+            fit(postBlurs[c], post, 0.4 * t, 0);
         }
 
         timeTarget[0].target = effectiveMs[0];
@@ -285,6 +291,10 @@ private:
         toneTarget.target = cuts.highCutHz;
         mixTarget.target = values[mix] * 0.01;
 
+        sineTarget.target = recipe.sine;
+        randTarget.target = recipe.rand;
+        driveTarget.target = std::max(1.0, recipe.drive);
+        hissTarget.target = recipe.hiss;
         sineStep = recipe.sineHz / sampleRate;
         randomCoefficient = 1.0 - std::exp(-2.0 * pi * std::max(0.05, recipe.randHz) / sampleRate);
     }
@@ -292,7 +302,8 @@ private:
     void primeSmoothers() noexcept
     {
         for (auto* s : { &timeTarget[0], &timeTarget[1], &feedbackTarget[0], &feedbackTarget[1], &toneTarget,
-                         &mixTarget, &compandTarget, &crossTarget })
+                         &mixTarget, &compandTarget, &crossTarget, &sineTarget, &randTarget, &driveTarget,
+                         &hissTarget })
             s->snap(s->target);
         primed = true;
     }
@@ -340,12 +351,7 @@ private:
         return std::copysign(0.9f + 0.1f * std::tanh((a - 0.9f) * 10.0f), v);
     }
 
-    float drive(float v) const noexcept
-    {
-        if (recipe.drive <= 1) return v;
-        const auto g = static_cast<float>(recipe.drive);
-        return std::tanh(g * v) / g;
-    }
+    static float drive(float v, float g) noexcept { return g <= 1.0001f ? v : std::tanh(g * v) / g; }
 
     float compress(int c, float v, double depth) noexcept
     {
@@ -374,6 +380,7 @@ private:
     Values values = defaultValues();
     laws::Recipe recipe = laws::cleanRecipe;
     Smoothed timeTarget[2], feedbackTarget[2], toneTarget, mixTarget, compandTarget, crossTarget;
+    Smoothed sineTarget, randTarget, driveTarget, hissTarget;
     Random noise[2], hissNoise;
     double phase[2] {}, randomState[2] {}, randomState2[2] {};
 
@@ -386,7 +393,6 @@ private:
     double sineStep = 0, randomCoefficient = 0;
     double appliedTone = 0, appliedCut = 0, appliedLoss[2] {};
     double listen[2][2] { { 1, 0 }, { 0, 1 } };
-    double loopLag[2] {}, outLag[2] {};
     int coefficientCountdown = 0;
     bool primed = false;
 
