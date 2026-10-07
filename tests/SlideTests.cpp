@@ -3,6 +3,7 @@
 #include "Presets.h"
 
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1243,12 +1244,39 @@ std::string renderFixture()
     return out + "}\n";
 }
 
+// The same text with the same numbers, each within a part in 10^9: maths libraries
+// differ in the last digit between platforms, and Git may check out CRLF on Windows.
+bool sameFixture(const std::string& a, const std::string& b)
+{
+    const auto number = [](const std::string& s, size_t i) {
+        return std::isdigit(static_cast<unsigned char>(s[i]))
+            || (s[i] == '-' && i + 1 < s.size() && std::isdigit(static_cast<unsigned char>(s[i + 1])));
+    };
+    size_t i = 0, j = 0;
+    while (true)
+    {
+        while (i < a.size() && a[i] == '\r') ++i;
+        while (j < b.size() && b[j] == '\r') ++j;
+        if (i == a.size() || j == b.size()) return i == a.size() && j == b.size();
+        if (number(a, i) && number(b, j))
+        {
+            char* endA = nullptr;
+            char* endB = nullptr;
+            const double x = std::strtod(a.c_str() + i, &endA), y = std::strtod(b.c_str() + j, &endB);
+            if (std::abs(x - y) > 1e-9 * std::max({ 1.0, std::abs(x), std::abs(y) })) return false;
+            i = static_cast<size_t>(endA - a.c_str());
+            j = static_cast<size_t>(endB - b.c_str());
+        }
+        else if (a[i++] != b[j++]) return false;
+    }
+}
+
 void checkFixture()
 {
     std::ifstream file(SLIDE_SOURCE_DIR "/tests/laws-fixture.json", std::ios::binary);
     CHECK(file);
     const std::string committed { std::istreambuf_iterator<char>(file), {} };
-    CHECK(committed == renderFixture());
+    CHECK(sameFixture(committed, renderFixture()));
 }
 }
 
