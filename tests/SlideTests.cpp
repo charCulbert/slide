@@ -1,11 +1,6 @@
 #include "plugin.h"
 #include "Engine.h"
-#include "Parameters.h"
-#include "Laws.h"
 #include "Presets.h"
-
-#include <clap/ext/preset-load.h>
-#include <clap/factory/preset-discovery.h>
 
 #include <array>
 #include <cmath>

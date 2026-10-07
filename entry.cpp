@@ -3,7 +3,6 @@
 // other lists its factory presets.
 // (clap-wrapper compiles this file into each format separately, so it stays
 // apart from plugin.cpp.)
-#include <clap/clap.h>
 #include <string.h>
 #include "core/resources.h"
 #include "plugin.h"

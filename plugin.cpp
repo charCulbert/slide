@@ -10,17 +10,7 @@
 // the message codec and file loader (core/), the presenter that shows the page
 // (webview/), and the compost controls the page draws with (compost/).
 #include "clap/clap.h"
-#include "clap/events.h"
-#include "clap/ext/audio-ports.h"
-#include "clap/ext/params.h"
-#include "clap/ext/state.h"
-#include "clap/ext/latency.h"
-#include "clap/ext/tail.h"
-#include "clap/ext/preset-load.h"
-#include "clap/ext/gui.h"
-#include "clap/ext/timer-support.h"
 #include "clap/ext/draft/webview.h"
-#include "clap/factory/preset-discovery.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
