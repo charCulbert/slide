@@ -270,21 +270,9 @@ export class SlideFace extends HTMLElement {
    * begin, value, end, and nothing at all when the value is unchanged. */
   write(identifier, value) {
     const control = this.controls.get(identifier);
-    const spec = this.meta.get(identifier);
-    if (!control || !spec || !Number.isFinite(value)) return;
-    const next = clamp(value, spec.min, spec.max);
-    if (!this.drag) {
-      if (next === control.value) return;
-      control.beginGesture('face');
-      control.setValue(next, true, 'face');
-      control.endGesture(false, 'face');
-    } else {
-      if (!this.drag.started.has(identifier)) {
-        this.drag.started.add(identifier);
-        control.beginGesture('face');
-      }
-      control.setValue(next, true, 'face');
-    }
+    if (!control) return;
+    control.setValue(value, true, 'face'); // compost clamps, snaps, skips no-ops and opens the gesture
+    if (this.drag) this.drag.started.add(identifier); else control.endGesture(false, 'face');
   }
 
   /** A chip that changes what the times mean re-bases them first, so nothing on
