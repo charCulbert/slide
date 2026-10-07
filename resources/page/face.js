@@ -46,10 +46,22 @@ const fmt = ms => ms >= 60000 ? `${(ms / 60000).toFixed(1)} min`
   : ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)} s` : `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`;
 const fmtCount = n => n < 10 ? n.toFixed(1) : `${Math.round(n)}`;
 
-function timeAxis(x0, x1) {
-  const lo = laws.minTimeMs, dec = Math.log10(AXIS_MAX / lo);
-  const X = t => x0 + Math.log10(clamp(t, lo, AXIS_MAX) / lo) / dec * (x1 - x0);
-  X.inv = x => lo * Math.pow(10, (x - x0) / (x1 - x0) * dec);
+// The time axis is log from 10 ms, two minutes at 82% of the width. Past that it keeps
+// the same log scale while it can; if Repeats can make a longer tail than the edge would
+// then reach, the far zone is its own even log scale from two minutes to that tail, so
+// the glass moves at one steady rate all the way to the top of Repeats.
+function timeAxis(x0, x1, longestMs) {
+  const lo = laws.minTimeMs, xk = x0 + 0.82 * (x1 - x0);
+  const slope = (xk - x0) / Math.log(AXIS_MAX / lo);
+  const reach = Math.max((x1 - xk) / slope, Math.log(Math.max(longestMs, lo) / AXIS_MAX));
+  const far = (x1 - xk) / reach;
+  const X = t => {
+    const u = Math.log(clamp(t, lo, AXIS_MAX * Math.exp(reach)) / AXIS_MAX);
+    return u <= 0 ? x0 + Math.log(Math.max(t, lo) / lo) * slope : xk + far * u;
+  };
+  X.inv = x => x <= xk ? lo * Math.exp((x - x0) / slope) : AXIS_MAX * Math.exp((x - xk) / far);
+  X.far = xk;
+  X.end = AXIS_MAX * Math.exp(reach);
   return X;
 }
 
@@ -501,7 +513,8 @@ export class SlideFace extends HTMLElement {
     };
 
     const X0 = 156 * dpr, X1 = W - 156 * dpr, top = 70 * dpr, bot = H - 160 * dpr, axisY = bot + 12 * dpr;
-    const X = timeAxis(X0, X1), [TA, TB] = this.times(), mid = (top + bot) / 2, longer = Math.max(TA, TB);
+    // the longest tail lands half a glass in from the edge, as far as the glass can go
+    const [TA, TB] = this.times(), longer = Math.max(TA, TB), X = timeAxis(X0, X1 - 15 * dpr, longer * laws.maxRepeats), mid = (top + bot) / 2;
     const Xm = X(10000);
     this.lastTimes = [TA, TB];
     const cross = this.percent('cross'), feed = this.percent('feed'), tone = this.val('tone') / 100;
@@ -555,12 +568,14 @@ export class SlideFace extends HTMLElement {
     for (const r of rows) ln(X0, r, X1, r, T.hair, 1, 0.6);
     this.drawEchoes(list, X, rows, half, X1, dpr, ln);
 
-    ln(X0, axisY, X1, axisY, T.hair);
+    ln(X0, axisY, X.far, axisY, T.hair);
+    g.setLineDash([2 * dpr, 3 * dpr]); ln(X.far, axisY, X1, axisY, T.hair); g.setLineDash([]);
     for (let d = 10; d < AXIS_MAX; d *= 10) for (let m = 1; m < 10; m++) { const v = d * m; if (v > AXIS_MAX) break;
       ln(X(v), axisY, X(v), axisY + (m === 1 ? 6 : m === 5 ? 3.5 : 2) * dpr, m === 1 ? T.ink2 : T.dim, m === 1 ? 1 : 0.6, m === 1 ? 1 : 0.6); }
     ln(X1, axisY, X1, axisY + 6 * dpr, T.ink2, 1);
-    for (const [t, s] of [[10, '10 ms'], [AXIS_MAX, '2 min'], [100, '100'], [1000, '1 s'], [10000, '10 s'], [60000, '1 min'],
-      [50, '50'], [500, '500'], [5000, '5 s']])
+    for (const t of [600000, 1800000]) if (t < X.end) ln(X(t), axisY, X(t), axisY + 3.5 * dpr, T.dim, 0.6, 0.6);
+    for (const [t, s] of [[10, '10 ms'], [AXIS_MAX, '2 min'], [X.end, fmt(X.end)], [100, '100'], [1000, '1 s'], [10000, '10 s'],
+      [60000, '1 min'], [50, '50'], [500, '500'], [5000, '5 s']])
       label(s, X(t), axisY + 9 * dpr, T.dim, 9.5, 'center', 'top');
 
     for (const [line, t] of [[0, TA], [1, TB]]) {
@@ -666,7 +681,7 @@ export class SlideFace extends HTMLElement {
     name('Repeats', X0 - 7 * dpr, rY(2), T.dim, 9.5, 'right'); tx(this.word('repeats'), X1 + 7 * dpr, rY(2), on('repeats') ? T.ink : T.ink2, 10, 'left');
 
     const level = p => clamp((bot - p.y) / (bot - top), 0, 1);
-    const repeatsAt = x => x >= xRepMax - dpr ? laws.maxRepeats : clamp(X.inv(x) / Math.max(...this.times()), 1, laws.maxRepeats);
+    const repeatsAt = x => clamp(X.inv(clamp(x, X0, X1)) / longer, 1, laws.maxRepeats);
     zone({x: mr[0] - 6 * dpr, y: 14 * dpr, w: mr[1] - mr[0] + 12 * dpr, h: 26 * dpr, key: 'mixRail', ...railX(mr[0], mr[1], 'mix')});
     zone({x: xFirst, y: top, w: Math.max(0, Math.min(xTail, X1) - xFirst), h: bot - top, key: 'band', lock: 'xy', cursor: 'move',
       params: ['L', 'R', 'loop'], byAxis: {x: 'L', y: 'loop'},
