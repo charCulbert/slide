@@ -39,7 +39,12 @@ jobs:
           cmake -S "$PROJECT" -B build
           targets="${TARGET}_clap ${TARGET}_vst3"
           if [ "$RUNNER_OS" = macOS ]; then targets="$targets ${TARGET}_auv2"; fi
-          cmake --build build --config Release --parallel 4 --target $targets
+          cmake --build build --config Release --parallel 4 --target $targets slide-tests
+
+      - name: Test
+        run: |
+          ctest --test-dir build -C Release --output-on-failure
+          node --test tests/laws.test.mjs
 
       - name: Check out clap-validator
         uses: actions/checkout@v4
