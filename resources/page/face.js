@@ -80,6 +80,10 @@ compost-button{ position:absolute; pointer-events:none; opacity:0; --compost-but
 compost-button:focus-within{ opacity:1 }
 compost-button::part(button){ width:100%; height:100%; border:0; background:none; color:transparent; padding:0;
   outline:1px solid var(--acc); outline-offset:1px; }
+:host(:focus){ outline:none }
+.entry{ position:absolute; z-index:2; width:96px; padding:2px 5px; font:12px ${MONO}; color:var(--ink);
+  background:var(--panel); border:1px solid var(--acc); border-radius:2px; outline:none }
+.entry.wrong{ border-color:var(--ink) }
 .controls{ position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%) }
 .controls>div{ width:1px; height:1px }
 `;
@@ -120,6 +124,7 @@ export class SlideFace extends HTMLElement {
     c.addEventListener('pointerup', e => this.onPointerUp(e));
     c.addEventListener('pointercancel', e => this.onPointerUp(e));
     c.addEventListener('dblclick', e => this.onDoubleClick(e));
+    this.addEventListener('keydown', e => this.onKey(e));
     c.addEventListener('pointerleave', () => {
       if (!this.drag && this.hover) { this.hover = null; this.invalidate(); }
     });
@@ -131,6 +136,7 @@ export class SlideFace extends HTMLElement {
   // observers, and never touch the value controls, whose ARIA and gesture state have
   // to survive the move. The canvas's own listeners are wired once, in the constructor.
   connectedCallback() {
+    if (!this.hasAttribute('tabindex')) this.tabIndex = 0; // so a clicked control can be typed into
     this.resizeObserver = new ResizeObserver(() => { this.rect = null; this.invalidate(); });
     this.resizeObserver.observe(this.canvas);
     this.scheme = matchMedia('(prefers-color-scheme: dark)');
@@ -481,6 +487,7 @@ export class SlideFace extends HTMLElement {
   hotParams() {
     const z = this.drag ? this.drag.z : this.zones.find(q => q.key === this.hover);
     if (z) return new Set(this.drag && z.byAxis && this.drag.axis ? [z.byAxis[this.drag.axis]] : z.params || []);
+    if (this.selected) return new Set([this.selected.key]);
     const focus = FOCUS[this.focusZone];
     return new Set(focus ? [focus] : []);
   }
@@ -965,7 +972,10 @@ export class SlideFace extends HTMLElement {
   onPointerDown(e) {
     if (e.button !== 0) return;
     const p = this.point(e), z = this.hit(p);
-    if (!z) return;
+    this.focus({preventScroll: true});
+    this.closeEntry();
+    this.selected = null;
+    if (!z) { this.invalidate(); return; }
     try { this.canvas.setPointerCapture(e.pointerId); } catch { /* no live pointer */ }
     const [L, R] = this.times();
     this.held = 0;
@@ -976,11 +986,80 @@ export class SlideFace extends HTMLElement {
     this.invalidate();
   }
 
-  onPointerUp() {
+  onPointerUp(e) {
     if (!this.drag) return;
     for (const id of this.drag.started) this.controls.get(id)?.endGesture(false, 'face');
+    // the control just used is the one typing goes to: on a two-way zone, the way it moved
+    const z = this.drag.z, key = z.byAxis && this.drag.axis ? z.byAxis[this.drag.axis] : z.params?.[0];
+    if (key && e) { const r = this.canvas.getBoundingClientRect(); this.selected = {key, x: e.clientX - r.left, y: e.clientY - r.top}; }
     this.drag = null;
     this.invalidate();
+  }
+
+  // ---- typing a value into the control last used ---------------------------
+
+  onKey(e) {
+    if (!this.selected || this.entry || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'Escape') { this.selected = null; this.invalidate(); return; }
+    if (!/^[0-9.+\-:/a-zφ]$/i.test(e.key)) return;
+    e.preventDefault();
+    const box = document.createElement('input');
+    box.className = 'entry'; box.value = e.key; box.spellcheck = false;
+    const r = this.canvas.getBoundingClientRect();
+    Object.assign(box.style, {left: `${clamp(this.selected.x + 8, 0, r.width - 110)}px`, top: `${clamp(this.selected.y - 26, 0, r.height - 24)}px`});
+    box.addEventListener('keydown', k => {
+      k.stopPropagation();
+      if (k.key === 'Escape') { this.closeEntry(); this.focus({preventScroll: true}); }
+      else if (k.key === 'Enter') {
+        if (this.enter(this.selected.key, box.value)) { this.closeEntry(); this.focus({preventScroll: true}); }
+        else { box.classList.add('wrong'); box.select(); }
+      } else box.classList.remove('wrong');
+    });
+    box.addEventListener('blur', () => this.closeEntry());
+    this.shadowRoot.append(box);
+    this.entry = box;
+    box.focus();
+  }
+
+  closeEntry() { const box = this.entry; this.entry = null; box?.remove(); }
+
+  /** Writes what was typed for a control, in the units the face shows it in, and
+   * reports whether it made sense. */
+  enter(key, text) {
+    const t = text.trim().toLowerCase().replace(/\s+/g, ' ');
+    const number = v => /^[+-]?(\d+\.?\d*|\.\d+)$/.test(v) ? Number(v) : NaN;
+    const note = v => { const n = NOTES.find(([, name]) => name.toLowerCase() === v.replace(/\.$/, 'd')); return n ? n[0] * this.beatMs() : NaN; };
+    // a time: 500, 500ms, 1.2s, or a note
+    const time = (v, bare = true) => { const m = v.match(/^([+-]?[\d.]+) ?(ms|s)?$/);
+      return m && (m[2] || bare) ? number(m[1]) * (m[2] === 's' ? 1000 : 1) : note(v); };
+    const ok = Number.isFinite;
+    const set = (id, v) => { if (!ok(v)) return false; this.write(id, v); return true; };
+    switch (key) {
+      case 'L': { const ms = time(t); if (!ok(ms)) return false; this.writeLeft(ms, true); return true; }
+      case 'R': {
+        if (this.ratioMode()) {
+          const m = t.match(/^([\d.]+) ?: ?([\d.]+)$/);
+          const r = t === 'phi' || t === 'φ' ? (1 + Math.sqrt(5)) / 2 : m ? number(m[1]) / number(m[2]) : number(t.replace(/^x ?/, ''));
+          if (ok(r) && r > 0 && !/ms|s$/.test(t)) return set('ratio', r);
+          const ms = time(t, false); if (!ok(ms)) return false; this.moveR(ms, true); return true;
+        }
+        const ms = note(t); if (ok(ms)) { this.moveR(ms, true); return true; }
+        return set('difference', time(t));
+      }
+      case 'cross': {
+        const m = t.match(/^swap ?([\d.]*)$/);
+        return set('cross', m ? (m[1] ? 50 + number(m[1]) / 2 : 100) : t === 'even' ? 50 : number(t) / 2);
+      }
+      case 'tone': {
+        const m = t.match(/^(dark|thin) ?([\d.]+)$/);
+        return set('tone', t === 'full' ? 0 : m ? (m[1] === 'dark' ? -1 : 1) * number(m[2]) : number(t));
+      }
+      case 'mod': return set(MOD_AMOUNTS[this.modType()], number(t));
+      default: {
+        const id = {repeats: 'repeats', pre: 'pre_blur', loop: 'loop_blur', post: 'post_blur', mix: 'mix', feed: 'feed'}[key];
+        return id ? set(id, number(t.replace(/ ?[x×%]$/, ''))) : false;
+      }
+    }
   }
 
   /** Double-click puts back the default of whatever is under the pointer. */
