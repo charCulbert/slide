@@ -576,14 +576,14 @@ void lawsByHand()
     auto cuts = toneCuts(0);
     CHECK(near(cuts.highCutHz, 20000) && near(cuts.lowCutHz, 20));
     cuts = toneCuts(-1);
-    CHECK(near(cuts.highCutHz, 12000 * std::pow(2.0, -5.5)) && near(cuts.lowCutHz, 20));
+    CHECK(near(cuts.highCutHz, 12000 * std::pow(2.0, -7.15)) && near(cuts.lowCutHz, 20));
     cuts = toneCuts(-0.4);
-    CHECK(near(cuts.highCutHz, 12000 * std::pow(2.0, -2.2)));
+    CHECK(near(cuts.highCutHz, 12000 * std::pow(2.0, -2.86)));
     cuts = toneCuts(1);
-    CHECK(near(cuts.lowCutHz, 2500) && near(cuts.highCutHz, 20000)); // 2560 held at 2500
+    CHECK(near(cuts.lowCutHz, 6000) && near(cuts.highCutHz, 20000)); // 6089 held at 6000
     cuts = toneCuts(0.5);
-    CHECK(near(cuts.lowCutHz, 20 * std::pow(2.0, 3.5)));
-    CHECK(near(toneCuts(7).lowCutHz, 2500) && near(toneCuts(std::nan("")).highCutHz, 20000));
+    CHECK(near(cuts.lowCutHz, 20 * std::pow(2.0, 4.125)));
+    CHECK(near(toneCuts(7).lowCutHz, 6000) && near(toneCuts(std::nan("")).highCutHz, 20000));
 
     // The three blurs: off below half a percent, and never more than 16 stages.
     for (auto place : { BlurPlace::pre, BlurPlace::loop, BlurPlace::post })

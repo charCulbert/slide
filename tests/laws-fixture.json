@@ -22,17 +22,17 @@
     {"medium": 3, "wear": 1, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "hiss": 0, "drive": 0, "compand": 0}
   ],
   "toneCuts": [
-    {"tone": -1, "highCutHz": 265.165042944955, "lowCutHz": 20},
-    {"tone": -0.7, "highCutHz": 832.177104050884, "lowCutHz": 20},
-    {"tone": -0.4, "highCutHz": 2611.65168988837, "lowCutHz": 20},
-    {"tone": -0.1, "highCutHz": 8196.24154052637, "lowCutHz": 20},
+    {"tone": -1, "highCutHz": 84.4922308697653, "lowCutHz": 20},
+    {"tone": -0.7, "highCutHz": 373.70259856045, "lowCutHz": 20},
+    {"tone": -0.4, "highCutHz": 1652.85767381492, "lowCutHz": 20},
+    {"tone": -0.1, "highCutHz": 7310.46158205115, "lowCutHz": 20},
     {"tone": 0, "highCutHz": 20000, "lowCutHz": 20},
-    {"tone": 0.2, "highCutHz": 20000, "lowCutHz": 52.7803164309158},
-    {"tone": 0.35, "highCutHz": 20000, "lowCutHz": 109.283220540352},
-    {"tone": 0.6, "highCutHz": 20000, "lowCutHz": 367.583473599051},
-    {"tone": 0.9, "highCutHz": 20000, "lowCutHz": 1575.86484908149},
-    {"tone": 1, "highCutHz": 20000, "lowCutHz": 2500},
-    {"tone": 1.5, "highCutHz": 20000, "lowCutHz": 2500}
+    {"tone": 0.2, "highCutHz": 20000, "lowCutHz": 62.7667278317401},
+    {"tone": 0.35, "highCutHz": 20000, "lowCutHz": 147.997407603899},
+    {"tone": 0.6, "highCutHz": 20000, "lowCutHz": 618.199250511901},
+    {"tone": 0.9, "highCutHz": 20000, "lowCutHz": 3436.98560711747},
+    {"tone": 1, "highCutHz": 20000, "lowCutHz": 6000},
+    {"tone": 1.5, "highCutHz": 20000, "lowCutHz": 6000}
   ],
   "wobble": [
     {"timeMs": 1, "wobbleReferenceMs": 40},

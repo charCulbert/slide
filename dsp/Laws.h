@@ -67,7 +67,7 @@ inline Recipe recipeAt(int medium, double wear01) noexcept
 }
 
 /// Tone's two cuts in the loop: dark (below 0) lowers a high cut from 12 kHz,
-/// thin (above 0) raises a low cut from 20 Hz up to 2.5 kHz.
+/// thin (above 0) raises a low cut from 20 Hz up to 6 kHz.
 struct ToneCuts
 {
     double highCutHz, lowCutHz;
@@ -76,8 +76,8 @@ struct ToneCuts
 inline ToneCuts toneCuts(double tone11) noexcept
 {
     const auto t = std::clamp(finiteOr(tone11, 0.0), -1.0, 1.0);
-    return { t < 0 ? 12000.0 * std::pow(2.0, 5.5 * t) : openHighCutHz,
-             t > 0 ? std::min(2500.0, 20.0 * std::pow(2.0, 7.0 * t)) : 20.0 };
+    return { t < 0 ? 12000.0 * std::pow(2.0, 7.15 * t) : openHighCutHz,
+             t > 0 ? std::min(6000.0, 20.0 * std::pow(2.0, 8.25 * t)) : 20.0 };
 }
 
 /// Where a blur sits: on the input (Pre), in the loop (Loop) or on the output (Post).

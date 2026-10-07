@@ -61,12 +61,12 @@ export function recipeAt(medium, wear01) {
 }
 
 /** Tone's two cuts in the loop: dark (below 0) lowers a high cut from 12 kHz, thin
- * (above 0) raises a low cut from 20 Hz up to 2.5 kHz. */
+ * (above 0) raises a low cut from 20 Hz up to 6 kHz. */
 export function toneCuts(tone11) {
   const t = clamp(finiteOr(tone11, 0), -1, 1);
   return {
-    highCutHz: t < 0 ? 12000 * Math.pow(2, 5.5 * t) : openHighCutHz,
-    lowCutHz: t > 0 ? Math.min(2500, 20 * Math.pow(2, 7 * t)) : 20
+    highCutHz: t < 0 ? 12000 * Math.pow(2, 7.15 * t) : openHighCutHz,
+    lowCutHz: t > 0 ? Math.min(6000, 20 * Math.pow(2, 8.25 * t)) : 20
   };
 }
 
