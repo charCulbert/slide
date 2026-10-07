@@ -513,8 +513,10 @@ static void PluginApplyEvent(MyPlugin *plugin, const clap_event_header_t *event)
     const auto *p = (const clap_event_param_value_t *)event;
     if (!findParameter(p->param_id) || p->note_id >= 0 || p->port_index >= 0 || p->channel >= 0 || p->key >= 0)
         return;
-    PluginSetValue(plugin, p->param_id, p->value);
-    plugin->engine.set((Parameter)p->param_id, plugin->values[p->param_id].load(std::memory_order_relaxed));
+    // the engine takes it here, sample-accurately, so no revision bump
+    const double value = clampParameter(p->param_id, p->value);
+    plugin->values[p->param_id].store(value, std::memory_order_relaxed);
+    plugin->engine.set((Parameter)p->param_id, value);
 
     if (!plugin->valuesDirty.exchange(true, std::memory_order_acq_rel))
         plugin->host->request_callback(plugin->host);

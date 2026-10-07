@@ -122,6 +122,24 @@ void passThrough()
     p.run(0, &in, &out);
 }
 
+// A host value flushed while the plugin is inactive is there once it activates.
+void flushWhileInactive()
+{
+    Plugin p;
+    p.p->stop_processing(p.p);
+    p.p->deactivate(p.p);
+    p.set(slide::mix, 0);
+    CHECK(p.p->activate(p.p, 48000, 1, 4096) && p.p->start_processing(p.p));
+    std::array<float, 64> left {}, right {}, outLeft {}, outRight {};
+    left.fill(0.25f); right.fill(-0.25f);
+    std::array<float*, 2> inChannels { left.data(), right.data() };
+    std::array<float*, 2> outChannels { outLeft.data(), outRight.data() };
+    clap_audio_buffer_t in { inChannels.data(), nullptr, 2, 0, 0 };
+    clap_audio_buffer_t out { outChannels.data(), nullptr, 2, 0, 0 };
+    p.run(static_cast<uint32_t>(left.size()), &in, &out);
+    CHECK(outLeft == left && outRight == right);
+}
+
 void doublePassThrough()
 {
     Plugin p;
@@ -1225,6 +1243,7 @@ int main(int argc, char** argv)
     stereoPorts();
     passThrough();
     doublePassThrough();
+    flushWhileInactive();
     pluginDelays();
     parameterTable();
     parameterText();
