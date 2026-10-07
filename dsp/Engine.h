@@ -109,6 +109,9 @@ public:
 
     /// The host's tempo as last seen by the audio thread.
     double bpm() const noexcept { return reportedBpm.load(std::memory_order_relaxed); }
+    /// How far the Mod's wobble has moved each line's time just now, as a fraction
+    /// of it, for the face to draw what is heard.
+    double wobble(int line) const noexcept { return reportedWobble[line & 1].load(std::memory_order_relaxed); }
 
     template <typename Sample>
     void process(const Sample* inL, const Sample* inR, Sample* outL, Sample* outR,
@@ -154,6 +157,8 @@ public:
                 randomState2[c] += (randomState[c] - randomState2[c]) * randomCoefficient;
                 drift[c] = (recipe.sine * std::sin(2 * pi * phase[c]) + recipe.rand * 6 * randomState2[c]) * reference;
             }
+            wobbleNow[0] = drift[0] / timeL;
+            wobbleNow[1] = drift[1] / timeR;
             const double delay[2] { std::max(1.0, (timeL + drift[0]) * 0.001 * rate),
                                     std::max(1.0, (timeR + drift[1]) * 0.001 * rate) };
 
@@ -211,6 +216,7 @@ public:
             if (outL) outL[n] = dry * dryL + static_cast<Sample>(wet * wetL);
             if (outR) outR[n] = dry * dryR + static_cast<Sample>(wet * wetR);
         }
+        for (int c = 0; c < 2; ++c) reportedWobble[c].store(wobbleNow[c], std::memory_order_relaxed);
     }
 
     // the longer line's last counted echo, which is 60 dB down
@@ -432,6 +438,8 @@ private:
     bool primed = false;
 
     std::atomic<double> reportedBpm { 120 };
+    std::atomic<double> reportedWobble[2] { 0, 0 };
+    double wobbleNow[2] {};
 };
 
 } // namespace slide

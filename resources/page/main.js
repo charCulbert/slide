@@ -46,7 +46,7 @@ onMessage(message => {
       if (!editing.has(id)) face.setValue(id, value);
     });
   } else if (message.type === 'visual') {
-    face.setTelemetry({bpm: message.bpm});
+    face.setTelemetry({bpm: message.bpm, wobble: message.wobble});
   }
 });
 

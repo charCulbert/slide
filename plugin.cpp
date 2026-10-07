@@ -76,6 +76,7 @@ struct MyPlugin
     uint32_t guiWidth = 765, guiHeight = 530;
     std::atomic<bool> uiReady{false}, valuesDirty{false};
     double sentBpm = 0; // main thread: the tempo the page last heard
+    double sentWobble[2] {}; // and the wobble
 };
 
 // The extension tables below refer to these helpers before their full
@@ -442,7 +443,8 @@ static const clap_plugin_timer_support_t extensionTimerSupport = {
 //   plugin -> page  {type: "metadata", parameters: [{id, identifier, name, unit,
 //                     min, max, initial, step, digits, mid, curve, options}]}
 //                   {type: "values", values: [value per parameter id]}
-//                   {type: "visual", bpm}             the host's tempo, when it moves
+//                   {type: "visual", bpm, wobble: [l, r]}  the host's tempo, and how far
+//                                                     the Mod's wobble has each line now
 static void PluginSendMetadata(MyPlugin *plugin)
 {
     // The face hard-codes no ranges, so the table travels to it whole.
@@ -483,12 +485,16 @@ static bool PluginReceiveMessage(MyPlugin *plugin, const core::Value &message)
 
     if (type == "visual")
     {
-        // The face only needs the host's tempo, for Sync; send it when it moves.
+        // The face needs the host's tempo, for Sync, and the lines' wobble as the
+        // engine has it, so the picture moves with what is heard; both are small.
         const double bpm = plugin->engine.bpm();
-        if (bpm != plugin->sentBpm)
+        const double l = plugin->engine.wobble(0), r = plugin->engine.wobble(1);
+        if (bpm != plugin->sentBpm || l != plugin->sentWobble[0] || r != plugin->sentWobble[1])
         {
             plugin->sentBpm = bpm;
-            plugin->gui.send(core::Value::Map{{"type", "visual"}, {"bpm", bpm}});
+            plugin->sentWobble[0] = l;
+            plugin->sentWobble[1] = r;
+            plugin->gui.send(core::Value::Map{{"type", "visual"}, {"bpm", bpm}, {"wobble", core::Value::Array{l, r}}});
         }
         return true;
     }

@@ -185,12 +185,13 @@ export class SlideFace extends HTMLElement {
     this.invalidate();
   }
 
-  /** The host's tempo, for Sync, whenever it changes. */
+  /** The host's tempo, for Sync, and each line's wobble as the engine has it. */
   setTelemetry(frame) {
-    if (frame && Number.isFinite(frame.bpm) && frame.bpm !== this.frame.bpm) {
-      this.frame = frame;
-      this.invalidate();
-    }
+    if (!frame || !Number.isFinite(frame.bpm)) return;
+    const wobble = Array.isArray(frame.wobble) && frame.wobble.length === 2 && frame.wobble.every(Number.isFinite) ? frame.wobble : null;
+    if (frame.bpm === this.frame.bpm && String(wobble) === String(this.frame.wobble)) return;
+    this.frame = {bpm: frame.bpm, wobble};
+    this.invalidate();
   }
 
   buildControls() {
@@ -442,10 +443,11 @@ export class SlideFace extends HTMLElement {
   /** True while the Mod is moving the echoes, so the picture keeps redrawing. */
   moving() { return this.meta.size > 0 && this.recipe().sine > 0; }
 
-  /** Each line's fractional stretch from the Mod's slow wobble right now, as the
-   * engine runs it: depth × the wobble's reference time, over the line's time. (The
-   * engine's random part is left out of the picture.) */
+  /** How far the Mod's wobble has each line's time now, as a fraction of it: the
+   * engine's own, random part and all, when it sends it; otherwise (no plug-in, as
+   * in the tests) the slow sine alone, by the same law on the face's clock. */
   wobbleNow() {
+    if (this.frame.wobble) return this.frame.wobble;
     const rec = this.recipe(), times = this.times();
     return [0, 1].map(line => rec.sine * Math.sin(2 * Math.PI * (rec.sineHz * this.now + line * 0.25))
       * laws.wobbleReferenceMs(times[line]) / times[line]);
