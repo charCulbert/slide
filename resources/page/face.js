@@ -612,8 +612,8 @@ export class SlideFace extends HTMLElement {
         g.closePath(); g.fill(); } };
     const cw = 30 * dpr, gTop = top - 8 * dpr, gBot = axisY, afterX = Math.min(X1, xTail + cw / 2);
     // Cross reads 0–100 up to the middle, where each echo splits equally between the
-    // lines, then on towards swap, where every echo changes line.
-    const crossWord = () => cross > 0.995 ? 'swap' : cross <= 0.5 ? `${Math.round(cross * 200)}` : `→ swap ${Math.round((cross - 0.5) * 200)}`;
+    // lines, then on to 200, swap, where every echo changes line.
+    const crossWord = () => cross > 0.995 ? 'swap' : `${Math.round(cross * 200)}`;
     const toneWord = () => Math.abs(tone) < 0.01 ? 'full' : `${tone < 0 ? 'dark' : 'thin'} ${Math.round(Math.abs(tone) * 100)}`;
     const feedWords = () => Math.abs(feed) < 0.005 ? 'into L and R' : feed <= -0.995 ? 'into L only' : feed >= 0.995 ? 'into R only'
       : feed < 0 ? `L 100 · R ${Math.round((1 + feed) * 100)}` : `L ${Math.round((1 - feed) * 100)} · R 100`;
@@ -1003,7 +1003,7 @@ export class SlideFace extends HTMLElement {
   onKey(e) {
     if (!this.selected || this.entry || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === 'Escape') { this.selected = null; this.invalidate(); return; }
-    if (!/^[0-9.+\-:/a-zφ]$/i.test(e.key)) return;
+    if (!/^[0-9.+-]$/.test(e.key)) return;
     e.preventDefault();
     const box = document.createElement('input');
     box.className = 'entry'; box.value = e.key; box.spellcheck = false;
@@ -1017,6 +1017,9 @@ export class SlideFace extends HTMLElement {
         else { box.classList.add('wrong'); box.select(); }
       } else box.classList.remove('wrong');
     });
+    // numbers only, with what the readouts themselves use: a ratio's colon, a
+    // note's slash and its D or T
+    box.addEventListener('input', () => { box.value = box.value.replace(/[^0-9.+\-:/dt]/gi, ''); });
     box.addEventListener('blur', () => this.closeEntry());
     this.shadowRoot.append(box);
     this.entry = box;
@@ -1025,41 +1028,34 @@ export class SlideFace extends HTMLElement {
 
   closeEntry() { const box = this.entry; this.entry = null; box?.remove(); }
 
-  /** Writes what was typed for a control, in the units the face shows it in, and
-   * reports whether it made sense. */
+  /** Writes what was typed for a control, in the numbers the face shows it in, and
+   * reports whether it made sense: times in ms or as a note, R as a ratio (3:2 or
+   * 1.5) or under Diff an offset in ms, Cross on its readout's scale (100 is even,
+   * 200 swap), Tone below 0 dark and above thin. */
   enter(key, text) {
     const t = text.trim().toLowerCase().replace(/\s+/g, ' ');
+    const ok = Number.isFinite;
     const number = v => /^[+-]?(\d+\.?\d*|\.\d+)$/.test(v) ? Number(v) : NaN;
     const note = v => { const n = NOTES.find(([, name]) => name.toLowerCase() === v.replace(/\.$/, 'd')); return n ? n[0] * this.beatMs() : NaN; };
-    // a time: 500, 500ms, 1.2s, or a note
-    const time = (v, bare = true) => { const m = v.match(/^([+-]?[\d.]+) ?(ms|s)?$/);
-      return m && (m[2] || bare) ? number(m[1]) * (m[2] === 's' ? 1000 : 1) : note(v); };
-    const ok = Number.isFinite;
+    const time = v => ok(number(v)) ? number(v) : note(v); // ms, or a note
     const set = (id, v) => { if (!ok(v)) return false; this.write(id, v); return true; };
     switch (key) {
       case 'L': { const ms = time(t); if (!ok(ms)) return false; this.writeLeft(ms, true); return true; }
       case 'R': {
         if (this.ratioMode()) {
-          const m = t.match(/^([\d.]+) ?: ?([\d.]+)$/);
-          const r = t === 'phi' || t === 'φ' ? (1 + Math.sqrt(5)) / 2 : m ? number(m[1]) / number(m[2]) : number(t.replace(/^x ?/, ''));
-          if (ok(r) && r > 0 && !/ms|s$/.test(t)) return set('ratio', r);
-          const ms = time(t, false); if (!ok(ms)) return false; this.moveR(ms, true); return true;
+          const m = t.match(/^([\d.]+):([\d.]+)$/), r = m ? number(m[1]) / number(m[2]) : number(t);
+          if (ok(r) && r > 0) return set('ratio', r);
+          const ms = note(t); if (!ok(ms)) return false; this.moveR(ms, true); return true;
         }
         const ms = note(t); if (ok(ms)) { this.moveR(ms, true); return true; }
         return set('difference', time(t));
       }
-      case 'cross': {
-        const m = t.match(/^swap ?([\d.]*)$/);
-        return set('cross', m ? (m[1] ? 50 + number(m[1]) / 2 : 100) : t === 'even' ? 50 : number(t) / 2);
-      }
-      case 'tone': {
-        const m = t.match(/^(dark|thin) ?([\d.]+)$/);
-        return set('tone', t === 'full' ? 0 : m ? (m[1] === 'dark' ? -1 : 1) * number(m[2]) : number(t));
-      }
+      case 'cross': return set('cross', number(t) / 2);
+      case 'tone': return set('tone', number(t));
       case 'mod': return set(MOD_AMOUNTS[this.modType()], number(t));
       default: {
         const id = {repeats: 'repeats', pre: 'pre_blur', loop: 'loop_blur', post: 'post_blur', mix: 'mix', feed: 'feed'}[key];
-        return id ? set(id, number(t.replace(/ ?[x×%]$/, ''))) : false;
+        return id ? set(id, number(t)) : false;
       }
     }
   }
