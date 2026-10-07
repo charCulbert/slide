@@ -58,7 +58,7 @@ const FOCUS = {left_time: 'L', left_beats: 'L', ratio: 'R', difference: 'R', rep
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ratioName = r => (NICE.find(([v]) => Math.abs(Math.log(r / v)) < 0.004) || [0, r.toFixed(2)])[1];
-const fmt = ms => !Number.isFinite(ms) || ms > 3.6e6 ? '∞' : ms >= 60000 ? `${(ms / 60000).toFixed(1)} min`
+const fmt = ms => ms >= 60000 ? `${(ms / 60000).toFixed(1)} min`
   : ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)} s` : `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`;
 const fmtCount = n => n < 10 ? n.toFixed(1) : `${Math.round(n)}`;
 
@@ -549,14 +549,13 @@ export class SlideFace extends HTMLElement {
       if (label) name(label, x0 - 7 * dpr, y, T.dim, 9.5, 'right');
       if (readout) tx(readout, x1 + 7 * dpr, y, on ? T.ink : T.ink2, 10, 'left');
     };
-    const vRail = (x, y0, y1, value01, top, bottom, on, label) => {
+    const vRail = (x, y0, y1, value01, top, bottom, on) => {
       ln(x, y0, x, y1, T.hair, 1, on ? 1 : 0.7);
       for (let i = 0; i <= 50; i++) { const y = y1 - (y1 - y0) * i / 50, major = i % 25 === 0, mid = i % 5 === 0, s = (major ? 7 : mid ? 4.5 : 2.2) * dpr;
         ln(x - s, y, x + s, y, T.dim, major ? 0.9 : 0.6, major ? 0.9 : 0.55); }
       const hy = y1 - (y1 - y0) * clamp(value01, 0, 1);
       ln(x - 11 * dpr, hy, x + 11 * dpr, hy, on ? T.acc : T.ink, on ? 2.4 : 1.6);
       name(top, x, y0 - 8 * dpr, T.dim, 9, 'center', 'bottom'); name(bottom, x, y1 + 8 * dpr, T.dim, 9, 'center', 'top');
-      if (label) tx(label, x + 14 * dpr, hy, T.ink, 10, 'left');
     };
     // A blur rail: its graduations smear more the higher they sit, sharp at the foot
     // and blurred at the head, with the same handle as every other rail.
@@ -674,7 +673,7 @@ export class SlideFace extends HTMLElement {
     ln(gx - cw / 2, vy((tone + 1) / 2), gx + cw / 2, vy((tone + 1) / 2), on('tone') ? T.acc : T.ink2, on('tone') ? 2.2 : 1.2);
     // Post: a level line across the space after the glass, the output's side
     if (afterX < X1) ln(afterX + 4 * dpr, vy(post), X1, vy(post), on('post') ? T.acc : T.ink2, on('post') ? 2 : 1, on('post') ? 1 : 0.5);
-    if (on('repeats')) tx(`${fmtCount(repeats)} repeats${Number.isFinite(tail) ? ` · ${fmt(tail)}` : ''}`,
+    if (on('repeats')) tx(`${fmtCount(repeats)} repeats · ${fmt(tail)}`,
       gx - cw / 2 - 8 * dpr, gTop + 12 * dpr, T.acc, 11, 'right', 'middle', NAMES, 500);
 
     // gesture hints for whichever rail is in hand
@@ -710,10 +709,10 @@ export class SlideFace extends HTMLElement {
     // Cross: a plain rail, 0 at the foot, an equal split at the middle, swap at the
     // head. Its gesture is up and down on either line's pointer; the picture shows it
     // as the rows' colours mixing and the ties between them.
-    vRail(crossX, top, bot, cross, 'Cross', 'off', on('cross'), '');
+    vRail(crossX, top, bot, cross, 'Cross', 'off', on('cross'));
     if (on('cross')) dash(X(TB) + 8 * dpr, vy(cross), crossX - 11 * dpr, vy(cross));
     if (on('cross')) tx(crossWord(), crossX, top - 22 * dpr, T.acc, 10);
-    vRail(toneX, top, bot, (tone + 1) / 2, 'Thin', 'Dark', on('tone'), '');
+    vRail(toneX, top, bot, (tone + 1) / 2, 'Thin', 'Dark', on('tone'));
     if (on('tone')) { const y = vy((tone + 1) / 2); dash(gx + cw / 2, y, toneX - 11 * dpr, y); tx(toneWord(), toneX, top - 22 * dpr, T.acc, 10); }
 
     // ---- bottom rails: L time (with Sync), R relation (with Link), Repeats
