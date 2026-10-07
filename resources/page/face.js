@@ -650,11 +650,7 @@ export class SlideFace extends HTMLElement {
     if (on('pre')) rect(X0, top, Math.max(0, xFirst - X0), bot - top, T.acc, 0.07);
     rect(xFirst, top, Math.max(0, Math.min(xTail, X1) - xFirst), bot - top, T.band, on('loop') || (on('L') && on('R')) ? 0.95 : 0.55);
     if (on('post')) rect(afterX, top, Math.max(0, X1 - afterX), bot - top, T.acc, 0.07);
-    for (const r of rows) {
-      ln(X0, r, X1, r, T.hair, 1, 0.6);
-      for (const d of [10, 100, 1000]) for (let m = 1; m < 10; m++) { const x = X(d * m);
-        ln(x, r - (m === 1 ? 4 : 2) * dpr, x, r + (m === 1 ? 4 : 2) * dpr, T.dim, 0.6, 0.5); }
-    }
+    for (const r of rows) ln(X0, r, X1, r, T.hair, 1, 0.6);
     this.drawEchoes(list, X, rows, half, X1, dpr, ln);
 
     // axis: log from 10 ms to two minutes
