@@ -233,7 +233,6 @@ private:
     static constexpr double compandMs = 10.0;        // Bucket's detector
     static constexpr double compandReference = 0.25; // the level the compander leaves alone
     static constexpr double compandFloor = 1.0e-4;   // caps the compressor at +34 dB
-    static constexpr double blurRateHz = 0.4;        // how fast a moving Mod sweeps the blurs
     static constexpr float denormalFloor = 1.0e-20f;
 
     // Uniform in -1..1.
@@ -307,10 +306,9 @@ private:
         // its line's time, Pre's and Post's under 40% each, a blur too long for its
         // time shrinking to fit.
         const auto fit = [](Diffuser& d, const laws::Blur& b, double limit, double sweepMs) {
-            if (b.gain <= 0) { d.set(0, b.size, 0, sweepMs, blurRateHz); return 0.0; }
             const auto lag = d.lagSamples(b.size, b.stages, sweepMs);
             const auto size = lag > limit ? b.size * limit / lag : b.size;
-            d.set(b.gain, size, b.stages, sweepMs, blurRateHz);
+            d.set(b.gain, size, b.stages, sweepMs);
             return d.lagSamples(size, b.stages, sweepMs);
         };
         const auto samples = [this](double ms) { return ms * 0.001 * sampleRate; };

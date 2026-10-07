@@ -28,6 +28,7 @@ public:
     {
         sampleRate = newSampleRate;
         glide = 1.0 - std::exp(-1.0 / (0.03 * sampleRate)); // 30 ms
+        step = 2.0 * pi * sweepHz / sampleRate;
         stretch = side == 0 ? 1.0 : 1.03 + 0.6 * spread;
         phaseOffset = side * (0.3 + spread * 2.8);
         for (std::size_t i = 0; i < maximumStages; ++i)
@@ -47,15 +48,12 @@ public:
     }
 
     /// The allpass gain, the stretch of every stage time, how many stages run, and
-    /// the sweep's depth in ms and rate in Hz. A gain of 0 turns the blur off.
-    void set(double newGain, double size, int count, double modulationMs, double rateHz) noexcept
+    /// the sweep's depth in ms. A gain of 0 turns the blur off.
+    void set(double newGain, double size, int count, double modulationMs) noexcept
     {
         gain = static_cast<float>(std::clamp(newGain, 0.0, 0.95));
         depth = std::clamp(modulationMs, 0.0, maximumModulationMs) * 0.001 * sampleRate;
-        step = 2.0 * pi * std::max(0.0, rateHz) / sampleRate;
-        const auto s = std::clamp(size, 0.01, maximumSize);
-        for (std::size_t i = 0; i < maximumStages; ++i)
-            stages[i].target = std::max(2.0, std::round(baseMs[i] * s * stretch * 0.001 * sampleRate));
+        for (std::size_t i = 0; i < maximumStages; ++i) stages[i].target = stageSamples(i, size);
         const auto n = gain > 0 ? static_cast<std::size_t>(std::clamp(count, 0, static_cast<int>(maximumStages))) : 0;
         for (auto i = active; i < n; ++i)
         {
@@ -74,12 +72,10 @@ public:
     /// centred on the sum of its stage times, each sweep adding half its depth.
     double lagSamples(double size, int count, double modulationMs) const noexcept
     {
-        const auto s = std::clamp(size, 0.01, maximumSize);
         const auto sweep = std::clamp(modulationMs, 0.0, maximumModulationMs) * 0.001 * sampleRate;
         const auto n = static_cast<std::size_t>(std::clamp(count, 0, static_cast<int>(maximumStages)));
         double lag = 0;
-        for (std::size_t i = 0; i < n; ++i)
-            lag += std::max(2.0, std::round(baseMs[i] * s * stretch * 0.001 * sampleRate)) + sweep * 0.5;
+        for (std::size_t i = 0; i < n; ++i) lag += stageSamples(i, size) + sweep * 0.5;
         return lag;
     }
 
@@ -119,7 +115,13 @@ public:
     }
 
 private:
+    double stageSamples(std::size_t i, double size) const noexcept
+    {
+        return std::max(2.0, std::round(baseMs[i] * std::clamp(size, 0.01, maximumSize) * stretch * 0.001 * sampleRate));
+    }
+
     static constexpr double pi = std::numbers::pi;
+    static constexpr double sweepHz = 0.4; // how fast a moving Mod sweeps the blur
     static constexpr double spread = 0.4;
     static constexpr double maximumModulationMs = 2.0;
     static constexpr std::array<double, maximumStages> baseMs {
