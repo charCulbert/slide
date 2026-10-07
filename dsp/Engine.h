@@ -218,11 +218,9 @@ public:
         for (int c = 0; c < 2; ++c) reportedWobble[c].store(wobbleNow[c], std::memory_order_relaxed);
     }
 
-    // the longer line's last counted echo, which is 60 dB down
-    double tailSeconds() const noexcept
-    {
-        return std::max(effectiveMs[0], effectiveMs[1]) * std::max(1.0, values[repeats]) / 1000.0;
-    }
+    // the longer line's last counted echo, which is 60 dB down; the host asks on the
+    // main thread, so it is kept where both threads can read it
+    double tailSeconds() const noexcept { return reportedTail.load(std::memory_order_relaxed); }
 
 private:
     // ------------------------------------------------------------------ constants
@@ -269,6 +267,8 @@ private:
         if (!std::isfinite(right)) right = left;
         effectiveMs[0] = left;
         effectiveMs[1] = std::clamp(right, laws::minTimeMs, laws::maxTimeMs);
+        reportedTail.store(std::max(effectiveMs[0], effectiveMs[1]) * std::max(1.0, values[repeats]) / 1000.0,
+                           std::memory_order_relaxed);
 
         const auto cuts = laws::toneCuts(values[tone] * 0.01);
         const auto type = std::clamp(static_cast<int>(values[modType]), 0, 2);
@@ -435,6 +435,7 @@ private:
     bool primed = false;
 
     std::atomic<double> reportedBpm { 120 };
+    std::atomic<double> reportedTail { 0 };
     std::atomic<double> reportedWobble[2] { 0, 0 };
     double wobbleNow[2] {};
 };
