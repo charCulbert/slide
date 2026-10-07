@@ -2,10 +2,10 @@
 
 A stereo delay plug-in inspired by [slide rules](https://www.sliderulemuseum.com/).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img alt="Slide's interface: the delay's repeats drawn on a log time scale, with sliders around it" src="docs/screenshot-light.png">
-</picture>
+<p>
+  <img alt="Slide's interface in light mode: the delay's repeats drawn on a log time scale, with sliders around it" src="docs/screenshot-light.png" width="49%">
+  <img alt="Slide's interface in dark mode" src="docs/screenshot-dark.png" width="49%">
+</p>
 
 ## Download
 
