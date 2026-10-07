@@ -33,10 +33,10 @@ const CHIPS = [
 const CHIP_IDS = CHIPS.map(chip => chip.id);
 
 // Note values in beats, for Sync's snapping and names.
-const NOTES = [[1 / 48, '1/128T'], [1 / 32, '1/128'], [1 / 24, '1/64T'], [3 / 64, '1/128.'], [1 / 16, '1/64'],
-  [1 / 12, '1/32T'], [3 / 32, '1/64.'], [1 / 8, '1/32'], [1 / 6, '1/16T'], [3 / 16, '1/32.'], [1 / 4, '1/16'],
-  [1 / 3, '1/8T'], [3 / 8, '1/16.'], [1 / 2, '1/8'], [2 / 3, '1/4T'], [3 / 4, '1/8.'], [1, '1/4'],
-  [4 / 3, '1/2T'], [3 / 2, '1/4.'], [2, '1/2'], [8 / 3, '1/1T'], [3, '1/2.'], [4, '1/1'], [6, '1/1.'],
+const NOTES = [[1 / 48, '1/128T'], [1 / 32, '1/128'], [1 / 24, '1/64T'], [3 / 64, '1/128D'], [1 / 16, '1/64'],
+  [1 / 12, '1/32T'], [3 / 32, '1/64D'], [1 / 8, '1/32'], [1 / 6, '1/16T'], [3 / 16, '1/32D'], [1 / 4, '1/16'],
+  [1 / 3, '1/8T'], [3 / 8, '1/16D'], [1 / 2, '1/8'], [2 / 3, '1/4T'], [3 / 4, '1/8D'], [1, '1/4'],
+  [4 / 3, '1/2T'], [3 / 2, '1/4D'], [2, '1/2'], [8 / 3, '1/1T'], [3, '1/2D'], [4, '1/1'], [6, '1/1D'],
   [8, '2/1'], [16, '4/1']];
 
 const RATIO_NAMES = ['1:4', '1:3', '1:2', '2:3', '3:4', '1:1', '5:4', '4:3', '3:2', 'φ', '2:1', '3:1', '4:1'];
@@ -319,11 +319,12 @@ export class SlideFace extends HTMLElement {
     return {beats: best[0], name: best[1], ms: best[0] * this.beatMs()};
   }
 
-  /** A time as the reader wants it: a note name under Sync when it is one. */
+  /** A time as the reader wants it: under Sync, its nearest note, with a ~ when it
+   * is not on it (Sync keeps the setting rather than snapping it). */
   nameT(ms) {
     if (!this.sync()) return fmt(ms);
     const n = this.nearestNote(ms);
-    return Math.abs(Math.log(n.ms / ms)) < 0.003 ? n.name : fmt(ms);
+    return Math.abs(Math.log(n.ms / ms)) < 0.003 ? n.name : `~${n.name}`;
   }
 
   /** What R reads as: its note under Sync with Ratio, otherwise its relation to L
@@ -498,6 +499,8 @@ export class SlideFace extends HTMLElement {
     this.readTheme();
     const g = this.g, T = this.theme;
     g.clearRect(0, 0, W, H);
+    // what is lit comes from the zones as last drawn, before they are drawn again
+    this.lit = this.hotParams();
     this.zones = [];
     this.drawFace(W, H, dpr, g, T);
     return true;
@@ -539,12 +542,12 @@ export class SlideFace extends HTMLElement {
     const dash = (x1, y1, x2, y2) => { g.setLineDash([3 * dpr, 3 * dpr]); ln(x1, y1, x2, y2, T.acc, 1, 0.75); g.setLineDash([]); };
 
     // An engraved rail: fine graduations, 0/50/100 at the majors, and a handle.
-    const hRail = (x0, x1, y, value01, label, readout, on, ticks = 10) => {
+    const hRail = (x0, x1, y, value01, label, readout, on, ticks = 10, ends) => {
       ln(x0, y, x1, y, T.hair, 1, on ? 1 : 0.7);
       const n = ticks * 5;
       for (let i = 0; n && i <= n; i++) { const x = x0 + (x1 - x0) * i / n, major = i % (n / 2) === 0, mid = i % 5 === 0;
         ln(x, y, x, y - (major ? 7 : mid ? 4.5 : 2.2) * dpr, T.dim, major ? 0.9 : 0.6, major ? 0.9 : 0.6);
-        if (major) tx(`${Math.round(i / n * 100)}`, x, y - 9 * dpr, T.dim, 8.5, 'center', 'bottom'); }
+        if (major) tx(ends && i === 0 ? ends[0] : ends && i === n ? ends[1] : `${Math.round(i / n * 100)}`, x, y - 9 * dpr, T.dim, 8.5, 'center', 'bottom'); }
       const hx = x0 + (x1 - x0) * clamp(value01, 0, 1);
       ln(hx, y - 8 * dpr, hx, y + 5 * dpr, on ? T.acc : T.ink, on ? 2.4 : 1.6);
       if (label) name(label, x0 - 7 * dpr, y, T.dim, 9.5, 'right');
@@ -577,6 +580,7 @@ export class SlideFace extends HTMLElement {
       const hy = y1 - (y1 - y0) * clamp(value01, 0, 1);
       ln(x - 13 * dpr, hy, x + 13 * dpr, hy, on ? T.acc : T.ink, on ? 2.4 : 1.6);
       name(title, x, y0 - 8 * dpr, T.dim, 9, 'center', 'bottom');
+      name('off', x, y1 + 8 * dpr, T.dim, 9, 'center', 'top');
     };
 
     // ---- geometry: the picture keeps its width margins and stretches with height
@@ -590,7 +594,7 @@ export class SlideFace extends HTMLElement {
     const S = (bot - top) * 0.25, rows = [mid - S, mid + S];
     const half = (bot - top) * 0.17, list = this.echoes(), xFirst = X(Math.min(TA, TB));
     const xTail = Math.min(X1, X(tail));
-    const lit = this.hotParams(), on = k => lit.has(k);
+    const lit = this.lit, on = k => lit.has(k);
     const vy = v => bot - (bot - top) * clamp(v, 0, 1); // the shared vertical scale
     const held = this.drag ? this.drag.z.key : this.hover || '';
     // while a rail is held or hovered, its gesture in the picture shows itself
@@ -639,7 +643,7 @@ export class SlideFace extends HTMLElement {
       zone({x: r0 - 22 * dpr, y: y - 7 * dpr, w: 18 * dpr, h: 14 * dpr, key: 'modPick', cursor: 'pointer', move: pick});
     });
     const mr = [W - 170 * dpr, W - 50 * dpr];
-    hRail(mr[0], mr[1], 30 * dpr, mix, 'Mix', `${Math.round(mix * 100)}`, on('mix'));
+    hRail(mr[0], mr[1], 30 * dpr, mix, 'Mix', `${Math.round(mix * 100)}`, on('mix'), 10, ['dry', 'wet']);
 
     // ---- picture: before the echoes is the input's (Pre), the band is the loop's
     // (Loop), after the glass is the output's (Post)
@@ -719,10 +723,7 @@ export class SlideFace extends HTMLElement {
     // Cross: a plain rail, 0 at the foot, an equal split at the middle, swap at the
     // head. Its gesture is up and down on either line's pointer; the picture shows it
     // as the rows' colours mixing and the ties between them.
-    vRail(crossX, top, bot, cross, 'Cross', '', on('cross'), '');
-    tx('swap', crossX + 9 * dpr, top, T.dim, 8.5, 'left', 'middle');
-    tx('100', crossX + 9 * dpr, mid, T.dim, 8.5, 'left', 'middle');
-    tx('0', crossX + 9 * dpr, bot, T.dim, 8.5, 'left', 'middle');
+    vRail(crossX, top, bot, cross, 'Cross', 'off', on('cross'), '');
     if (on('cross')) dash(X(TB) + 8 * dpr, vy(cross), crossX - 11 * dpr, vy(cross));
     if (on('cross')) tx(crossWord(), crossX, top - 22 * dpr, T.acc, 10);
     vRail(toneX, top, bot, (tone + 1) / 2, 'Thin', 'Dark', on('tone'), '');
@@ -750,7 +751,7 @@ export class SlideFace extends HTMLElement {
     const rx = X(TB);
     // Under Sync with Ratio the scale is note values instead: plain notes first,
     // dotted and triplet after.
-    const plain = name => !name.endsWith('.') && !name.endsWith('T');
+    const plain = name => !name.endsWith('D') && !name.endsWith('T');
     const relTicks = this.sync() && this.ratioMode() ? NOTES.map(([beats, n]) => [beats * this.beatMs(), n]).filter(([ms]) => ms >= laws.minTimeMs && ms <= laws.maxTimeMs)
       .map(([ms, n]) => [X(ms), n, plain(n)])
       : this.ratioMode() ? NICE.filter(([r]) => TA * r >= laws.minTimeMs && TA * r <= laws.maxTimeMs)
