@@ -395,7 +395,8 @@ export class SlideFace extends HTMLElement {
     this.write('difference', r - l);
   }
 
-  resetR() { this.write('ratio', this.initial('ratio')); this.write('difference', this.initial('difference')); }
+  // R's reset puts it on L: a 1:1 ratio, no difference
+  resetR() { this.write('ratio', 1); this.write('difference', 0); }
 
   // ---- the picture's model --------------------------------------------------
 
