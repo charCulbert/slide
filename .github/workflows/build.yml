@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# a newer push to the same branch or tag cancels the run it supersedes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   PROJECT: .
   TARGET: Slide
