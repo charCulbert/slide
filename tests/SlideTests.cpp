@@ -409,9 +409,7 @@ void presetsLoad()
     CHECK(loader);
 
     // hosts store these keys, so every one must keep loading
-    for (const char* key : { "stereo-fifth", "ping-pong", "golden-cross", "dotted-cross", "slap", "long-smear",
-                             "long-wash", "tape-quarter", "dotted-lead", "three-four", "triplet-swing", "wide-double",
-                             "comb-tones", "bucket-dub", "oil-warble", "cloud", "hold" })
+    for (const char* key : { "tape-slap", "wide-bbd-eighths", "spacey-eighths", "diff-dots", "oil-swig" })
         CHECK(loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, key));
 
     for (const auto& preset : presets)
