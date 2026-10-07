@@ -118,7 +118,7 @@ static const clap_plugin_params_t extensionParams = {
         info->id = p.id;
         // Link changes what Ratio and Difference mean; the face re-bases them so R stays
         // put, which automation could not, so it is not automatable.
-        info->flags = p.id == link ? 0 : CLAP_PARAM_IS_AUTOMATABLE;
+        info->flags = p.id == slide::link ? 0 : CLAP_PARAM_IS_AUTOMATABLE;
         info->flags |= p.stepped ? CLAP_PARAM_IS_STEPPED : CLAP_PARAM_IS_MODULATABLE;
         if (!enumNames(p.id).empty())
             info->flags |= CLAP_PARAM_IS_ENUM;
@@ -146,7 +146,7 @@ static const clap_plugin_params_t extensionParams = {
         value = clampParameter(id, value);
         const auto options = enumNames(id);
         // under Sync, Left reads as the note it is (its time is written at referenceBpm)
-        if (id == leftTime && ((MyPlugin *)_plugin->plugin_data)->values[sync].load(std::memory_order_relaxed) >= 0.5)
+        if (id == leftTime && ((MyPlugin *)_plugin->plugin_data)->values[slide::sync].load(std::memory_order_relaxed) >= 0.5)
         {
             const auto n = laws::nearestNote(value * laws::referenceBpm / 60000.0);
             const int written = snprintf(text, size, "%s%s", n.on ? "" : "~", n.note.name);
@@ -497,7 +497,7 @@ static void PluginSetValue(MyPlugin *plugin, clap_id id, double value)
 // Left's text depends on Sync, so the host redraws it whenever Sync moves (main thread).
 static void PluginRescanTextOnSync(MyPlugin *plugin)
 {
-    const double now = plugin->values[sync].load(std::memory_order_relaxed);
+    const double now = plugin->values[slide::sync].load(std::memory_order_relaxed);
     if (now == plugin->textSync)
         return;
     plugin->textSync = now;

@@ -160,7 +160,7 @@ void pluginDelays()
     Plugin p;
     p.set(mix, 100);
     p.set(leftTime, 10);
-    p.set(link, 1);
+    p.set(slide::link, 1);
     p.set(difference, 0);
     p.set(preBlur, 0);
     p.set(loopBlur, 0);
@@ -198,17 +198,17 @@ void parameterTable()
     for (const auto& p : parameters)
         CHECK(isLogarithmic(p) == (p.id == leftTime || p.id == ratio || p.id == repeats));
 
-    CHECK(enumNames(link).size() == 2 && std::strcmp(enumNames(link)[1], "Difference") == 0);
+    CHECK(enumNames(slide::link).size() == 2 && std::strcmp(enumNames(slide::link)[1], "Difference") == 0);
     CHECK(enumNames(modType).size() == 3 && std::strcmp(enumNames(modType)[1], "B") == 0);
     CHECK(std::strcmp(enumNames(modType)[2], "C") == 0);
-    CHECK(enumNames(sync).size() == 2);
+    CHECK(enumNames(slide::sync).size() == 2);
     CHECK(enumNames(repeats).empty() && enumNames(cross).empty());
 
     CHECK(clampParameter(leftTime, 1e9) == 3000 && clampParameter(leftTime, -5) == 10);
     CHECK(clampParameter(leftTime, std::nan("")) == 350);
     CHECK(clampParameter(repeats, 8.4) == 8.4);
     CHECK(clampParameter(repeats, 1e12) == maxRepeats);
-    CHECK(clampParameter(link, 0.6) == 1);
+    CHECK(clampParameter(slide::link, 0.6) == 1);
     CHECK(clampParameter(modType, 7) == 2);
 }
 
@@ -220,7 +220,7 @@ void syncedLeftText()
     char text[32];
     double value = 0;
     CHECK(plugin.params->value_to_text(plugin.p, leftTime, 250, text, sizeof text) && !std::strcmp(text, "250.0 ms"));
-    plugin.set(sync, 1);
+    plugin.set(slide::sync, 1);
     CHECK(plugin.params->value_to_text(plugin.p, leftTime, 250, text, sizeof text) && !std::strcmp(text, "1/8"));
     CHECK(plugin.params->value_to_text(plugin.p, leftTime, 260, text, sizeof text) && !std::strcmp(text, "~1/8"));
     CHECK(plugin.params->value_to_text(plugin.p, leftTime, 500.0 / 3, text, sizeof text) && !std::strcmp(text, "1/8T"));
@@ -244,7 +244,7 @@ void parameterText()
         CHECK(info.id == p.id && info.min_value == p.min && info.max_value == p.max);
         CHECK(info.default_value == p.initial);
         CHECK(std::strcmp(info.name, p.name) == 0);
-        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_AUTOMATABLE) == (p.id != link));
+        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_AUTOMATABLE) == (p.id != slide::link));
 
         double current = 0;
         CHECK(params->get_value(plugin.p, p.id, &current) && current == p.initial);
@@ -825,34 +825,34 @@ void linkAndSync()
         const auto echoes = firstEchoes(rig);
         return near(echoes[0], l, 0.05) && near(echoes[1], r, 0.05);
     };
-    rig.set(link, 0);
+    rig.set(slide::link, 0);
     rig.set(ratio, 2);
     rig.set(leftTime, 200);
     CHECK(at(200, 400));
 
-    rig.set(link, 1);
+    rig.set(slide::link, 1);
     rig.set(difference, -150);
     CHECK(at(200, 50));
 
     // Under Sync, Left's stored time follows the tempo from 120 BPM.
-    rig.set(sync, 1);
+    rig.set(slide::sync, 1);
     rig.set(leftTime, 500);
-    rig.set(link, 0);
+    rig.set(slide::link, 0);
     rig.set(ratio, 1.618);
     rig.engine.setTempo(120);
     CHECK(at(500, 809));
-    rig.set(link, 1);
+    rig.set(slide::link, 1);
     rig.set(difference, 12);
     CHECK(at(500, 512));
     rig.engine.setTempo(100);
     CHECK(at(600, 612));
     rig.engine.setTempo(120);
-    rig.set(link, 0);
+    rig.set(slide::link, 0);
     CHECK(near(rig.engine.bpm(), 120, 1e-9));
     rig.engine.setTempo(60);
     rig.set(ratio, 1);
     CHECK(at(1000, 1000));
-    rig.set(sync, 0);
+    rig.set(slide::sync, 0);
 
     rig.times(250, 400);
     rig.set(repeats, 8);
@@ -1175,12 +1175,12 @@ std::vector<Section> buildFixture()
     {
         std::vector<Row> rows;
         for (double left : { 5.0, 350.0, 2900.0 })
-            for (double sync : { 0.0, 1.0 })
+            for (double synced : { 0.0, 1.0 })
                 for (double bpm : { 60.0, 120.0, 147.0 })
                     for (auto link : { std::pair<double, double> { 1, 1.618 }, { 1, 300 }, { 0, -150 }, { 0, 4000 } })
                     {
-                        const auto t = lineTimes(left, sync != 0, bpm, link.first != 0, link.second, link.second);
-                        rows.push_back({ { "leftMs", left }, { "sync", sync }, { "bpm", bpm }, { "byRatio", link.first },
+                        const auto t = lineTimes(left, synced != 0, bpm, link.first != 0, link.second, link.second);
+                        rows.push_back({ { "leftMs", left }, { "sync", synced }, { "bpm", bpm }, { "byRatio", link.first },
                             { "relation", link.second }, { "left", t.left }, { "right", t.right } });
                     }
         sections.push_back({ "lineTimes", std::move(rows) });
