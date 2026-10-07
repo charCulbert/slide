@@ -119,6 +119,7 @@ public:
                                          static_cast<float>(feedbackTarget[1].next(k20)) };
             const auto toneHz = toneTarget.next(k20);
             const auto mixNow = mixTarget.next(k20);
+            const auto crossNow = static_cast<float>(crossTarget.next(k20));
             const auto compandNow = compandTarget.next(k20);
 
             if (coefficientCountdown-- <= 0)
@@ -180,7 +181,7 @@ public:
             for (int c = 0; c < 2; ++c)
             {
                 float gain;
-                const auto squeezed = compress(c, e[c] + crossSelf * out[c] + crossOther * out[1 - c], compandNow, gain);
+                const auto squeezed = compress(c, e[c] + (1.0f - crossNow) * out[c] + crossNow * out[1 - c], compandNow, gain);
                 lines[c].write(squeezed + hiss);
                 compandGains[c].write(gain - 1.0f);
             }
@@ -250,8 +251,7 @@ private:
         const auto post = laws::blurAt(laws::BlurPlace::post, values[postBlur] * 0.01);
 
         const auto x = std::clamp(values[cross] * 0.01, 0.0, 1.0);
-        crossSelf = static_cast<float>(1.0 - x);
-        crossOther = static_cast<float>(x);
+        crossTarget.target = x;
         const auto gain = laws::passGain(values[repeats], x, effectiveMs[0], effectiveMs[1]);
         for (int line = 0; line < 2; ++line) feedbackTarget[line].target = gain;
 
@@ -292,7 +292,7 @@ private:
     void primeSmoothers() noexcept
     {
         for (auto* s : { &timeTarget[0], &timeTarget[1], &feedbackTarget[0], &feedbackTarget[1], &toneTarget,
-                         &mixTarget, &compandTarget })
+                         &mixTarget, &compandTarget, &crossTarget })
             s->snap(s->target);
         primed = true;
     }
@@ -364,7 +364,7 @@ private:
 
     Values values = defaultValues();
     laws::Recipe recipe = laws::cleanRecipe;
-    Smoothed timeTarget[2], feedbackTarget[2], toneTarget, mixTarget, compandTarget;
+    Smoothed timeTarget[2], feedbackTarget[2], toneTarget, mixTarget, compandTarget, crossTarget;
     Random noise[2], hissNoise;
     double phase[2] {}, randomState[2] {}, randomState2[2] {};
 
@@ -376,7 +376,6 @@ private:
     double lowCutHz = 20;
     double sineStep = 0, randomCoefficient = 0;
     double appliedTone = 0, appliedCut = 0, appliedLoss[2] {};
-    float crossSelf = 1, crossOther = 0;
     double listen[2][2] { { 1, 0 }, { 0, 1 } };
     double loopLag[2] {}, outLag[2] {};
     int coefficientCountdown = 0;

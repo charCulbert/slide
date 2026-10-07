@@ -955,18 +955,23 @@ void crossMovesSmoothly()
         Block block(frames);
         for (size_t i = 0; i < frames; ++i)
             block.l[i] = block.r[i] =
-                0.2f * static_cast<float>(std::sin(2 * std::numbers::pi * 200.0 * (from + i) / rig.rate));
+                0.2f * static_cast<float>(std::sin(2 * std::numbers::pi * 210.0 * (from + i) / rig.rate));
         return block;
     };
     auto before = run(rig, tone(seconds, 0));
     rig.set(cross, 100);
     auto after = run(rig, tone(seconds, seconds));
 
-    double jump = 0;
-    for (size_t i = 1; i < after.size(); ++i)
-        jump = std::max(jump, static_cast<double>(std::abs(after.l[i] - after.l[i - 1])));
-    jump = std::max(jump, static_cast<double>(std::abs(after.l[0] - before.l[before.size() - 1])));
-    CHECK(jump < 0.2);
+    // the lines are out of phase (150 ms is not a whole number of 210 Hz cycles), so an
+    // unsmoothed Cross steps, heard a delay later: no sample-to-sample step in the half
+    // second after the change may be larger than the steady steps before and after
+    const auto most = [](const Block& b, size_t from, size_t to) {
+        double m = 0;
+        for (size_t i = std::max<size_t>(from, 1); i < to; ++i) m = std::max(m, static_cast<double>(std::abs(b.l[i] - b.l[i - 1])));
+        return m;
+    };
+    const auto steady = std::max(most(before, 1, before.size()), most(after, after.size() / 2, after.size()));
+    CHECK(most(after, 0, after.size() / 2) <= steady * 1.05);
     CHECK(finite(after));
 }
 
