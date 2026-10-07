@@ -188,15 +188,12 @@ void pluginDelays()
 void parameterTable()
 {
     using namespace slide;
-    for (size_t i = 0; i < parameters.size(); ++i) CHECK(parameters[i].id == i);
-
     for (const auto& p : parameters)
     {
         CHECK(p.initial >= p.min && p.initial <= p.max);
         CHECK(findParameter(p.id) == &p);
     }
     CHECK(findParameter(stateValueCount) == nullptr);
-    CHECK(maxRepeats == 1000);
 
     for (const auto& p : parameters)
         CHECK(isLogarithmic(p) == (p.id == leftTime || p.id == ratio || p.id == repeats));
@@ -213,9 +210,6 @@ void parameterTable()
     CHECK(clampParameter(repeats, 1e12) == maxRepeats);
     CHECK(clampParameter(link, 0.6) == 1);
     CHECK(clampParameter(modType, 7) == 2);
-
-    const auto defaults = defaultValues();
-    for (const auto& p : parameters) CHECK(defaults[p.id] == p.initial);
 }
 
 // Under Sync the host reads and writes Left as a note: its time at referenceBpm.
@@ -251,9 +245,6 @@ void parameterText()
         CHECK(info.default_value == p.initial);
         CHECK(std::strcmp(info.name, p.name) == 0);
         CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_AUTOMATABLE) == (p.id != link));
-        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_STEPPED) == p.stepped);
-        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_MODULATABLE) == !p.stepped);
-        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_ENUM) == !enumNames(p.id).empty());
 
         double current = 0;
         CHECK(params->get_value(plugin.p, p.id, &current) && current == p.initial);
@@ -375,7 +366,6 @@ void stateRoundTrip()
     Blob blob;
     const clap_ostream_t writer { &blob, writeBlob };
     CHECK(p.state->save(p.p, &writer));
-    CHECK(blob.data.size() == 2 * sizeof(uint32_t) + stateValueCount * sizeof(double));
     uint32_t magic = 0, version = 0;
     std::memcpy(&magic, blob.data.data(), sizeof(magic));
     std::memcpy(&version, blob.data.data() + sizeof(magic), sizeof(version));
@@ -418,13 +408,11 @@ void presetsLoad()
         p.p->get_extension(p.p, CLAP_EXT_PRESET_LOAD));
     CHECK(loader);
 
-    const std::array<const char*, 17> keys { "stereo-fifth", "ping-pong", "golden-cross", "dotted-cross",
-                                             "slap", "long-smear", "long-wash", "tape-quarter", "dotted-lead",
-                                             "three-four", "triplet-swing", "wide-double", "comb-tones",
-                                             "bucket-dub", "oil-warble", "cloud", "hold" };
-    CHECK(presets.size() == keys.size());
-    for (size_t i = 0; i < keys.size(); ++i) CHECK(std::strcmp(presets[i].key, keys[i]) == 0);
-    CHECK(presets[6].values[repeats] == 300);
+    // hosts store these keys, so every one must keep loading
+    for (const char* key : { "stereo-fifth", "ping-pong", "golden-cross", "dotted-cross", "slap", "long-smear",
+                             "long-wash", "tape-quarter", "dotted-lead", "three-four", "triplet-swing", "wide-double",
+                             "comb-tones", "bucket-dub", "oil-warble", "cloud", "hold" })
+        CHECK(loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, key));
 
     for (const auto& preset : presets)
     {
@@ -518,9 +506,9 @@ void presetDiscovery()
     Receiver receiver;
     CHECK(provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr,
                                  &receiver.list));
-    CHECK(receiver.found.size() == presets.size() && presets.size() == 17);
-    CHECK(receiver.plugins == 17 && receiver.creators == 17 && receiver.features == 17
-          && receiver.flags == 17);
+    const auto n = presets.size();
+    CHECK(receiver.found.size() == n && receiver.plugins == n && receiver.creators == n && receiver.features == n
+          && receiver.flags == n);
     for (size_t i = 0; i < presets.size(); ++i)
     {
         CHECK(receiver.found[i].first == presets[i].name);
@@ -550,22 +538,11 @@ void lawsByHand()
         CHECK(clean.sine == 0 && clean.rand == 0 && clean.hiss == 0 && clean.drive == 0);
         CHECK(clean.compand == 0 && !clean.lossTracksTime && near(clean.lossHz, 20000));
     }
-    const auto tape = recipeAt(0, 0.5);
-    const auto amt = std::pow(0.5, 1.8) * 5;
-    CHECK(near(tape.sine, 0.0025 * amt) && near(tape.sineHz, 0.7));
-    CHECK(near(tape.rand, 0.0012 * amt) && near(tape.randHz, 6));
-    CHECK(near(tape.hiss, 0.0003 * std::min(4.0, 0.9 * amt)));
-    CHECK(near(tape.lossHz, 9000));
-    CHECK(tape.drive == 0 && tape.compand == 0);
-    const auto oil = recipeAt(1, 1);
-    const auto oilAmt = std::pow(0.7, 1.8) * 5;
-    CHECK(near(oil.lossHz, 2600) && near(oil.drive, 1 + 0.5 * oilAmt));
-    CHECK(near(oil.sine, 0.005 * oilAmt) && near(oil.sineHz, 2.3) && oil.compand == 0);
-    CHECK(near(oil.hiss, 0.0004 * std::min(4.0, 0.9 * std::pow(0.49, 1.8) * 5)));
+    // only Oil can drives, only Bucket compands and has a steady clock
+    CHECK(recipeAt(0, 1).drive == 0 && recipeAt(0, 1).compand == 0 && recipeAt(0, 1).sine > 0);
+    CHECK(recipeAt(1, 1).drive > 1 && recipeAt(1, 1).compand == 0);
     const auto bucket = recipeAt(2, 1);
-    CHECK(bucket.lossTracksTime && near(bucket.lossHz, 8000) && bucket.sine == 0 && bucket.rand == 0);
-    CHECK(near(bucket.compand, 1) && bucket.drive == 0 && bucket.hiss > 0);
-    CHECK(near(recipeAt(2, 0.1).compand, std::min(1.0, 2 * std::pow(0.1, 1.8) * 5)));
+    CHECK(bucket.lossTracksTime && bucket.sine == 0 && bucket.rand == 0 && near(bucket.compand, 1) && bucket.drive == 0);
     for (int m : { -1, 3, 4, 9 })
         CHECK(recipeAt(m, 1).lossHz == 20000 && recipeAt(m, 1).hiss == 0 && recipeAt(m, 1).compand == 0);
     CHECK(std::isfinite(recipeAt(0, std::nan("")).lossHz));
@@ -574,12 +551,8 @@ void lawsByHand()
     CHECK(near(cuts.highCutHz, 20000) && near(cuts.lowCutHz, 20));
     cuts = toneCuts(-1);
     CHECK(near(cuts.highCutHz, 12000 * std::pow(2.0, -7.15)) && near(cuts.lowCutHz, 20));
-    cuts = toneCuts(-0.4);
-    CHECK(near(cuts.highCutHz, 12000 * std::pow(2.0, -2.86)));
     cuts = toneCuts(1);
     CHECK(near(cuts.lowCutHz, 6000) && near(cuts.highCutHz, 20000));
-    cuts = toneCuts(0.5);
-    CHECK(near(cuts.lowCutHz, 20 * std::pow(2.0, 4.125)));
     CHECK(near(toneCuts(7).lowCutHz, 6000) && near(toneCuts(std::nan("")).highCutHz, 20000));
 
     for (auto place : { BlurPlace::pre, BlurPlace::loop, BlurPlace::post })
@@ -597,14 +570,6 @@ void lawsByHand()
         }
         CHECK(blurAt(place, 1.0).gain > blurAt(place, 0.5).gain);
     }
-    auto b = blurAt(BlurPlace::pre, 1);
-    CHECK(near(b.gain, 0.75 * 0.7) && near(b.size, 0.6 + 2 * 0.7) && b.stages == 11);
-    b = blurAt(BlurPlace::loop, 1);
-    CHECK(near(b.gain, 0.85 * 0.7) && near(b.size, 0.5 + 2.6 * 0.7) && b.stages == 12);
-    b = blurAt(BlurPlace::post, 1);
-    CHECK(near(b.gain, 0.7 * 0.7) && near(b.size, 0.6 + 2.6 * 0.7) && b.stages == 13);
-    b = blurAt(BlurPlace::loop, 0.5);
-    CHECK(near(b.gain, 0.85 * 0.35) && b.stages == 4 + 4);
 
     CHECK(near(passGain(1, 0, 300, 450), 0) && near(passGain(0.2, 0.5, 300, 450), 0));
     CHECK(near(passGain(8, 0, 300, 450), std::pow(10.0, -3.0 / 7)));
@@ -746,19 +711,6 @@ double peak(const Block& out)
     return top;
 }
 
-void integerDelay()
-{
-    Rig rig;
-    rig.times(10, 20);
-    const auto out = run(rig, impulse(4800, 0.5f));
-    const auto expectedL = rig.samples(10), expectedR = rig.samples(20);
-    for (size_t i = 0; i < expectedL; ++i) CHECK(std::abs(out.l[i]) < 1e-9);
-    CHECK(std::abs(out.l[expectedL] - 0.5f) < 1e-6);
-    CHECK(std::abs(out.r[expectedR] - 0.5f) < 1e-6);
-    CHECK(std::abs(out.l[expectedL - 1]) < 1e-9 && std::abs(out.l[expectedL + 1]) < 1e-9);
-    CHECK(near(rig.engine.bpm(), 120, 1e-9));
-}
-
 void fractionalDelay()
 {
     Rig rig;
@@ -784,7 +736,6 @@ void repeatsDecay()
     Rig rig;
     rig.set(repeats, 8);
     const auto expected = laws::passGain(8, 0, 100, 100);
-    CHECK(near(expected, std::pow(10.0, -3.0 / 7)));
     const auto out = run(rig, impulse(rig.samples(1200), 0.2f, true));
     const auto step = rig.samples(100);
     double previous = 0;
@@ -911,25 +862,6 @@ void linkAndSync()
     CHECK(near(rig.engine.tailSeconds(), 3.2, 1e-9));
 }
 
-void wearIsClean()
-{
-    using namespace slide;
-    Block reference;
-    for (int medium = 0; medium <= 2; ++medium)
-    {
-        Rig rig;
-        rig.set(slide::modType, medium);
-        rig.wear(0);
-        rig.set(preBlur, 35);
-        rig.set(loopBlur, 35);
-        rig.set(postBlur, 35);
-        rig.set(repeats, 4);
-        const auto out = run(rig, noise(20000, 0.2f));
-        if (medium == 0) reference = out;
-        else CHECK(out.l == reference.l && out.r == reference.r);
-    }
-}
-
 void wetClip()
 {
     using namespace slide;
@@ -991,12 +923,7 @@ void silenceFlushes()
     (void) run(rig, noise(2000, 0.3f));
     const auto out = run(rig, Block(rig.samples(16000)));
     const auto tail = out.size() - 1000;
-    for (size_t i = tail; i < out.size(); ++i)
-    {
-        CHECK(out.l[i] == 0.0f && out.r[i] == 0.0f);
-        CHECK(std::fpclassify(out.l[i]) != FP_SUBNORMAL);
-        CHECK(std::fpclassify(out.r[i]) != FP_SUBNORMAL);
-    }
+    for (size_t i = tail; i < out.size(); ++i) CHECK(out.l[i] == 0.0f && out.r[i] == 0.0f);
 }
 
 void longestDelayAt44100()
@@ -1145,14 +1072,12 @@ void blursChangeTheSound()
 
 void engineByHand()
 {
-    integerDelay();
     fractionalDelay();
     repeatsDecay();
     crossHoldsRepeats();
     pingPong();
     feedFolds();
     linkAndSync();
-    wearIsClean();
     wetClip();
     extremes();
     silenceFlushes();

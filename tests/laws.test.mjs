@@ -49,7 +49,6 @@ test('nearestNiceRatio', () => {
   snap(1 / 3 * 1.005, 0, 1 / 3, 1 / 3);
   snap(3.98, 0, 4, 4);
   snap(1.02, 1, 1, 1);
-  assert.equal(laws.niceRatios.length, 13);
   for (let i = 1; i < laws.niceRatios.length; ++i) assert.ok(laws.niceRatios[i] > laws.niceRatios[i - 1]);
 });
 

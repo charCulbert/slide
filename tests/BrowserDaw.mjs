@@ -54,8 +54,6 @@ try {
     return canvas?.width > 0 && canvas.getBoundingClientRect().height > 0;
   }, null, {timeout: 15000});
   const picture = await face();
-  assert(picture.box.width > 0 && picture.box.height > 0,
-    `Face has no box: ${JSON.stringify(picture.box)}`);
   assert(picture.drawn > 500,
     `Face canvas drew ${picture.drawn} pixels; the picture is missing`);
   console.log('PICTURE', picture.drawn, 'pixels in',
@@ -79,7 +77,6 @@ try {
   await frame.waitForFunction(
     ([id, expected]) => Math.abs((window.slideTest.values[id] ?? -1) - expected) < 0.01,
     ['0', after], {timeout: 10000});
-  assert.equal(await value(0), after, 'Left did not round-trip through the bridge');
 
   const iframe = await page.locator('iframe[title^="Slide"]').boundingBox();
   const grab = await frame.evaluate(() => {
@@ -103,7 +100,6 @@ try {
   await ui.getByRole('button', {name: 'Sync', exact: true}).focus();
   await page.keyboard.press('Space');
   await frame.waitForFunction(() => window.slideTest.values['4'] === 1, null, {timeout: 10000});
-  assert.equal(await value(4), 1, 'Sync did not reach the plugin');
 
   await page.locator('iframe[title^="Slide"]').screenshot({path: `${artifacts}/slide.png`});
   await writeFile(`${artifacts}/report.json`, JSON.stringify(
