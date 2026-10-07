@@ -1,2 +1,7 @@
 build*/
 .DS_Store
+
+# local tools: editor setup and the browser tests, which need a private checkout
+.vscode/
+tests/FaceE2E.mjs
+tests/BrowserDaw.mjs
