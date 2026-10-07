@@ -119,3 +119,11 @@ export function passGain(repeats, cross, a, b) {
 export function wobbleReferenceMs(timeMs) {
   return clamp(finiteOr(timeMs, minTimeMs), 40, 400);
 }
+
+/** Bucket's high loss for a line time, as Laws.h's bucketLossHz: a longer time runs
+ * the clock slower, so it loses more. */
+export function bucketLossHz(lossHz, timeMs) {
+  const loss = finiteOr(lossHz, openHighCutHz);
+  const time = Math.max(minTimeMs, finiteOr(timeMs, minTimeMs));
+  return Math.min(loss, Math.max(1200, loss * Math.sqrt(60 / time)));
+}

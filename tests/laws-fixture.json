@@ -230,6 +230,20 @@
     {"in": 7, "beats": 8, "on": 0},
     {"in": 40, "beats": 16, "on": 0}
   ],
+  "bucketLoss": [
+    {"lossHz": 1000, "timeMs": 10, "out": 1000},
+    {"lossHz": 1000, "timeMs": 60, "out": 1000},
+    {"lossHz": 1000, "timeMs": 240, "out": 1000},
+    {"lossHz": 1000, "timeMs": 2000, "out": 1000},
+    {"lossHz": 8000, "timeMs": 10, "out": 8000},
+    {"lossHz": 8000, "timeMs": 60, "out": 8000},
+    {"lossHz": 8000, "timeMs": 240, "out": 4000},
+    {"lossHz": 8000, "timeMs": 2000, "out": 1385.6406460551},
+    {"lossHz": 20000, "timeMs": 10, "out": 20000},
+    {"lossHz": 20000, "timeMs": 60, "out": 20000},
+    {"lossHz": 20000, "timeMs": 240, "out": 10000},
+    {"lossHz": 20000, "timeMs": 2000, "out": 3464.10161513775}
+  ],
   "constants": [
     {"minTimeMs": 10, "maxTimeMs": 3000, "openHighCutHz": 20000, "maxRepeats": 1000, "referenceBpm": 120}
   ]

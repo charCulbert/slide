@@ -76,6 +76,10 @@ test('notes', () => {
   assert.deepEqual(['1/8', '1/8D', '1/8T'].map(name => laws.notes.find(n => n[1] === name)[0]), [0.5, 0.75, 1 / 3]);
 });
 
+test('bucketLossHz', () => {
+  for (const row of fixture.bucketLoss) close(laws.bucketLossHz(row.lossHz, row.timeMs), row.out, JSON.stringify(row));
+});
+
 test('constants', () => {
   for (const [key, value] of Object.entries(fixture.constants[0])) assert.equal(laws[key], value, key);
 });

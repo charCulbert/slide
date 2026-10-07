@@ -387,10 +387,11 @@ export class SlideFace extends HTMLElement {
   }
 
   shadeOf(e) {
-    const cuts = laws.toneCuts(this.val('tone') / 100);
-    const hc = Math.min(this.recipe().lossHz, cuts.highCutHz);
+    const cuts = laws.toneCuts(this.val('tone') / 100), rec = this.recipe();
+    const loss = rec.lossTracksTime ? laws.bucketLossHz(rec.lossHz, this.times()[e.line]) : rec.lossHz;
+    const hc = Math.min(loss, cuts.highCutHz);
     const dark = 1 - Math.pow(clamp((Math.log10(hc) - Math.log10(200)) / 2, 0, 1), 0.6);
-    const thin = clamp(Math.log10(cuts.lowCutHz / 20) / Math.log10(2500 / 20), 0, 1);
+    const thin = clamp(Math.log10(cuts.lowCutHz / 20) / Math.log10(laws.toneCuts(1).lowCutHz / 20), 0, 1);
     const p = Math.min(1, e.n / 6);
     return {width: Math.max(0.4, 1 + 0.8 * dark * p - 0.55 * thin * p), tint: (thin - dark) * p};
   }

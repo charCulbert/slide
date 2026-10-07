@@ -1168,6 +1168,13 @@ std::vector<Section> buildFixture()
         }
         sections.push_back({ "nearestNote", std::move(rows) });
     }
+    {
+        std::vector<Row> rows;
+        for (double loss : { 1000.0, 8000.0, 20000.0 })
+            for (double time : { 10.0, 60.0, 240.0, 2000.0 })
+                rows.push_back({ { "lossHz", loss }, { "timeMs", time }, { "out", bucketLossHz(loss, time) } });
+        sections.push_back({ "bucketLoss", std::move(rows) });
+    }
     sections.push_back({ "constants", { { { "minTimeMs", minTimeMs }, { "maxTimeMs", maxTimeMs },
                                           { "openHighCutHz", openHighCutHz }, { "maxRepeats", maxRepeats },
                                           { "referenceBpm", referenceBpm } } } });
