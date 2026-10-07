@@ -18,7 +18,7 @@
       "type": "shell",
       "command": "clap-host",
       "args": [
-        "build/Slide Lab.clap",
+        "build/Slide.clap",
         "--script",
         ".vscode/clap-host.txt"
       ],

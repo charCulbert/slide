@@ -476,7 +476,7 @@ void presetDiscovery()
         clap_entry.get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID));
     CHECK(factory && factory->count(factory) == 1);
     const auto* descriptor = factory->get_descriptor(factory, 0);
-    CHECK(descriptor && std::strcmp(descriptor->id, "com.charlieculbert.slide-lab.presets") == 0);
+    CHECK(descriptor && std::strcmp(descriptor->id, "com.charlieculbert.slide.presets") == 0);
     CHECK(std::strcmp(descriptor->vendor, "Charlie Culbert") == 0);
     CHECK(!factory->get_descriptor(factory, 1));
     CHECK(!factory->create(factory, nullptr, descriptor->id));
@@ -498,7 +498,7 @@ void presetDiscovery()
         [](const clap_preset_discovery_indexer_t*, const char*) -> const void* { return nullptr; }
     };
 
-    CHECK(!factory->create(factory, &indexer, "com.charlieculbert.slide-lab.wrong"));
+    CHECK(!factory->create(factory, &indexer, "com.charlieculbert.slide.wrong"));
     const auto* provider = factory->create(factory, &indexer, descriptor->id);
     CHECK(provider && provider->init(provider) && locations == 1);
 

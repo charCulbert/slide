@@ -1,18 +1,16 @@
-# Slide Lab
+# Slide
 
 A stereo delay plug-in inspired by slide rules ([see the International Slide Rule
-Museum](https://www.sliderulemuseum.com/)). Two delay lines, left and right, are read
-off one log time scale like a rule's: the right line is set from the left by a ratio
-or a difference, and the face draws every repeat where it lands.
+Museum](https://www.sliderulemuseum.com/)).
 
 ## Download
 
 | Platform | Formats | Download |
 |---|---|---|
-| macOS | CLAP, VST3, AU | [Slide-Lab-macOS.zip](https://github.com/charCulbert/slide/releases/latest/download/Slide-Lab-macOS.zip) |
-| Windows | CLAP, VST3 | [Slide-Lab-Windows.zip](https://github.com/charCulbert/slide/releases/latest/download/Slide-Lab-Windows.zip) |
-| Linux | CLAP, VST3 | [Slide-Lab-Linux.zip](https://github.com/charCulbert/slide/releases/latest/download/Slide-Lab-Linux.zip) |
-| Browser hosts | WCLAP | [SlideLab.wclap.tar.gz](https://github.com/charCulbert/slide/releases/latest/download/SlideLab.wclap.tar.gz) |
+| macOS | CLAP, VST3, AU | [Slide-macOS.zip](https://github.com/charCulbert/slide/releases/latest/download/Slide-macOS.zip) |
+| Windows | CLAP, VST3 | [Slide-Windows.zip](https://github.com/charCulbert/slide/releases/latest/download/Slide-Windows.zip) |
+| Linux | CLAP, VST3 | [Slide-Linux.zip](https://github.com/charCulbert/slide/releases/latest/download/Slide-Linux.zip) |
+| Browser hosts | WCLAP | [Slide.wclap.tar.gz](https://github.com/charCulbert/slide/releases/latest/download/Slide.wclap.tar.gz) |
 
 All releases are on the [releases page](https://github.com/charCulbert/slide/releases).
 

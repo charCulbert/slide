@@ -22,7 +22,7 @@ try {
   await page.locator('body[data-engine="ready"]').waitFor({timeout: 30000});
   await page.getByRole('button', {name: 'Plugins', exact: true}).click();
   await page.locator('#plugin-file')
-    .setInputFiles(resolve(root, 'build-wclap/SlideLab.wclap.tar.gz'));
+    .setInputFiles(resolve(root, 'build-wclap/Slide.wclap.tar.gz'));
   await page.locator('#plugin-inspection-status').filter({hasText: 'Added 1 plug-in'})
     .waitFor({timeout: 30000});
   await page.locator('#plugin-tree .plugin-row').filter({hasText: 'Slide'}).dblclick();

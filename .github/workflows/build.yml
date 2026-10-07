@@ -1,4 +1,4 @@
-name: Slide Lab
+name: Slide
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
 
 env:
   PROJECT: .
-  TARGET: SlideLab
-  NAME: "Slide Lab"
+  TARGET: Slide
+  NAME: "Slide"
   AU: "aufx Slid ChAr"
 
 jobs:
@@ -140,11 +140,11 @@ jobs:
           mkdir dist
           for pair in macos-latest:macOS windows-latest:Windows ubuntu-latest:Linux; do
             os=${pair%%:*}; label=${pair##*:}
-            out="pack/Slide Lab"
+            out="pack/Slide"
             rm -rf pack; mkdir -p "$out"
             find "artifacts/$TARGET-$os" -maxdepth 4 \( -name "$NAME.clap" -o -name "$NAME.clap.resources" \
               -o -name "$NAME.vst3" -o -name "$NAME.component" \) -prune -exec cp -R {} "$out/" \;
-            (cd pack && zip -qr "../dist/Slide-Lab-$label.zip" "Slide Lab")
+            (cd pack && zip -qr "../dist/Slide-$label.zip" "Slide")
           done
           cp "artifacts/$TARGET-wclap/$TARGET.wclap.tar.gz" dist/
           ls -l dist

@@ -74,7 +74,7 @@ static const char *const pluginFeatures[] = {
 static const clap_plugin_descriptor_t pluginDescriptor = {
     .clap_version = CLAP_VERSION_INIT,
     .id = pluginId,
-    .name = "Slide Lab",
+    .name = "Slide",
     .vendor = "Charlie Culbert",
     .url = "",
     .manual_url = "",
@@ -748,8 +748,8 @@ static const clap_plugin_t pluginClass = {
 
 static const clap_preset_discovery_provider_descriptor_t presetProviderDescriptor = {
     .clap_version = CLAP_VERSION_INIT,
-    .id = "com.charlieculbert.slide-lab.presets",
-    .name = "Slide Lab Presets",
+    .id = "com.charlieculbert.slide.presets",
+    .name = "Slide Presets",
     .vendor = "Charlie Culbert",
 };
 

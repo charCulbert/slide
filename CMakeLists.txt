@@ -7,7 +7,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
 endif()
 
-project(SlideLab VERSION 1.0.0 LANGUAGES C CXX)
+project(Slide VERSION 1.0.0 LANGUAGES C CXX)
 if(APPLE)
     enable_language(OBJC OBJCXX)
 endif()
@@ -32,30 +32,30 @@ if(NOT EXISTS "${LIBS}/chardsp/chardsp/chardsp_OnePole.h")
     message(FATAL_ERROR "libs/chardsp is empty: run `git submodule update --init`")
 endif()
 
-add_library(SlideLab_impl STATIC plugin.cpp)
-target_include_directories(SlideLab_impl PUBLIC
+add_library(Slide_impl STATIC plugin.cpp)
+target_include_directories(Slide_impl PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/dsp" "${LIBS}/chardsp")
-core_add_to(SlideLab_impl)
-webview_add_to(SlideLab_impl)
+core_add_to(Slide_impl)
+webview_add_to(Slide_impl)
 
-webview_resources(resources SlideLab resources)
+webview_resources(resources Slide resources)
 
 set(identity
-    OUTPUT_NAME "Slide Lab"
-    BUNDLE_IDENTIFIER "com.charlieculbert.slide-lab"
+    OUTPUT_NAME "Slide"
+    BUNDLE_IDENTIFIER "com.charlieculbert.slide"
     BUNDLE_VERSION "${PROJECT_VERSION}")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    add_executable(SlideLab_auv3 entry.cpp)
-    target_link_libraries(SlideLab_auv3 PRIVATE SlideLab_impl)
-    target_add_auv3_wrapper(TARGET SlideLab_auv3 ${identity}
+    add_executable(Slide_auv3 entry.cpp)
+    target_link_libraries(Slide_auv3 PRIVATE Slide_impl)
+    target_add_auv3_wrapper(TARGET Slide_auv3 ${identity}
         MANUFACTURER_NAME "Charlie Culbert" MANUFACTURER_CODE "ChAr"
         SUBTYPE_CODE "Slid" INSTRUMENT_TYPE "aufx")
-    add_executable(SlideLab_ios entry.cpp)
-    target_link_libraries(SlideLab_ios PRIVATE SlideLab_impl)
-    target_add_auv3_standalone_ios_wrapper(TARGET SlideLab_ios
-        OUTPUT_NAME "Slide Lab" BUNDLE_IDENTIFIER "com.charlieculbert.slide-lab.ios"
-        BUNDLE_VERSION "${PROJECT_VERSION}" AUV3_TARGET SlideLab_auv3
+    add_executable(Slide_ios entry.cpp)
+    target_link_libraries(Slide_ios PRIVATE Slide_impl)
+    target_add_auv3_standalone_ios_wrapper(TARGET Slide_ios
+        OUTPUT_NAME "Slide" BUNDLE_IDENTIFIER "com.charlieculbert.slide.ios"
+        BUNDLE_VERSION "${PROJECT_VERSION}" AUV3_TARGET Slide_auv3
         AU_TYPE "aufx" AU_SUBTYPE "Slid" AU_MANUFACTURER "ChAr")
     return()
 endif()
@@ -78,8 +78,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
 endif()
 
 make_clapfirst_plugins(
-    TARGET_NAME SlideLab
-    IMPL_TARGET SlideLab_impl
+    TARGET_NAME Slide
+    IMPL_TARGET Slide_impl
     ENTRY_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/entry.cpp"
     ${identity}
     AUV2_MANUFACTURER_NAME "Charlie Culbert"
@@ -88,20 +88,20 @@ make_clapfirst_plugins(
     AUV2_INSTRUMENT_TYPE "aufx"
     PLUGIN_FORMATS ${formats}
     WINDOWS_FOLDER_VST3 TRUE
-    STANDALONE_CONFIGURATIONS standalone "Slide Lab" "com.charlieculbert.slide-lab"
+    STANDALONE_CONFIGURATIONS standalone "Slide" "com.charlieculbert.slide"
     COPY_AFTER_BUILD FALSE)
 
-if(TARGET SlideLab_aax AND APPLE)
-    set_target_properties(SlideLab_aax PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+if(TARGET Slide_aax AND APPLE)
+    set_target_properties(Slide_aax PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 endif()
 
-core_ship_resources(SlideLab "${resources}" DEPENDS SlideLab_resources)
+core_ship_resources(Slide "${resources}" DEPENDS Slide_resources)
 
 
 enable_testing()
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
     add_executable(slide-tests tests/SlideTests.cpp entry.cpp)
-    target_link_libraries(slide-tests PRIVATE SlideLab_impl)
+    target_link_libraries(slide-tests PRIVATE Slide_impl)
     target_compile_definitions(slide-tests PRIVATE SLIDE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME slide-tests COMMAND slide-tests)
 endif()
