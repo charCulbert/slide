@@ -58,7 +58,6 @@ const FOCUS = {left_time: 'L', left_beats: 'L', ratio: 'R', difference: 'R', rep
   mod_c: 'mod', cross: 'cross', feed: 'feed'};
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const rnd = i => ((i * 9301 + 49297) % 233280) / 233280 * 2 - 1;
 const ratioName = r => (NICE.find(([v]) => Math.abs(Math.log(r / v)) < 0.004) || [0, r.toFixed(2)])[1];
 const fmt = ms => !Number.isFinite(ms) || ms > 3.6e6 ? '∞' : ms >= 60000 ? `${(ms / 60000).toFixed(1)} min`
   : ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)} s` : `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`;
@@ -564,17 +563,12 @@ export class SlideFace extends HTMLElement {
       if (label) tx(label, x + 14 * dpr, hy, T.ink, 10, 'left');
     };
     // A blur rail: its graduations smear more the higher they sit, sharp at the foot
-    // and blurred at the head, in the Mod type's own manner (A spreads, B jitters, C
-    // steps), with the same handle as every other rail.
+    // and blurred at the head, with the same handle as every other rail.
     const blurRail = (x, y0, y1, value01, title, on) => {
-      const type = this.modType();
       for (let i = 0; i <= 24; i++) {
         const u = i / 24, y = y1 - u * (y1 - y0), sm = u * u * 10 * dpr, n = 1 + Math.round(sm / (1.2 * dpr));
         for (let k = 0; k < n; k++) {
-          let off = n > 1 ? (k / (n - 1) - 0.5) * sm * 2 : 0, x0 = x - 9 * dpr, x1 = x + 9 * dpr;
-          if (type === 1) { off += rnd(i * 31 + k) * sm * 0.8; x0 += rnd(i * 17 + k) * 3 * dpr * u; x1 += rnd(i * 23 + k) * 3 * dpr * u; }
-          else if (type === 2) off = Math.round(off / (2.5 * dpr)) * (2.5 * dpr);
-          else { x0 -= u * 2 * dpr; x1 += u * 2 * dpr; }
+          const off = n > 1 ? (k / (n - 1) - 0.5) * sm * 2 : 0, x0 = x - (9 + u * 2) * dpr, x1 = x + (9 + u * 2) * dpr;
           ln(x0, y + off, x1, y + off, T.ink2, 0.8, (on ? 0.85 : 0.45) * (0.8 / n + 0.08));
         }
       }
