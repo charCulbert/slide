@@ -1,7 +1,8 @@
-#define NOMINMAX
+#define NOMINMAX // keep std::min usable
 #include <windows.h>
 #include "native.h"
 
+// The same steps as CHOC's own DesktopWindow::setContent().
 namespace webview::platform {
 
 const char *const windowApi = CLAP_WINDOW_API_WIN32;

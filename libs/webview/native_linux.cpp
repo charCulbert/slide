@@ -3,6 +3,8 @@
 #include <gtk/gtkx.h>
 #include "native.h"
 
+// CHOC's Linux WebView is a WebKitGTK widget. A GtkPlug puts it inside the
+// host's X11 window, and GTK's events are pumped from the host's timer.
 namespace webview::platform {
 
 const char *const windowApi = CLAP_WINDOW_API_X11;
@@ -26,7 +28,7 @@ void *attach(void *view, const clap_window_t *parent)
     GtkWidget *plug = nullptr;
     ignoringXErrors([&] {
         plug = gtk_plug_new(Window(parent->x11));
-        gtk_container_add(GTK_CONTAINER(plug), GTK_WIDGET(view));
+        gtk_container_add(GTK_CONTAINER(plug), GTK_WIDGET(view)); // CHOC keeps its own reference
         gtk_widget_show_all(plug);
     });
     return plug;
@@ -59,6 +61,7 @@ void setVisible(void *view, bool visible)
 
 void pumpEvents()
 {
+    // Bounded, so a busy page cannot hold the host's main thread.
     ignoringXErrors([] {
         for (int i = 0; i < 32 && g_main_context_pending(nullptr); ++i)
             g_main_context_iteration(nullptr, false);

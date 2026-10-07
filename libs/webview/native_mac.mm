@@ -12,6 +12,7 @@ void *attach(void *view, const clap_window_t *parent)
     NSView *host = (__bridge NSView *)parent->cocoa;
     if (!host) return nullptr;
     [child setFrame:[host bounds]];
+    // clap.gui.set_size sizes the view; autoresizing would apply a host resize twice.
     [child setAutoresizingMask:NSViewNotSizable];
     [host addSubview:child];
     return (__bridge void *)host;

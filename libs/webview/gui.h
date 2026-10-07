@@ -5,6 +5,10 @@
 #include "../core/messages.h"
 #include <memory>
 
+// clap.gui for a plugin whose UI is a page served by its own clap.webview
+// extension. Hosts with clap.webview show that page themselves. Other hosts get
+// a CHOC WebView embedded in their native window, which loads the same page
+// through the same extension. Sizing policy stays with the plugin.
 namespace webview {
 
 struct NativeView;
@@ -15,8 +19,10 @@ public:
     Gui();
     ~Gui();
 
+    // Call from clap_plugin.init: looks up the host's and the plugin's webview extensions.
     void init(const clap_plugin_t *plugin, const clap_host_t *host);
 
+    // clap.gui
     bool isApiSupported(const char *api, bool floating) const;
     bool getPreferredApi(const char **api, bool *floating) const;
     bool create(const char *api, bool floating);
@@ -27,6 +33,7 @@ public:
     bool show();
     bool hide();
 
+    // Linux GTK needs servicing from the host's main thread timer.
     void onTimer(clap_id timer);
 
     // Sends to whichever WebView shows the page. Hosts that open the page
