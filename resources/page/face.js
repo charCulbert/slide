@@ -23,13 +23,27 @@ const NICE = laws.niceRatios.map((r, i) => [r, RATIO_NAMES[i]]);
 const RAIL_RATIOS = ['1:1', '2:1', '1:2', '3:2', '2:3', '3:1', '4:3', '3:4', 'φ', '1:3', '4:1', '1:4', '5:4'];
 
 const NAMES = '"Barlow Semi Condensed", "IBM Plex Sans Condensed", system-ui, sans-serif';
-const MOD_AMOUNTS = ['mod_a', 'mod_b', 'mod_c'];
 
 const AXIS_MAX = 120000;
 
-const FOCUS = {left_time: 'L', ratio: 'R', difference: 'R', repeats: 'repeats',
-  pre_blur: 'pre', loop_blur: 'loop', post_blur: 'post', tone: 'tone', mix: 'mix', mod_a: 'mod', mod_b: 'mod',
-  mod_c: 'mod', cross: 'cross', feed: 'feed'};
+// One entry per control: the identifiers it writes (pick says which is live), its
+// readout, a typed number to a value, and a 0–1 position on its rail to a value.
+const centred = dead => v => { const t = v * 2 - 1; return Math.abs(t) < dead ? 0 : t * 100; };
+const CONTROLS = {
+  L: {ids: ['left_time']},
+  R: {ids: ['ratio', 'difference'], pick: f => f.ratioMode() ? 0 : 1},
+  repeats: {ids: ['repeats'], show: v => `${fmtCount(v)} ×`},
+  pre: {ids: ['pre_blur']},
+  loop: {ids: ['loop_blur']},
+  post: {ids: ['post_blur']},
+  mix: {ids: ['mix']},
+  mod: {ids: ['mod_a', 'mod_b', 'mod_c'], pick: f => f.modType(), show: v => v < 0.5 ? 'clean' : `${Math.round(v)}`},
+  tone: {ids: ['tone'], at: centred(0.03), show: v => Math.abs(v) < 1 ? 'full' : `${v < 0 ? 'dark' : 'thin'} ${Math.round(Math.abs(v))}`},
+  feed: {ids: ['feed'], at: centred(0.04), show: v => Math.abs(v) < 0.5 ? 'into L and R' : v <= -99.5 ? 'into L only'
+    : v >= 99.5 ? 'into R only' : v < 0 ? `L 100 · R ${Math.round(100 + v)}` : `L ${Math.round(100 - v)} · R 100`},
+  cross: {ids: ['cross'], show: v => v > 99.5 ? 'swap' : `${Math.round(v * 2)}`, parse: n => n / 2}
+};
+const KEY_OF = Object.fromEntries(Object.entries(CONTROLS).flatMap(([key, c]) => c.ids.map(id => [id, key])));
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const ratioName = r => (NICE.find(([v]) => Math.abs(Math.log(r / v)) < 0.004) || [0, r.toFixed(2)])[1];
@@ -230,6 +244,11 @@ export class SlideFace extends HTMLElement {
 
   initial(identifier) { return this.meta.get(identifier)?.initial ?? 0; }
 
+  idOf(key) { const c = CONTROLS[key]; return c.ids[c.pick?.(this) ?? 0]; }
+  word(key) { const c = CONTROLS[key], v = this.val(this.idOf(key)); return c.show ? c.show(v) : `${Math.round(v)}`; }
+  slide(key, v01) { this.write(this.idOf(key), (CONTROLS[key].at ?? (v => v * 100))(clamp(v01, 0, 1))); }
+  reset(key) { if (key === 'L') this.resetL(); else if (key === 'R') this.resetR(); else this.write(this.idOf(key), this.initial(this.idOf(key))); }
+
   write(identifier, value) {
     const control = this.controls.get(identifier);
     if (!control) return;
@@ -249,7 +268,7 @@ export class SlideFace extends HTMLElement {
   sync() { return this.val('sync') >= 0.5; }
   ratioMode() { return Math.round(this.val('link')) === 0; }
   modType() { return clamp(Math.round(this.val('mod_type')), 0, 2); }
-  modAmount(type = this.modType()) { return this.val(MOD_AMOUNTS[type]); }
+  modAmount(type = this.modType()) { return this.val(CONTROLS.mod.ids[type]); }
   repeats() { return Math.max(1, this.val('repeats')); }
   percent(id) { return this.val(id) / 100; }
 
@@ -399,11 +418,14 @@ export class SlideFace extends HTMLElement {
     this.themeDirty = false;
   }
 
+  /** The controls a zone is working on: once a two-way drag has picked its axis, that one. */
+  keysOf(z) { return this.drag?.z === z && z.byAxis && this.drag.axis ? [z.byAxis[this.drag.axis]] : z.params || []; }
+
   hotParams() {
     const z = this.drag ? this.drag.z : this.zones.find(q => q.key === this.hover);
-    if (z) return new Set(this.drag && z.byAxis && this.drag.axis ? [z.byAxis[this.drag.axis]] : z.params || []);
+    if (z) return new Set(this.keysOf(z));
     if (this.selected) return new Set([this.selected.key]);
-    const focus = FOCUS[this.focusZone];
+    const focus = KEY_OF[this.focusZone];
     return new Set(focus ? [focus] : []);
   }
 
@@ -509,17 +531,13 @@ export class SlideFace extends HTMLElement {
         else { g.moveTo(x + k * (s + 4 * dpr), y); g.lineTo(x + k * s, y - 4 * dpr); g.lineTo(x + k * s, y + 4 * dpr); }
         g.closePath(); g.fill(); } };
     const cw = 30 * dpr, gTop = top - 8 * dpr, gBot = axisY, afterX = Math.min(X1, xTail + cw / 2);
-    const crossWord = () => cross > 0.995 ? 'swap' : `${Math.round(cross * 200)}`;
-    const toneWord = () => Math.abs(tone) < 0.01 ? 'full' : `${tone < 0 ? 'dark' : 'thin'} ${Math.round(Math.abs(tone) * 100)}`;
-    const feedWords = () => Math.abs(feed) < 0.005 ? 'into L and R' : feed <= -0.995 ? 'into L only' : feed >= 0.995 ? 'into R only'
-      : feed < 0 ? `L 100 · R ${Math.round((1 + feed) * 100)}` : `L ${Math.round((1 - feed) * 100)} · R 100`;
 
     g.letterSpacing = `${(4 * dpr).toFixed(1)}px`;
     tx('Slide', 16 * dpr, 24 * dpr, T.ink, 13, 'left', 'middle', NAMES, 500);
     g.letterSpacing = '0px';
     const mix = this.percent('mix'), type = this.modType();
-    const railX = (x0, x1, id) => ({cursor: 'ew-resize', move: p => this.write(id, clamp((p.x - x0) / (x1 - x0), 0, 1) * 100),
-      dbl: () => this.write(id, this.initial(id))});
+    const railX = (x0, x1, key) => ({params: [key], cursor: 'ew-resize', move: p => this.slide(key, (p.x - x0) / (x1 - x0)),
+      dbl: () => this.reset(key)});
     g.font = `500 ${Math.round(10 * dpr)}px ${NAMES}`;
     name('Mod', 104 * dpr, 30 * dpr, T.dim, 9.5, 'left');
     const r0 = 104 * dpr + g.measureText('Mod').width + 34 * dpr, r1 = r0 + 140 * dpr, ys = [17, 30, 43].map(v => v * dpr);
@@ -532,15 +550,14 @@ export class SlideFace extends HTMLElement {
         ln(x, y, x, y - (k % 10 === 0 ? 5 : k % 2 === 0 ? 3 : 1.6) * dpr, T.dim, 0.7, 0.8); }
       ln(hx, y - (chosen ? 6 : 3) * dpr, hx, y + (chosen ? 5 : 3) * dpr, chosen ? (on('mod') ? T.acc : T.ink) : T.dim,
         chosen ? (on('mod') ? 2.4 : 1.6) : 1, chosen ? 1 : 0.6);
-      if (chosen) tx(amount < 0.005 ? 'clean' : `${Math.round(amount * 100)}`, r1 + 7 * dpr, y, on('mod') ? T.ink : T.ink2, 10, 'left');
+      if (chosen) tx(this.word('mod'), r1 + 7 * dpr, y, on('mod') ? T.ink : T.ink2, 10, 'left');
       const pick = (p, d, dr) => { if (dr.done) return; dr.done = true; if (i !== type) modButton?.setValue(i, true, 'face'); };
-      if (chosen) zone({x: r0 - 6 * dpr, y: y - 7 * dpr, w: r1 - r0 + 12 * dpr, h: 14 * dpr, key: 'modRail', params: ['mod'],
-        ...railX(r0, r1, MOD_AMOUNTS[i])});
+      if (chosen) zone({x: r0 - 6 * dpr, y: y - 7 * dpr, w: r1 - r0 + 12 * dpr, h: 14 * dpr, key: 'modRail', ...railX(r0, r1, 'mod')});
       else zone({x: r0 - 6 * dpr, y: y - 7 * dpr, w: r1 - r0 + 12 * dpr, h: 14 * dpr, key: 'modPick', cursor: 'pointer', move: pick});
       zone({x: r0 - 22 * dpr, y: y - 7 * dpr, w: 18 * dpr, h: 14 * dpr, key: 'modPick', cursor: 'pointer', move: pick});
     });
     const mr = [W - 170 * dpr, W - 50 * dpr];
-    hRail(mr[0], mr[1], 30 * dpr, mix, 'Mix', `${Math.round(mix * 100)}`, on('mix'), 10, ['dry', 'wet']);
+    hRail(mr[0], mr[1], 30 * dpr, mix, 'Mix', this.word('mix'), on('mix'), 10, ['dry', 'wet']);
 
     if (on('pre')) rect(X0, top, Math.max(0, xFirst - X0), bot - top, T.acc, 0.07);
     rect(xFirst, top, Math.max(0, Math.min(xTail, X1) - xFirst), bot - top, T.band, on('loop') || (on('L') && on('R')) ? 0.95 : 0.55);
@@ -559,7 +576,7 @@ export class SlideFace extends HTMLElement {
     for (const [line, t] of [[0, TA], [1, TB]]) {
       const x = X(t), k = line ? 'Rp' : 'Lp', hot = held === k || on(line ? 'R' : 'L') || on('cross');
       tri(x, line ? rows[1] + half + 4 * dpr : rows[0] - half - 4 * dpr, (hot ? 6.5 : 5) * dpr, line === 1, line ? T.lineb : T.ink);
-      if (hot) tx(this.drag?.axis === 'y' ? `Cross ${crossWord()}` : line ? `R = ${this.relWord()}` : `L ${this.nameT(t)}`, x + 10 * dpr,
+      if (hot) tx(this.drag?.axis === 'y' ? `Cross ${this.word('cross')}` : line ? `R = ${this.relWord()}` : `L ${this.nameT(t)}`, x + 10 * dpr,
         line ? rows[1] + half + 16 * dpr : rows[0] - half - 14 * dpr, line ? T.lineb : T.ink, 11, 'left', 'middle', NAMES, 500);
     }
 
@@ -595,7 +612,7 @@ export class SlideFace extends HTMLElement {
     const fy = rows[0] + (rows[1] - rows[0]) * (feed + 1) / 2;
     ln(fx - 10 * dpr, fy, fx + 10 * dpr, fy, on('feed') ? T.acc : T.ink, on('feed') ? 3 : 2);
     name('In', fx + 14 * dpr, fy, T.dim, 9.5, 'left');
-    if (on('feed')) tx(feedWords(), fx + 30 * dpr, fy, T.ink, 11, 'left', 'middle', NAMES, 500);
+    if (on('feed')) tx(this.word('feed'), fx + 30 * dpr, fy, T.ink, 11, 'left', 'middle', NAMES, 500);
 
     const loopX = X1 + 34 * dpr, postX = X1 + 74 * dpr, crossX = X1 + 114 * dpr, toneX = X1 + 154 * dpr;
     blurRail(loopX, top, bot, loop, 'Blur', on('loop'));
@@ -604,9 +621,9 @@ export class SlideFace extends HTMLElement {
     if (on('post')) { dash(X1, vy(post), postX - 11 * dpr, vy(post)); tx(`${Math.round(post * 100)}`, postX, top - 22 * dpr, T.acc, 10); }
     vRail(crossX, top, bot, cross, 'Cross', 'off', on('cross'));
     if (on('cross')) dash(X(TB) + 8 * dpr, vy(cross), crossX - 11 * dpr, vy(cross));
-    if (on('cross')) tx(crossWord(), crossX, top - 22 * dpr, T.acc, 10);
+    if (on('cross')) tx(this.word('cross'), crossX, top - 22 * dpr, T.acc, 10);
     vRail(toneX, top, bot, (tone + 1) / 2, 'Thin', 'Dark', on('tone'));
-    if (on('tone')) { const y = vy((tone + 1) / 2); dash(gx + cw / 2, y, toneX - 11 * dpr, y); tx(toneWord(), toneX, top - 22 * dpr, T.acc, 10); }
+    if (on('tone')) { const y = vy((tone + 1) / 2); dash(gx + cw / 2, y, toneX - 11 * dpr, y); tx(this.word('tone'), toneX, top - 22 * dpr, T.acc, 10); }
 
     const rY = k => axisY + (46 + k * 38) * dpr;
     hRail(X0, Xm, rY(0), (X(TA) - X0) / (Xm - X0), 'L', this.nameT(TA), on('L'), 0);
@@ -660,20 +677,19 @@ export class SlideFace extends HTMLElement {
     for (const n of [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]) { const x = X(longer * n); if (x < X0 || x > xRepMax - 6 * dpr) continue;
       ln(x, rY(2), x, rY(2) - 5 * dpr, T.dim, 0.9); label(`${n}`, x, rY(2) - 8 * dpr, T.dim, 9); }
     ln(xTail, rY(2) - 8 * dpr, xTail, rY(2) + 5 * dpr, on('repeats') ? T.acc : T.ink, on('repeats') ? 2.4 : 1.6);
-    name('Repeats', X0 - 7 * dpr, rY(2), T.dim, 9.5, 'right'); tx(`${fmtCount(repeats)} ×`, X1 + 7 * dpr, rY(2), on('repeats') ? T.ink : T.ink2, 10, 'left');
+    name('Repeats', X0 - 7 * dpr, rY(2), T.dim, 9.5, 'right'); tx(this.word('repeats'), X1 + 7 * dpr, rY(2), on('repeats') ? T.ink : T.ink2, 10, 'left');
 
     const level = p => clamp((bot - p.y) / (bot - top), 0, 1);
-    const toneAt = v => { const t = v * 2 - 1; return Math.abs(t) < 0.03 ? 0 : t * 100; };
     const repeatsAt = x => x >= xRepMax - dpr ? laws.maxRepeats : clamp(X.inv(x) / Math.max(...this.times()), 1, laws.maxRepeats);
-    zone({x: mr[0] - 6 * dpr, y: 14 * dpr, w: mr[1] - mr[0] + 12 * dpr, h: 26 * dpr, key: 'mixRail', params: ['mix'], ...railX(mr[0], mr[1], 'mix')});
+    zone({x: mr[0] - 6 * dpr, y: 14 * dpr, w: mr[1] - mr[0] + 12 * dpr, h: 26 * dpr, key: 'mixRail', ...railX(mr[0], mr[1], 'mix')});
     zone({x: xFirst, y: top, w: Math.max(0, Math.min(xTail, X1) - xFirst), h: bot - top, key: 'band', lock: 'xy', cursor: 'move',
       params: ['L', 'R', 'loop'], byAxis: {x: 'L', y: 'loop'},
-      move: (p, d, dr) => dr.axis === 'x' ? this.moveBoth(X.inv(X(dr.snap.L) + d.dx), d.free) : this.write('loop_blur', level(p) * 100),
-      dbl: () => this.write('loop_blur', this.initial('loop_blur'))});
+      move: (p, d, dr) => dr.axis === 'x' ? this.moveBoth(X.inv(X(dr.snap.L) + d.dx), d.free) : this.slide('loop', level(p)),
+      dbl: () => this.reset('loop')});
     zone({x: X0, y: top, w: Math.max(0, xFirst - X0 - 14 * dpr), h: bot - top, key: 'preZone', params: ['pre'], cursor: 'ns-resize',
-      move: p => this.write('pre_blur', level(p) * 100), dbl: () => this.write('pre_blur', this.initial('pre_blur'))});
+      move: p => this.slide('pre', level(p)), dbl: () => this.reset('pre')});
     if (afterX < X1) zone({x: afterX, y: top, w: X1 - afterX, h: bot - top, key: 'postZone', params: ['post'], cursor: 'ns-resize',
-      move: p => this.write('post_blur', level(p) * 100), dbl: () => this.write('post_blur', this.initial('post_blur'))});
+      move: p => this.slide('post', level(p)), dbl: () => this.reset('post')});
     const crossBy = (sign, dr, d) => this.write('cross', clamp(dr.snap.cross + sign * d.dy / (bot - top), 0, 1) * 100);
     zone({x: X(TA) - 14 * dpr, y: top, w: 28 * dpr, h: rows[0] + half + 14 * dpr - top, key: 'Lp', lock: 'xy', cursor: 'move',
       params: ['L', 'cross'], byAxis: {x: 'L', y: 'cross'},
@@ -687,25 +703,20 @@ export class SlideFace extends HTMLElement {
       params: ['repeats', 'tone'], byAxis: {x: 'repeats', y: 'tone'},
       move: (p, d, dr) => dr.axis === 'x'
         ? this.write('repeats', repeatsAt(X(Math.max(...this.times()) * dr.snap.repeats) + d.dx))
-        : this.write('tone', toneAt(level(p))),
-      dbl: () => { this.write('repeats', this.initial('repeats')); this.write('tone', 0); }});
+        : this.slide('tone', level(p)),
+      dbl: () => { this.reset('repeats'); this.reset('tone'); }});
     zone({x: fx - 18 * dpr, y: rows[0] - 10 * dpr, w: 50 * dpr, h: rows[1] - rows[0] + 20 * dpr, key: 'in', params: ['feed'], cursor: 'ns-resize',
-      move: p => { const f = clamp(((p.y - rows[0]) / (rows[1] - rows[0])) * 2 - 1, -1, 1); this.write('feed', Math.abs(f) < 0.04 ? 0 : f * 100); },
-      dbl: () => this.write('feed', 0)});
-    const vZone = (x, key, id, set) => zone({x: x - 16 * dpr, y: top - 6 * dpr, w: 32 * dpr, h: bot - top + 12 * dpr, key: `${key}Rail`,
-      params: [key], cursor: 'ns-resize', move: p => set(level(p)), dbl: () => this.write(id, this.initial(id))});
-    vZone(px, 'pre', 'pre_blur', v => this.write('pre_blur', v * 100));
-    vZone(loopX, 'loop', 'loop_blur', v => this.write('loop_blur', v * 100));
-    vZone(postX, 'post', 'post_blur', v => this.write('post_blur', v * 100));
-    vZone(toneX, 'tone', 'tone', v => this.write('tone', toneAt(v)));
-    vZone(crossX, 'cross', 'cross', v => this.write('cross', v * 100));
+      move: p => this.slide('feed', (p.y - rows[0]) / (rows[1] - rows[0])), dbl: () => this.reset('feed')});
+    for (const [x, key] of [[px, 'pre'], [loopX, 'loop'], [postX, 'post'], [toneX, 'tone'], [crossX, 'cross']])
+      zone({x: x - 16 * dpr, y: top - 6 * dpr, w: 32 * dpr, h: bot - top + 12 * dpr, key: `${key}Rail`,
+        params: [key], cursor: 'ns-resize', move: p => this.slide(key, level(p)), dbl: () => this.reset(key)});
     zone({x: X0 - 4 * dpr, y: rY(0) - 13 * dpr, w: Xm - X0 + 8 * dpr, h: 26 * dpr, key: 'LRail', params: ['L'], cursor: 'ew-resize',
       move: (p, d, dr) => this.moveL(X.inv(X(dr.snap.L) + d.dx), dr.snap.R, d.free), dbl: () => this.resetL()});
     zone({x: X0 - 4 * dpr, y: rY(1) - 13 * dpr, w: Xm - X0 + 8 * dpr, h: 26 * dpr, key: 'RRail', params: ['R'], cursor: 'ew-resize',
       move: (p, d, dr) => this.moveR(X.inv(X(dr.snap.R) + d.dx), d.free),
       dbl: () => this.resetR()});
     zone({x: X0 - 4 * dpr, y: rY(2) - 13 * dpr, w: xRepMax - X0 + 8 * dpr, h: 26 * dpr, key: 'repeatsRail', params: ['repeats'], cursor: 'ew-resize',
-      move: p => this.write('repeats', repeatsAt(p.x)), dbl: () => this.write('repeats', this.initial('repeats'))});
+      move: p => this.write('repeats', repeatsAt(p.x)), dbl: () => this.reset('repeats')});
   }
 
   drawEchoes(list, X, rows, half, xMax, dpr, ln) {
@@ -818,7 +829,7 @@ export class SlideFace extends HTMLElement {
   onPointerUp(e) {
     if (!this.drag) return;
     for (const id of this.drag.started) this.controls.get(id)?.endGesture(false, 'face');
-    const z = this.drag.z, key = z.byAxis && this.drag.axis ? z.byAxis[this.drag.axis] : z.params?.[0];
+    const z = this.drag.z, key = this.keysOf(z)[0];
     if (key && e) { const r = this.canvas.getBoundingClientRect(); this.selected = {key, x: e.clientX - r.left, y: e.clientY - r.top}; }
     this.drag = null;
     this.invalidate();
@@ -869,13 +880,7 @@ export class SlideFace extends HTMLElement {
         const ms = note(t); if (ok(ms)) { this.moveR(ms, true); return true; }
         return set('difference', time(t));
       }
-      case 'cross': return set('cross', number(t) / 2);
-      case 'tone': return set('tone', number(t));
-      case 'mod': return set(MOD_AMOUNTS[this.modType()], number(t));
-      default: {
-        const id = {repeats: 'repeats', pre: 'pre_blur', loop: 'loop_blur', post: 'post_blur', mix: 'mix', feed: 'feed'}[key];
-        return id ? set(id, number(t)) : false;
-      }
+      default: { const parse = CONTROLS[key].parse ?? (n => n); return set(this.idOf(key), parse(number(t))); }
     }
   }
 
