@@ -1142,6 +1142,36 @@ void bucketDecays()
 // Each blur, at its top, changes what comes out, and stays finite and in bounds.
 // The Loop blur only touches what goes round again, so the comparison starts after
 // the first echo of both lines.
+// A blur smears an echo around its time, not after it: the lines are read early by
+// each blur's lag, so the echo's energy stays centred where the picture draws it,
+// at long times and at short ones, where a blur shrinks to fit.
+void blursKeepTime()
+{
+    using namespace slide;
+    for (auto t : { 400.0, 60.0 })
+        for (auto place : { preBlur, loopBlur, postBlur })
+            for (auto amount : { 30.0, 100.0 })
+            {
+                Rig rig;
+                rig.set(repeats, 2);
+                rig.times(t, t);
+                rig.set(place, amount);
+                const auto out = run(rig, impulse(rig.samples(4 * t), 0.5f));
+                // Pre and Post move the first echo; Loop blur moves the second
+                const auto echo = place == loopBlur ? 2.0 : 1.0;
+                const auto from = static_cast<size_t>(rig.samples((echo - 0.5) * t));
+                const auto to = static_cast<size_t>(rig.samples((echo + 0.5) * t));
+                double sum = 0, moment = 0;
+                for (auto i = from; i < to && i < out.l.size(); ++i)
+                {
+                    const auto e = static_cast<double>(out.l[i]) * out.l[i];
+                    sum += e;
+                    moment += e * static_cast<double>(i);
+                }
+                CHECK(sum > 0 && near(1000.0 * moment / sum / rig.rate, echo * t, 0.03));
+            }
+}
+
 void blursChangeTheSound()
 {
     using namespace slide;
@@ -1192,6 +1222,7 @@ void engineByHand()
     bucketCompander();
     bucketDecays();
     blursChangeTheSound();
+    blursKeepTime();
 }
 
 // ------------------------------------------------------------------ fixture

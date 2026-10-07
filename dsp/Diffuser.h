@@ -53,7 +53,7 @@ public:
         gain = static_cast<float>(std::clamp(newGain, 0.0, 0.95));
         depth = std::clamp(modulationMs, 0.0, maximumModulationMs) * 0.001 * sampleRate;
         step = 2.0 * pi * std::max(0.0, rateHz) / sampleRate;
-        const auto s = std::clamp(size, 0.1, maximumSize);
+        const auto s = std::clamp(size, 0.01, maximumSize);
         for (std::size_t i = 0; i < maximumStages; ++i)
             stages[i].target = std::max(2.0, std::round(baseMs[i] * s * stretch * 0.001 * sampleRate));
         const auto n = gain > 0 ? static_cast<std::size_t>(std::clamp(count, 0, static_cast<int>(maximumStages))) : 0;
@@ -67,6 +67,20 @@ public:
             for (std::size_t k = 1; k <= span; ++k) stage.buffer[(stage.write + size - k) % size] = 0;
         }
         active = n;
+    }
+
+    /// How late the blur's sound would arrive at these settings, in samples. A
+    /// Schroeder allpass's energy is centred on its stage time, so a chain's is
+    /// centred on the sum of its stage times, each sweep adding half its depth.
+    double lagSamples(double size, int count, double modulationMs) const noexcept
+    {
+        const auto s = std::clamp(size, 0.01, maximumSize);
+        const auto sweep = std::clamp(modulationMs, 0.0, maximumModulationMs) * 0.001 * sampleRate;
+        const auto n = static_cast<std::size_t>(std::clamp(count, 0, static_cast<int>(maximumStages)));
+        double lag = 0;
+        for (std::size_t i = 0; i < n; ++i)
+            lag += std::max(2.0, std::round(baseMs[i] * s * stretch * 0.001 * sampleRate)) + sweep * 0.5;
+        return lag;
     }
 
     float process(float x) noexcept

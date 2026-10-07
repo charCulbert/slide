@@ -161,9 +161,13 @@ public:
             float read[2], send[2];
             for (int c = 0; c < 2; ++c)
             {
-                const auto written = readAt(lines[c], delay[c]);
-                read[c] = written / std::max(0.01f, 1.0f + readAt(compandGains[c], delay[c]));
-                auto v = read[c];
+                // the blurs make their sound late by their lag, so the line is read
+                // that much early: the loop's own for what goes round, Pre and Post's
+                // for what comes out, and every echo lands on time
+                const auto loopAt = std::max(1.0, delay[c] - loopLag[c]);
+                const auto outAt = std::max(1.0, delay[c] - outLag[c]);
+                read[c] = readAt(lines[c], outAt) / std::max(0.01f, 1.0f + readAt(compandGains[c], outAt));
+                auto v = readAt(lines[c], loopAt) / std::max(0.01f, 1.0f + readAt(compandGains[c], loopAt));
                 if (!lossOpen[c]) v = lossFilters[c].process(v);
                 v = drive(v);
                 if (!toneOpen) v = toneFilters[c].process(v);
@@ -275,12 +279,6 @@ private:
         const auto pre = laws::blurAt(laws::BlurPlace::pre, values[preBlur] * 0.01);
         const auto loop = laws::blurAt(laws::BlurPlace::loop, values[loopBlur] * 0.01);
         const auto post = laws::blurAt(laws::BlurPlace::post, values[postBlur] * 0.01);
-        for (int c = 0; c < 2; ++c)
-        {
-            preBlurs[c].set(pre.gain, pre.size, pre.stages, 0, blurRateHz);
-            loopBlurs[c].set(loop.gain, loop.size, loop.stages, 2 * motion, blurRateHz);
-            postBlurs[c].set(post.gain, post.size, post.stages, 2 * motion, blurRateHz);
-        }
 
         // Cross splits each echo, (1 - x) to its own line and x to the other.
         const auto x = std::clamp(values[cross] * 0.01, 0.0, 1.0);
@@ -298,6 +296,28 @@ private:
         listen[0][1] = 0.5 * toLeft;
         listen[1][0] = 0.5 * toRight;
         listen[1][1] = 1.0 - toLeft - 0.5 * toRight;
+
+        // Each blur is kept to a lag the line can take back: the loop's under 80% of
+        // its line's time, Pre's and Post's under 40% each, a blur too long for its
+        // time shrinking to fit.
+        const auto fit = [](Diffuser& d, const laws::Blur& b, double limit, double sweepMs) {
+            if (b.gain <= 0) { d.set(0, b.size, 0, sweepMs, blurRateHz); return 0.0; }
+            const auto lag = d.lagSamples(b.size, b.stages, sweepMs);
+            const auto size = lag > limit ? b.size * limit / lag : b.size;
+            d.set(b.gain, size, b.stages, sweepMs, blurRateHz);
+            return d.lagSamples(size, b.stages, sweepMs);
+        };
+        const auto samples = [this](double ms) { return ms * 0.001 * sampleRate; };
+        const auto shortest = samples(std::min(effectiveMs[0], effectiveMs[1]));
+        const double preLag[2] { fit(preBlurs[0], pre, 0.4 * shortest, 0), fit(preBlurs[1], pre, 0.4 * shortest, 0) };
+        for (int c = 0; c < 2; ++c)
+        {
+            const auto t = samples(effectiveMs[c]);
+            loopLag[c] = fit(loopBlurs[c], loop, 0.8 * t, 2 * motion);
+            const auto heard = listen[c][0] + listen[c][1];
+            const auto preHere = heard > 0 ? (listen[c][0] * preLag[0] + listen[c][1] * preLag[1]) / heard : 0.0;
+            outLag[c] = preHere + fit(postBlurs[c], post, 0.4 * t, 2 * motion);
+        }
 
         timeTarget[0].target = effectiveMs[0];
         timeTarget[1].target = effectiveMs[1];
@@ -407,6 +427,7 @@ private:
     double appliedTone = 0, appliedCut = 0, appliedLoss[2] {};
     float crossSelf = 1, crossOther = 0;
     double listen[2][2] { { 1, 0 }, { 0, 1 } };
+    double loopLag[2] {}, outLag[2] {}; // samples the blurs make a line's sound late
     int coefficientCountdown = 0;
     bool primed = false;
 
