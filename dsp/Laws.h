@@ -18,7 +18,7 @@ inline double finiteOr(double value, double fallback) noexcept
 
 /// One medium's constants at this Wear. `rand` is the depth before the engine's ×6,
 /// `drive` of 0 means no saturation, and `compand` sets the compander: 1 is 2:1 and
-/// its top, 4/3, is 3:1.
+/// its top, 10/7, is 3.5:1.
 struct Recipe
 {
     double sine, sineHz, rand, randHz, lossHz;
@@ -49,7 +49,7 @@ inline Recipe recipeAt(int medium, double wear01) noexcept
             loss = 2600;
             break;
         default:
-            recipe = { 0, 0, 0, 0, 0, true, 0.0015, 0, std::min(4.0 / 3.0, amt * 2.0) };
+            recipe = { 0, 0, 0, 0, 0, true, 0.0015, 0, std::min(10.0 / 7.0, amt * 2.0) };
             loss = 8000;
             break;
     }
@@ -65,7 +65,7 @@ inline Recipe recipeAt(int medium, double wear01) noexcept
 /// blur the output, which the other media do not.
 inline double oilSmear(int medium, double wear01) noexcept
 {
-    return medium == 1 ? 0.6 * std::clamp(finiteOr(wear01, 0.0), 0.0, 1.0) : 0.0;
+    return medium == 1 ? 0.4 * std::clamp(finiteOr(wear01, 0.0), 0.0, 1.0) : 0.0;
 }
 
 /// The tempo Left's time is written at: under Sync it follows the tempo from here.

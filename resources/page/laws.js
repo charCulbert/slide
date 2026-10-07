@@ -24,7 +24,7 @@ const modBWearScale = 0.7;
 
 /** Mod A (0), B (1) or C (2) at an amount of 0–1. `rand` is the depth before
  * the engine's ×6, `drive` of 0 means no saturation, and `compand` sets the
- * compander: 1 is 2:1 and its top, 4/3, is 3:1. */
+ * compander: 1 is 2:1 and its top, 10/7, is 3.5:1. */
 export function recipeAt(medium, wear01) {
   const w = clamp(finiteOr(wear01, 0), 0, 1);
   if (!(w > 0) || medium < 0 || medium > 2) return { ...cleanRecipe };
@@ -39,7 +39,7 @@ export function recipeAt(medium, wear01) {
       drive: 1 + 0.5 * amt };
     loss = 2600;
   } else {
-    recipe = { ...cleanRecipe, lossTracksTime: true, hiss: 0.0015, compand: Math.min(4 / 3, amt * 2) };
+    recipe = { ...cleanRecipe, lossTracksTime: true, hiss: 0.0015, compand: Math.min(10 / 7, amt * 2) };
     loss = 8000;
   }
   recipe.sine *= amt;
@@ -130,5 +130,5 @@ export function bucketLossHz(lossHz, timeMs) {
 
 /** How much the oil can smears what comes out, as Laws.h's oilSmear. */
 export function oilSmear(medium, wear01) {
-  return medium === 1 ? 0.6 * clamp(finiteOr(wear01, 0), 0, 1) : 0;
+  return medium === 1 ? 0.4 * clamp(finiteOr(wear01, 0), 0, 1) : 0;
 }

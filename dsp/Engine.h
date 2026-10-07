@@ -203,7 +203,7 @@ private:
     static constexpr double smoothingMs = 20.0;
     static constexpr double openCutoffHz = 19000;
     static constexpr double compandMs = 10.0;
-    static constexpr double expandMs = 30.0;
+    static constexpr double expandMs = 45.0;
     static constexpr double maximumExpansion = 8.0;
     static constexpr double compandReference = 0.25;
     static constexpr double compandFloor = 1.0e-4;

@@ -537,11 +537,11 @@ void lawsByHand()
         CHECK(clean.sine == 0 && clean.rand == 0 && clean.hiss == 0 && clean.drive == 0);
         CHECK(clean.compand == 0 && !clean.lossTracksTime && near(clean.lossHz, 20000));
     }
-    // Tape and Oil can saturate, only Bucket compands (up to 3:1) and has a steady clock
+    // Tape and Oil can saturate, only Bucket compands (up to 3.5:1) and has a steady clock
     CHECK(recipeAt(0, 1).drive > 1 && recipeAt(0, 1).compand == 0 && recipeAt(0, 1).sine > 0);
     CHECK(recipeAt(1, 1).drive > 1 && recipeAt(1, 1).compand == 0);
     const auto bucket = recipeAt(2, 1);
-    CHECK(bucket.lossTracksTime && bucket.sine == 0 && bucket.rand == 0 && near(bucket.compand, 4.0 / 3) && bucket.drive == 0);
+    CHECK(bucket.lossTracksTime && bucket.sine == 0 && bucket.rand == 0 && near(bucket.compand, 10.0 / 7) && bucket.drive == 0);
     for (int m : { -1, 3, 4, 9 })
         CHECK(recipeAt(m, 1).lossHz == 20000 && recipeAt(m, 1).hiss == 0 && recipeAt(m, 1).compand == 0);
     CHECK(std::isfinite(recipeAt(0, std::nan("")).lossHz));
