@@ -19,13 +19,16 @@ async function table() {
   const enums = {link: lists.linkNames, sync: lists.switchNames, modType: lists.modTypeNames};
   const number = text => text.includes('/') ? text.split('/').map(Number).reduce((a, b) => a / b)
     : text.startsWith('laws::') ? laws[text.slice(6)] : Number(text);
-  return [...source.matchAll(/\{ (\w+),\s+"(\w+)",\s+"([^"]+)",\s+"([^"]*)",\s+([^,]+), ([^,]+), ([^,]+), ([^,]+), ([^,]+), (\d+), (true|false) \}/g)]
+  const rows = [...source.matchAll(/\{ (\w+),\s+"(\w+)",\s+"([^"]+)",\s+"([^"]*)",\s+([^,]+), ([^,]+), ([^,]+), ([^,]+), ([^,]+), (\d+), (true|false) \}/g)]
     .map(([, key, identifier, name, unit, min, max, initial, step, mid, digits]) => {
       const spec = {id: ids[key], identifier, name, unit, min: number(min), max: number(max), initial: number(initial),
         step: number(step), mid: number(mid), digits: Number(digits), options: enums[key] ?? []};
       spec.curve = spec.min > 0 && spec.mid > spec.min && spec.mid < spec.max ? 'log' : 'linear';
       return spec;
     });
+  const specs = rows.filter(s => Number.isFinite(s.min) && Number.isFinite(s.max));
+  assert.equal(specs.length, Object.keys(ids).length, 'every parameter in the enum has a readable row');
+  return specs;
 }
 
 const page = specs => `<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,">
@@ -56,7 +59,6 @@ async function serve(specs) {
 }
 
 const specs = await table();
-assert(specs.length >= 18, `read only ${specs.length} parameters from Parameters.h`);
 const server = await serve(specs);
 const browser = await chromium.launch({channel: 'chrome', headless: true});
 const errors = [];

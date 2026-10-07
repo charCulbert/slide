@@ -228,18 +228,12 @@ private:
         }
     };
 
-    double leftMs() const noexcept
-    {
-        return values[sync] == 0 ? values[leftTime] : values[leftBeats] * 60000.0 / tempo;
-    }
-
     void refresh() noexcept
     {
-        const auto left = std::clamp(leftMs(), laws::minTimeMs, laws::maxTimeMs);
-        auto right = static_cast<int>(values[link]) == 0 ? left * values[ratio] : left + values[difference];
-        if (!std::isfinite(right)) right = left;
-        effectiveMs[0] = left;
-        effectiveMs[1] = std::clamp(right, laws::minTimeMs, laws::maxTimeMs);
+        const auto times = laws::lineTimes(values[leftTime], values[sync] != 0, tempo, static_cast<int>(values[link]) == 0,
+                                           values[ratio], values[difference]);
+        effectiveMs[0] = times.left;
+        effectiveMs[1] = times.right;
         reportedTail.store(std::max(effectiveMs[0], effectiveMs[1]) * std::max(1.0, values[repeats]) / 1000.0,
                            std::memory_order_relaxed);
 

@@ -58,6 +58,14 @@ test('wobbleReferenceMs', () => {
     close(laws.wobbleReferenceMs(row.timeMs), row.wobbleReferenceMs, JSON.stringify(row));
 });
 
+test('lineTimes', () => {
+  for (const row of fixture.lineTimes) {
+    const out = laws.lineTimes(row.leftMs, Boolean(row.sync), row.bpm, Boolean(row.byRatio), row.relation, row.relation);
+    close(out.left, row.left, `left ${JSON.stringify(row)}`);
+    close(out.right, row.right, `right ${JSON.stringify(row)}`);
+  }
+});
+
 test('constants', () => {
   for (const [key, value] of Object.entries(fixture.constants[0])) assert.equal(laws[key], value, key);
 });

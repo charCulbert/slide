@@ -109,9 +109,9 @@ static const clap_plugin_params_t extensionParams = {
         const auto &p = parameters[index];
         *info = {};
         info->id = p.id;
-        // Link and Sync change what Ratio, Difference and Left mean; the face re-bases them
-        // so nothing moves, which automation could not, so they are not automatable.
-        info->flags = p.id == link || p.id == sync ? 0 : CLAP_PARAM_IS_AUTOMATABLE;
+        // Link changes what Ratio and Difference mean; the face re-bases them so R stays
+        // put, which automation could not, so it is not automatable.
+        info->flags = p.id == link ? 0 : CLAP_PARAM_IS_AUTOMATABLE;
         info->flags |= p.stepped ? CLAP_PARAM_IS_STEPPED : CLAP_PARAM_IS_MODULATABLE;
         if (!enumNames(p.id).empty())
             info->flags |= CLAP_PARAM_IS_ENUM;

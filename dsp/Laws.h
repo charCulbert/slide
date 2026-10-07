@@ -59,6 +59,24 @@ inline Recipe recipeAt(int medium, double wear01) noexcept
     return recipe;
 }
 
+/// The tempo Left's time is written at: under Sync it follows the tempo from here.
+inline constexpr double referenceBpm = 120;
+
+/// The two lines' times in ms: Left (followed from referenceBpm to the tempo under
+/// Sync), and Right from it by Ratio or Difference, both held to the time range.
+struct LineTimes
+{
+    double left, right;
+};
+
+inline LineTimes lineTimes(double leftMs, bool sync, double bpm, bool byRatio, double ratio, double difference) noexcept
+{
+    const auto follow = sync ? referenceBpm / std::clamp(finiteOr(bpm, referenceBpm), 10.0, 999.0) : 1.0;
+    const auto left = std::clamp(finiteOr(leftMs, minTimeMs) * follow, minTimeMs, maxTimeMs);
+    const auto right = finiteOr(byRatio ? left * ratio : left + difference, left);
+    return { left, std::clamp(right, minTimeMs, maxTimeMs) };
+}
+
 /// Tone's two cuts in the loop: dark (below 0) lowers a high cut from 12 kHz,
 /// thin (above 0) raises a low cut from 20 Hz up to 6 kHz.
 struct ToneCuts

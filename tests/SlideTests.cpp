@@ -199,8 +199,7 @@ void parameterTable()
     CHECK(maxRepeats == 1000);
 
     for (const auto& p : parameters)
-        CHECK(isLogarithmic(p) == (p.id == leftTime || p.id == ratio || p.id == leftBeats
-                                   || p.id == repeats));
+        CHECK(isLogarithmic(p) == (p.id == leftTime || p.id == ratio || p.id == repeats));
 
     CHECK(enumNames(link).size() == 2 && std::strcmp(enumNames(link)[1], "Difference") == 0);
     CHECK(enumNames(modType).size() == 3 && std::strcmp(enumNames(modType)[1], "B") == 0);
@@ -234,7 +233,7 @@ void parameterText()
         CHECK(info.id == p.id && info.min_value == p.min && info.max_value == p.max);
         CHECK(info.default_value == p.initial);
         CHECK(std::strcmp(info.name, p.name) == 0);
-        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_AUTOMATABLE) == (p.id != link && p.id != sync));
+        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_AUTOMATABLE) == (p.id != link));
         CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_STEPPED) == p.stepped);
         CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_MODULATABLE) == !p.stepped);
         CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_ENUM) == !enumNames(p.id).empty());
@@ -270,9 +269,9 @@ void parameterText()
     }
 
     struct Case { clap_id id; double value; const char* text; };
-    const std::array<Case, 13> cases {{
+    const std::array<Case, 12> cases {{
         { leftTime, 350, "350.0 ms" }, { difference, -175.2, "-175.2 ms" },
-        { ratio, 1.5, "1.500 x" }, { leftBeats, 0.75, "0.7500" },
+        { ratio, 1.5, "1.500 x" },
         { loopBlur, 20, "20%" }, { preBlur, 40, "40%" }, { tone, -40, "-40" }, { mix, 50, "50%" },
         { repeats, 8, "8.0" }, { repeats, 1000, "1000.0" }, { modType, 2, "C" },
         { cross, 40, "40%" }, { feed, -40, "-40%" }
@@ -870,8 +869,9 @@ void linkAndSync()
     rig.set(difference, -150);
     CHECK(at(200, 50));
 
+    // Under Sync, Left's stored time follows the tempo from 120 BPM.
     rig.set(sync, 1);
-    rig.set(leftBeats, 1);
+    rig.set(leftTime, 500);
     rig.set(link, 0);
     rig.set(ratio, 1.618);
     rig.engine.setTempo(120);
@@ -1194,8 +1194,22 @@ std::vector<Section> buildFixture()
                         { "b", times.second }, { "out", passGain(repeats, cross, times.first, times.second) } });
         sections.push_back({ "passGain", std::move(rows) });
     }
+    {
+        std::vector<Row> rows;
+        for (double left : { 5.0, 350.0, 2900.0 })
+            for (double sync : { 0.0, 1.0 })
+                for (double bpm : { 60.0, 120.0, 147.0 })
+                    for (auto link : { std::pair<double, double> { 1, 1.618 }, { 1, 300 }, { 0, -150 }, { 0, 4000 } })
+                    {
+                        const auto t = lineTimes(left, sync != 0, bpm, link.first != 0, link.second, link.second);
+                        rows.push_back({ { "leftMs", left }, { "sync", sync }, { "bpm", bpm }, { "byRatio", link.first },
+                            { "relation", link.second }, { "left", t.left }, { "right", t.right } });
+                    }
+        sections.push_back({ "lineTimes", std::move(rows) });
+    }
     sections.push_back({ "constants", { { { "minTimeMs", minTimeMs }, { "maxTimeMs", maxTimeMs },
-                                          { "openHighCutHz", openHighCutHz }, { "maxRepeats", maxRepeats } } } });
+                                          { "openHighCutHz", openHighCutHz }, { "maxRepeats", maxRepeats },
+                                          { "referenceBpm", referenceBpm } } } });
     return sections;
 }
 

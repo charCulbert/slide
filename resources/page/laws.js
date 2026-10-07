@@ -49,6 +49,17 @@ export function recipeAt(medium, wear01) {
   return recipe;
 }
 
+export const referenceBpm = 120;
+
+/** The two lines' times in ms, as Laws.h's lineTimes: Left (followed from
+ * referenceBpm to the tempo under Sync), and Right from it by Ratio or Difference. */
+export function lineTimes(leftMs, sync, bpm, byRatio, ratio, difference) {
+  const follow = sync ? referenceBpm / clamp(finiteOr(bpm, referenceBpm), 10, 999) : 1;
+  const left = clamp(finiteOr(leftMs, minTimeMs) * follow, minTimeMs, maxTimeMs);
+  const right = finiteOr(byRatio ? left * ratio : left + difference, left);
+  return {left, right: clamp(right, minTimeMs, maxTimeMs)};
+}
+
 /** Tone's two cuts in the loop: dark (below 0) lowers a high cut from 12 kHz, thin
  * (above 0) raises a low cut from 20 Hz up to 6 kHz. */
 export function toneCuts(tone11) {

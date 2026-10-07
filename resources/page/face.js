@@ -27,7 +27,7 @@ const MOD_AMOUNTS = ['mod_a', 'mod_b', 'mod_c'];
 
 const AXIS_MAX = 120000;
 
-const FOCUS = {left_time: 'L', left_beats: 'L', ratio: 'R', difference: 'R', repeats: 'repeats',
+const FOCUS = {left_time: 'L', ratio: 'R', difference: 'R', repeats: 'repeats',
   pre_blur: 'pre', loop_blur: 'loop', post_blur: 'post', tone: 'tone', mix: 'mix', mod_a: 'mod', mod_b: 'mod',
   mod_c: 'mod', cross: 'cross', feed: 'feed'};
 
@@ -240,7 +240,6 @@ export class SlideFace extends HTMLElement {
   chipChanged(id) {
     const [l, r] = this.lastTimes ?? this.times();
     if (id === 'link') { this.write('ratio', r / l); this.write('difference', r - l); }
-    else if (id === 'sync') this.writeLeft(l, true);
     this.invalidate();
   }
 
@@ -255,10 +254,8 @@ export class SlideFace extends HTMLElement {
   percent(id) { return this.val(id) / 100; }
 
   times() {
-    const l = clamp(this.sync() ? this.val('left_beats') * this.beatMs() : this.val('left_time'),
-      laws.minTimeMs, laws.maxTimeMs);
-    const r = this.ratioMode() ? l * this.val('ratio') : l + this.val('difference');
-    return [l, clamp(Number.isFinite(r) ? r : l, laws.minTimeMs, laws.maxTimeMs)];
+    const t = laws.lineTimes(this.val('left_time'), this.sync(), this.bpm(), this.ratioMode(), this.val('ratio'), this.val('difference'));
+    return [t.left, t.right];
   }
 
   tail() {
@@ -287,8 +284,9 @@ export class SlideFace extends HTMLElement {
 
   writeLeft(ms, free) {
     const t = clamp(ms, laws.minTimeMs, laws.maxTimeMs);
-    if (this.sync()) this.write('left_beats', free ? t / this.beatMs() : this.nearestNote(t).beats);
-    else this.write('left_time', t);
+    // under Sync the stored time is at referenceBpm, and follows the tempo from there
+    const at = this.sync() ? this.bpm() / laws.referenceBpm : 1;
+    this.write('left_time', (this.sync() && !free ? this.nearestNote(t).ms : t) * at);
   }
 
   snapRatio(r, free) {
@@ -331,8 +329,8 @@ export class SlideFace extends HTMLElement {
 
   resetL() {
     const r = this.times()[1];
-    const l = this.sync() ? this.initial('left_beats') * this.beatMs() : this.initial('left_time');
-    this.writeLeft(l, true);
+    this.write('left_time', this.initial('left_time'));
+    const l = this.times()[0];
     this.write('ratio', r / l);
     this.write('difference', r - l);
   }
