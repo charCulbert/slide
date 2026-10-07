@@ -46,7 +46,8 @@ struct MyPlugin
     std::atomic<bool> gestureBegin[stateValueCount], edited[stateValueCount], gestureEnd[stateValueCount];
 
     webview::Gui gui;
-    uint32_t guiWidth = 765, guiHeight = 530;
+    bool guiSizesInPoints = true;
+    uint32_t guiWidth = 765, guiHeight = 530; // points
     std::atomic<bool> uiReady{false}, valuesDirty{false};
     struct Visual
     {
@@ -327,8 +328,28 @@ static const clap_plugin_webview_t extensionWebview = {
     },
 };
 
+// In points (CSS pixels on the page), as guiWidth and guiHeight are.
 #define GUI_MIN_WIDTH (640)
 #define GUI_MIN_HEIGHT (460)
+
+// clap.gui sizes are points on macOS and pixels elsewhere, where a display
+// scaled to 150% needs 1.5 pixels per point.
+static double PluginPixelsPerPoint(const MyPlugin *plugin)
+{
+    return plugin->guiSizesInPoints ? 1 : plugin->gui.pixelsPerPoint();
+}
+
+static uint32_t PluginToHost(const MyPlugin *plugin, uint32_t points)
+{
+    return (uint32_t)std::lround(points * PluginPixelsPerPoint(plugin));
+}
+
+static void PluginClampSize(const MyPlugin *plugin, uint32_t *width, uint32_t *height)
+{
+    const double scale = PluginPixelsPerPoint(plugin);
+    *width = std::max(*width, (uint32_t)std::ceil(GUI_MIN_WIDTH * scale));
+    *height = std::max(*height, (uint32_t)std::ceil(GUI_MIN_HEIGHT * scale));
+}
 
 static const clap_plugin_gui_t extensionGui = {
     .is_api_supported = [](const clap_plugin_t *_plugin, const char *api, bool isFloating) -> bool
@@ -342,7 +363,8 @@ static const clap_plugin_gui_t extensionGui = {
         MyPlugin *plugin = (MyPlugin *)_plugin->plugin_data;
         if (!plugin->gui.create(api, isFloating))
             return false;
-        plugin->gui.setSize(plugin->guiWidth, plugin->guiHeight);
+        plugin->guiSizesInPoints = strcmp(api, CLAP_WINDOW_API_WIN32) != 0 && strcmp(api, CLAP_WINDOW_API_X11) != 0;
+        plugin->gui.setSize(PluginToHost(plugin, plugin->guiWidth), PluginToHost(plugin, plugin->guiHeight));
         return true;
     },
 
@@ -359,8 +381,8 @@ static const clap_plugin_gui_t extensionGui = {
     .get_size = [](const clap_plugin_t *_plugin, uint32_t *width, uint32_t *height) -> bool
     {
         MyPlugin *plugin = (MyPlugin *)_plugin->plugin_data;
-        *width = plugin->guiWidth;
-        *height = plugin->guiHeight;
+        *width = PluginToHost(plugin, plugin->guiWidth);
+        *height = PluginToHost(plugin, plugin->guiHeight);
         return true;
     },
 
@@ -377,18 +399,20 @@ static const clap_plugin_gui_t extensionGui = {
 
     .adjust_size = [](const clap_plugin_t *_plugin, uint32_t *width, uint32_t *height) -> bool
     {
-        *width = std::max<uint32_t>(*width, GUI_MIN_WIDTH);
-        *height = std::max<uint32_t>(*height, GUI_MIN_HEIGHT);
+        PluginClampSize((MyPlugin *)_plugin->plugin_data, width, height);
         return true;
     },
 
     .set_size = [](const clap_plugin_t *_plugin, uint32_t width, uint32_t height) -> bool
     {
         MyPlugin *plugin = (MyPlugin *)_plugin->plugin_data;
-        if (width < GUI_MIN_WIDTH || height < GUI_MIN_HEIGHT)
+        uint32_t allowedWidth = width, allowedHeight = height;
+        PluginClampSize(plugin, &allowedWidth, &allowedHeight);
+        if (allowedWidth != width || allowedHeight != height)
             return false;
-        plugin->guiWidth = width;
-        plugin->guiHeight = height;
+        const double scale = PluginPixelsPerPoint(plugin);
+        plugin->guiWidth = (uint32_t)std::lround(width / scale);
+        plugin->guiHeight = (uint32_t)std::lround(height / scale);
         plugin->gui.setSize(width, height);
         return true;
     },
