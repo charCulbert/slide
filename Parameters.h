@@ -23,15 +23,14 @@ enum Parameter : clap_id
     repeats = 5,
     preBlur = 6,
     loopBlur = 7,
-    postBlur = 8,
-    tone = 9,
-    mix = 10,
-    cross = 11,
-    modType = 12,
-    modA = 13,
-    feed = 14,
-    modB = 15,
-    modC = 16
+    tone = 8,
+    mix = 9,
+    cross = 10,
+    modType = 11,
+    modA = 12,
+    feed = 13,
+    modB = 14,
+    modC = 15
 };
 
 inline constexpr Parameter modAmounts[3] { modA, modB, modC };
@@ -62,7 +61,6 @@ inline constexpr auto parameters = std::to_array<ParameterInfo>({
     { repeats,    "repeats",    "Repeats",    "",   1, laws::maxRepeats, 8, 0.1, 10, 1, false },
     { preBlur,    "pre_blur",   "Pre-blur",   "%",  0, 100, 0, 1, 0, 0, false },
     { loopBlur,   "loop_blur",  "Blur",       "%",  0, 100, 30, 1, 0, 0, false },
-    { postBlur,   "post_blur",  "Post-blur",  "%",  0, 100, 0, 1, 0, 0, false },
     { tone,       "tone",       "Tone",       "",   -100, 100, 0, 1, 0, 0, false },
     { mix,        "mix",        "Mix",        "%",  0, 100, 50, 1, 0, 0, false },
     { cross,      "cross",      "Cross",      "%",  0, 100, 10, 1, 0, 0, false },

@@ -164,7 +164,6 @@ void pluginDelays()
     p.set(difference, 0);
     p.set(preBlur, 0);
     p.set(loopBlur, 0);
-    p.set(postBlur, 0);
     p.set(modA, 0);
     p.set(repeats, 1);
 
@@ -538,11 +537,11 @@ void lawsByHand()
         CHECK(clean.sine == 0 && clean.rand == 0 && clean.hiss == 0 && clean.drive == 0);
         CHECK(clean.compand == 0 && !clean.lossTracksTime && near(clean.lossHz, 20000));
     }
-    // only Oil can drives, only Bucket compands and has a steady clock
-    CHECK(recipeAt(0, 1).drive == 0 && recipeAt(0, 1).compand == 0 && recipeAt(0, 1).sine > 0);
+    // Tape and Oil can saturate, only Bucket compands (up to 3:1) and has a steady clock
+    CHECK(recipeAt(0, 1).drive > 1 && recipeAt(0, 1).compand == 0 && recipeAt(0, 1).sine > 0);
     CHECK(recipeAt(1, 1).drive > 1 && recipeAt(1, 1).compand == 0);
     const auto bucket = recipeAt(2, 1);
-    CHECK(bucket.lossTracksTime && bucket.sine == 0 && bucket.rand == 0 && near(bucket.compand, 1) && bucket.drive == 0);
+    CHECK(bucket.lossTracksTime && bucket.sine == 0 && bucket.rand == 0 && near(bucket.compand, 4.0 / 3) && bucket.drive == 0);
     for (int m : { -1, 3, 4, 9 })
         CHECK(recipeAt(m, 1).lossHz == 20000 && recipeAt(m, 1).hiss == 0 && recipeAt(m, 1).compand == 0);
     CHECK(std::isfinite(recipeAt(0, std::nan("")).lossHz));
@@ -608,7 +607,6 @@ struct Rig
         set(slide::mix, 100);
         set(slide::preBlur, 0);
         set(slide::loopBlur, 0);
-        set(slide::postBlur, 0);
         wear(0);
         set(slide::tone, 0);
         set(slide::cross, 0);
@@ -917,7 +915,6 @@ void silenceFlushes()
     Rig rig;
     rig.set(preBlur, 50);
     rig.set(loopBlur, 50);
-    rig.set(postBlur, 50);
     rig.set(repeats, 4);
     rig.times(50, 50);
     (void) run(rig, noise(2000, 0.3f));
@@ -1022,7 +1019,7 @@ void blursKeepTime()
 {
     using namespace slide;
     for (auto t : { 400.0, 60.0 })
-        for (auto place : { preBlur, loopBlur, postBlur })
+        for (auto place : { preBlur, loopBlur })
             for (auto amount : { 30.0, 100.0 })
             {
                 Rig rig;
@@ -1059,7 +1056,7 @@ void blursChangeTheSound()
         std::copy(burst.r.begin(), burst.r.end(), input.r.begin());
         return run(rig, input);
     };
-    for (auto place : { preBlur, loopBlur, postBlur })
+    for (auto place : { preBlur, loopBlur })
     {
         const auto off = render(place, 0);
         const auto on = render(place, 100);
@@ -1174,6 +1171,13 @@ std::vector<Section> buildFixture()
             for (double time : { 10.0, 60.0, 240.0, 2000.0 })
                 rows.push_back({ { "lossHz", loss }, { "timeMs", time }, { "out", bucketLossHz(loss, time) } });
         sections.push_back({ "bucketLoss", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (double medium : { 0.0, 1.0, 2.0 })
+            for (double wear : { 0.0, 0.35, 1.0 })
+                rows.push_back({ { "medium", medium }, { "wear", wear }, { "out", oilSmear(static_cast<int>(medium), wear) } });
+        sections.push_back({ "oilSmear", std::move(rows) });
     }
     sections.push_back({ "constants", { { { "minTimeMs", minTimeMs }, { "maxTimeMs", maxTimeMs },
                                           { "openHighCutHz", openHighCutHz }, { "maxRepeats", maxRepeats },

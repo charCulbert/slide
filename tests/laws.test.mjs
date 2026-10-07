@@ -80,6 +80,10 @@ test('bucketLossHz', () => {
   for (const row of fixture.bucketLoss) close(laws.bucketLossHz(row.lossHz, row.timeMs), row.out, JSON.stringify(row));
 });
 
+test('oilSmear', () => {
+  for (const row of fixture.oilSmear) close(laws.oilSmear(row.medium, row.wear), row.out, JSON.stringify(row));
+});
+
 test('constants', () => {
   for (const [key, value] of Object.entries(fixture.constants[0])) assert.equal(laws[key], value, key);
 });

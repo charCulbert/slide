@@ -9,5 +9,5 @@ namespace slide
 {
 inline constexpr char pluginId[] = "com.charlieculbert.slide-lab";
 inline constexpr uint32_t stateMagic = 0x534c4944;
-inline constexpr uint32_t stateVersion = 3;
+inline constexpr uint32_t stateVersion = 4;
 }

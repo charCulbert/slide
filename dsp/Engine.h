@@ -31,11 +31,11 @@ public:
         maximumDelaySamples = static_cast<std::size_t>(std::ceil(maximumDelayMs * sampleRate / 1000.0));
         smoothingCoefficient = 1.0 - std::exp(-1.0 / (smoothingMs * 0.001 * sampleRate));
         envelopeCoefficient = 1.0 - std::exp(-1.0 / (compandMs * 0.001 * sampleRate));
+        expandCoefficient = 1.0 - std::exp(-1.0 / (expandMs * 0.001 * sampleRate));
 
         for (int c = 0; c < 2; ++c)
         {
             lines[c].prepare(maximumDelaySamples);
-            compandGains[c].prepare(maximumDelaySamples);
             preBlurs[c].prepare(sampleRate, c);
             loopBlurs[c].prepare(sampleRate, c);
             postBlurs[c].prepare(sampleRate, c);
@@ -54,7 +54,6 @@ public:
         for (int c = 0; c < 2; ++c)
         {
             lines[c].reset();
-            compandGains[c].reset();
             preBlurs[c].reset();
             loopBlurs[c].reset();
             postBlurs[c].reset();
@@ -64,6 +63,7 @@ public:
             phase[c] = c == 0 ? 0.0 : 0.25;
             randomState[c] = randomState2[c] = 0;
             compressEnvelope[c] = compandReference;
+            expandEnvelope[c][0] = expandEnvelope[c][1] = compandReference;
             noise[c] = Random { c == 0 ? 0.37 : 0.71 };
         }
         hissNoise = Random { 0.9 };
@@ -155,8 +155,8 @@ public:
             {
                 const auto loopAt = std::max(1.0, delay[c] - loopLag[c]);
                 const auto outAt = std::max(1.0, delay[c] - outLag[c]);
-                read[c] = readAt(lines[c], outAt) / std::max(0.01f, 1.0f + readAt(compandGains[c], outAt));
-                auto v = readAt(lines[c], loopAt) / std::max(0.01f, 1.0f + readAt(compandGains[c], loopAt));
+                read[c] = expand(c, 0, readAt(lines[c], outAt), compandNow);
+                auto v = expand(c, 1, readAt(lines[c], loopAt), compandNow);
                 if (!lossOpen[c]) v = lossFilters[c].process(v);
                 v = drive(v);
                 if (!toneOpen) v = toneFilters[c].process(v);
@@ -180,10 +180,8 @@ public:
             const float out[2] { feedbackNow[0] * send[0], feedbackNow[1] * send[1] };
             for (int c = 0; c < 2; ++c)
             {
-                float gain;
-                const auto squeezed = compress(c, e[c] + (1.0f - crossNow) * out[c] + crossNow * out[1 - c], compandNow, gain);
+                const auto squeezed = compress(c, e[c] + (1.0f - crossNow) * out[c] + crossNow * out[1 - c], compandNow);
                 lines[c].write(squeezed + hiss);
-                compandGains[c].write(gain - 1.0f);
             }
 
             const auto wetL = wetClip(postBlurs[0].process(read[0]));
@@ -205,6 +203,8 @@ private:
     static constexpr double smoothingMs = 20.0;
     static constexpr double openCutoffHz = 19000;
     static constexpr double compandMs = 10.0;
+    static constexpr double expandMs = 30.0;
+    static constexpr double maximumExpansion = 8.0;
     static constexpr double compandReference = 0.25;
     static constexpr double compandFloor = 1.0e-4;
     static constexpr float denormalFloor = 1.0e-20f;
@@ -248,7 +248,7 @@ private:
         const auto motion = amount01 * (type == 0 ? 0.5 : type == 1 ? 0.9 : 0.0);
         const auto pre = laws::blurAt(laws::BlurPlace::pre, values[preBlur] * 0.01);
         const auto loop = laws::blurAt(laws::BlurPlace::loop, values[loopBlur] * 0.01);
-        const auto post = laws::blurAt(laws::BlurPlace::post, values[postBlur] * 0.01);
+        const auto post = laws::blurAt(laws::BlurPlace::post, laws::oilSmear(type, amount01));
 
         const auto x = std::clamp(values[cross] * 0.01, 0.0, 1.0);
         crossTarget.target = x;
@@ -347,18 +347,27 @@ private:
         return std::tanh(g * v) / g;
     }
 
-    float compress(int c, float v, double depth, float& gainOut) noexcept
+    float compress(int c, float v, double depth) noexcept
     {
         compressEnvelope[c] += (std::abs(v) - compressEnvelope[c]) * envelopeCoefficient;
-        gainOut = depth > 0
-            ? static_cast<float>(std::pow(compandReference / std::max(compressEnvelope[c], compandFloor), 0.5 * depth))
-            : 1.0f;
-        return v * gainOut;
+        if (depth <= 0) return v;
+        return v * static_cast<float>(std::pow(compandReference / std::max(compressEnvelope[c], compandFloor), 0.5 * depth));
+    }
+
+    // Undoes compress from what the line gives back, with its own slower detector as a
+    // bucket brigade's does, so transients and the hiss under them breathe.
+    float expand(int c, int tap, float v, double depth) noexcept
+    {
+        auto& envelope = expandEnvelope[c][tap];
+        envelope += (std::abs(v) - envelope) * expandCoefficient;
+        if (depth <= 0) return v;
+        const auto gain = std::pow(std::max(envelope, compandFloor) / compandReference, 0.5 * depth / (1.0 - 0.5 * depth));
+        return v * static_cast<float>(std::min(gain, maximumExpansion));
     }
 
 
 
-    std::array<chardsp::FractionalDelayLine<float>, 2> lines, compandGains;
+    std::array<chardsp::FractionalDelayLine<float>, 2> lines;
     std::array<Diffuser, 2> preBlurs, loopBlurs, postBlurs;
     std::array<chardsp::OnePole<float>, 2> toneFilters, cutFilters, lossFilters;
 
@@ -370,7 +379,7 @@ private:
 
     double sampleRate = 48000, tempo = 120;
     double smoothingCoefficient = 0, envelopeCoefficient = 0;
-    double compressEnvelope[2] {};
+    double compressEnvelope[2] {}, expandEnvelope[2][2] {}, expandCoefficient = 0;
     std::size_t maximumDelaySamples = 0;
     double effectiveMs[2] {};
     double lowCutHz = 20;

@@ -41,7 +41,7 @@ inline const std::array presets {
                        { loopBlur, 70 }, { tone, -40 }, { mix, 60 }, { modType, 1 }, { modB, 60 }, { cross, 40 } }) },
     Preset { "long-wash", "Long Wash",
         withDefaults({ { leftTime, 420 }, { ratio, 1.5 }, { repeats, 300 }, { loopBlur, 85 },
-                       { postBlur, 50 }, { tone, -20 }, { mix, 55 }, { cross, 50 } }) },
+                       { tone, -20 }, { mix, 55 }, { cross, 50 } }) },
     Preset { "tape-quarter", "Tape Quarter",
         withDefaults({ { sync, 1 }, { leftTime, 500 }, { ratio, 1 }, { repeats, 6 }, { loopBlur, 15 },
                        { tone, -25 }, { mix, 35 }, { modA, 45 } }) },
@@ -68,7 +68,7 @@ inline const std::array presets {
                        { mix, 45 }, { modType, 1 }, { modB, 70 } }) },
     Preset { "cloud", "Cloud",
         withDefaults({ { leftTime, 90 }, { ratio, 1.6180339887498949 }, { repeats, 120 }, { preBlur, 70 },
-                       { loopBlur, 90 }, { postBlur, 60 }, { cross, 50 }, { tone, -10 }, { mix, 50 } }) },
+                       { loopBlur, 90 }, { cross, 50 }, { tone, -10 }, { mix, 50 } }) },
     Preset { "hold", "Hold",
         withDefaults({ { leftTime, 600 }, { ratio, 1.5 }, { repeats, laws::maxRepeats }, { loopBlur, 50 },
                        { cross, 50 }, { mix, 50 }, { modType, 2 }, { modC, 0 } }) }

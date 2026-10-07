@@ -1,10 +1,10 @@
 {
   "recipeAt": [
     {"medium": 0, "wear": 0, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "hiss": 0, "drive": 0, "compand": 0},
-    {"medium": 0, "wear": 0.1, "sine": 0.000198111649057639, "sineHz": 0.7, "rand": 9.50935915476668e-05, "randHz": 6, "lossHz": 18256.6174882928, "lossTracksTime": 0, "hiss": 2.1396058098225e-05, "drive": 0, "compand": 0},
-    {"medium": 0, "wear": 0.35, "sine": 0.00188900232666623, "sineHz": 0.7, "rand": 0.00090672111679979, "randHz": 6, "lossHz": 9000, "lossTracksTime": 0, "hiss": 0.000204012251279953, "drive": 0, "compand": 0},
-    {"medium": 0, "wear": 0.7, "sine": 0.0065778881581879, "sineHz": 0.7, "rand": 0.00315738631593019, "randHz": 6, "lossHz": 9000, "lossTracksTime": 0, "hiss": 0.000710411921084293, "drive": 0, "compand": 0},
-    {"medium": 0, "wear": 1, "sine": 0.0125, "sineHz": 0.7, "rand": 0.006, "randHz": 6, "lossHz": 9000, "lossTracksTime": 0, "hiss": 0.0012, "drive": 0, "compand": 0},
+    {"medium": 0, "wear": 0.1, "sine": 0.000198111649057639, "sineHz": 0.7, "rand": 9.50935915476668e-05, "randHz": 6, "lossHz": 18256.6174882928, "lossTracksTime": 0, "hiss": 2.1396058098225e-05, "drive": 1.03962232981153, "compand": 0},
+    {"medium": 0, "wear": 0.35, "sine": 0.00188900232666623, "sineHz": 0.7, "rand": 0.00090672111679979, "randHz": 6, "lossHz": 9000, "lossTracksTime": 0, "hiss": 0.000204012251279953, "drive": 1.37780046533325, "compand": 0},
+    {"medium": 0, "wear": 0.7, "sine": 0.0065778881581879, "sineHz": 0.7, "rand": 0.00315738631593019, "randHz": 6, "lossHz": 9000, "lossTracksTime": 0, "hiss": 0.000710411921084293, "drive": 2.31557763163758, "compand": 0},
+    {"medium": 0, "wear": 1, "sine": 0.0125, "sineHz": 0.7, "rand": 0.006, "randHz": 6, "lossHz": 9000, "lossTracksTime": 0, "hiss": 0.0012, "drive": 3.5, "compand": 0},
     {"medium": 1, "wear": 0, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "hiss": 0, "drive": 0, "compand": 0},
     {"medium": 1, "wear": 0.1, "sine": 0.000208505003253651, "sineHz": 2.3, "rand": 0.000625515009760954, "randHz": 1.4, "lossHz": 18548.8051773546, "lossTracksTime": 0, "hiss": 7.89997012891271e-06, "drive": 1.02085050032537, "compand": 0},
     {"medium": 1, "wear": 0.35, "sine": 0.00198810336565875, "sineHz": 2.3, "rand": 0.00596431009697624, "randHz": 1.4, "lossHz": 6162.80057501512, "lossTracksTime": 0, "hiss": 7.53265243366282e-05, "drive": 1.19881033656587, "compand": 0},
@@ -12,9 +12,9 @@
     {"medium": 1, "wear": 1, "sine": 0.0131557763163758, "sineHz": 2.3, "rand": 0.0394673289491274, "randHz": 1.4, "lossHz": 2600, "lossTracksTime": 0, "hiss": 0.000498454417401161, "drive": 2.31557763163758, "compand": 0},
     {"medium": 2, "wear": 0, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "hiss": 0, "drive": 0, "compand": 0},
     {"medium": 2, "wear": 0.1, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 18098.1281690467, "lossTracksTime": 1, "hiss": 0.000106980290491125, "drive": 0, "compand": 0.158489319246111},
-    {"medium": 2, "wear": 0.35, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 8000, "lossTracksTime": 1, "hiss": 0.00102006125639976, "drive": 0, "compand": 1},
-    {"medium": 2, "wear": 0.7, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 8000, "lossTracksTime": 1, "hiss": 0.00355205960542146, "drive": 0, "compand": 1},
-    {"medium": 2, "wear": 1, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 8000, "lossTracksTime": 1, "hiss": 0.006, "drive": 0, "compand": 1},
+    {"medium": 2, "wear": 0.35, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 8000, "lossTracksTime": 1, "hiss": 0.00102006125639976, "drive": 0, "compand": 1.33333333333333},
+    {"medium": 2, "wear": 0.7, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 8000, "lossTracksTime": 1, "hiss": 0.00355205960542146, "drive": 0, "compand": 1.33333333333333},
+    {"medium": 2, "wear": 1, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 8000, "lossTracksTime": 1, "hiss": 0.006, "drive": 0, "compand": 1.33333333333333},
     {"medium": 3, "wear": 0, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "hiss": 0, "drive": 0, "compand": 0},
     {"medium": 3, "wear": 0.1, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "hiss": 0, "drive": 0, "compand": 0},
     {"medium": 3, "wear": 0.35, "sine": 0, "sineHz": 0, "rand": 0, "randHz": 0, "lossHz": 20000, "lossTracksTime": 0, "hiss": 0, "drive": 0, "compand": 0},
@@ -243,6 +243,17 @@
     {"lossHz": 20000, "timeMs": 60, "out": 20000},
     {"lossHz": 20000, "timeMs": 240, "out": 10000},
     {"lossHz": 20000, "timeMs": 2000, "out": 3464.10161513775}
+  ],
+  "oilSmear": [
+    {"medium": 0, "wear": 0, "out": 0},
+    {"medium": 0, "wear": 0.35, "out": 0},
+    {"medium": 0, "wear": 1, "out": 0},
+    {"medium": 1, "wear": 0, "out": 0},
+    {"medium": 1, "wear": 0.35, "out": 0.21},
+    {"medium": 1, "wear": 1, "out": 0.6},
+    {"medium": 2, "wear": 0, "out": 0},
+    {"medium": 2, "wear": 0.35, "out": 0},
+    {"medium": 2, "wear": 1, "out": 0}
   ],
   "constants": [
     {"minTimeMs": 10, "maxTimeMs": 3000, "openHighCutHz": 20000, "maxRepeats": 1000, "referenceBpm": 120}

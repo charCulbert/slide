@@ -23,8 +23,8 @@ const cleanRecipe = Object.freeze({
 const modBWearScale = 0.7;
 
 /** Mod A (0), B (1) or C (2) at an amount of 0–1. `rand` is the depth before
- * the engine's ×6, `drive` of 0 means no saturation, and `compand` is how far toward
- * 2:1 the compander works. */
+ * the engine's ×6, `drive` of 0 means no saturation, and `compand` sets the
+ * compander: 1 is 2:1 and its top, 4/3, is 3:1. */
 export function recipeAt(medium, wear01) {
   const w = clamp(finiteOr(wear01, 0), 0, 1);
   if (!(w > 0) || medium < 0 || medium > 2) return { ...cleanRecipe };
@@ -32,14 +32,14 @@ export function recipeAt(medium, wear01) {
   const amt = Math.pow(medium === 1 ? modBWearScale * w : w, 1.8) * 5;
   let recipe, loss;
   if (medium === 0) {
-    recipe = { ...cleanRecipe, sine: 0.0025, sineHz: 0.7, rand: 0.0012, randHz: 6, hiss: 0.0003 };
+    recipe = { ...cleanRecipe, sine: 0.0025, sineHz: 0.7, rand: 0.0012, randHz: 6, hiss: 0.0003, drive: 1 + 0.5 * amt };
     loss = 9000;
   } else if (medium === 1) {
     recipe = { ...cleanRecipe, sine: 0.005, sineHz: 2.3, rand: 0.015, randHz: 1.4, hiss: 0.0004,
       drive: 1 + 0.5 * amt };
     loss = 2600;
   } else {
-    recipe = { ...cleanRecipe, lossTracksTime: true, hiss: 0.0015, compand: Math.min(1, amt * 2) };
+    recipe = { ...cleanRecipe, lossTracksTime: true, hiss: 0.0015, compand: Math.min(4 / 3, amt * 2) };
     loss = 8000;
   }
   recipe.sine *= amt;
@@ -126,4 +126,9 @@ export function bucketLossHz(lossHz, timeMs) {
   const loss = finiteOr(lossHz, openHighCutHz);
   const time = Math.max(minTimeMs, finiteOr(timeMs, minTimeMs));
   return Math.min(loss, Math.max(1200, loss * Math.sqrt(60 / time)));
+}
+
+/** How much the oil can smears what comes out, as Laws.h's oilSmear. */
+export function oilSmear(medium, wear01) {
+  return medium === 1 ? 0.6 * clamp(finiteOr(wear01, 0), 0, 1) : 0;
 }
