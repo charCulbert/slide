@@ -10,14 +10,6 @@
 namespace slide
 {
 
-// One blur: up to 16 Schroeder allpasses in series, whose stage times are a fixed
-// set of primes-ish milliseconds stretched by `size`, optionally swept by a slow sine
-// (the medium's motion, so a moving medium smears as it moves). The right side runs
-// longer stages and an offset sweep, so the two sides blur apart.
-//
-// Every buffer is allocated for the longest stage at prepare. set() only moves the
-// read taps, which glide to their new times so a moving rail never clicks, and a
-// stage that comes back into use first clears the stretch it is about to read.
 class Diffuser
 {
 public:
@@ -27,7 +19,7 @@ public:
     void prepare(double newSampleRate, int side)
     {
         sampleRate = newSampleRate;
-        glide = 1.0 - std::exp(-1.0 / (0.03 * sampleRate)); // 30 ms
+        glide = 1.0 - std::exp(-1.0 / (0.03 * sampleRate));
         step = 2.0 * pi * sweepHz / sampleRate;
         stretch = side == 0 ? 1.0 : 1.03 + 0.6 * spread;
         phaseOffset = side * (0.3 + spread * 2.8);
@@ -57,7 +49,6 @@ public:
         const auto n = gain > 0 ? static_cast<std::size_t>(std::clamp(count, 0, static_cast<int>(maximumStages))) : 0;
         for (auto i = active; i < n; ++i)
         {
-            // a stage coming back starts at its new time, reading only silence
             auto& stage = stages[i];
             stage.delay = stage.target;
             const auto size = stage.buffer.size();
@@ -67,9 +58,7 @@ public:
         active = n;
     }
 
-    /// How late the blur's sound would arrive at these settings, in samples. A
-    /// Schroeder allpass's energy is centred on its stage time, so a chain's is
-    /// centred on the sum of its stage times, each sweep adding half its depth.
+    /// How late the blur's sound would arrive at these settings, in samples.
     double lagSamples(double size, int count, double modulationMs) const noexcept
     {
         const auto sweep = std::clamp(modulationMs, 0.0, maximumModulationMs) * 0.001 * sampleRate;
@@ -92,8 +81,6 @@ public:
             float read;
             if (depth > 0 || s.delay != s.target)
             {
-                // interpolated while the tap moves; it loses a little treble per pass,
-                // so a settled, unswept stage reads whole samples
                 s.delay += (s.target - s.delay) * glide;
                 if (std::abs(s.target - s.delay) < 1.0e-3) s.delay = s.target;
                 const auto d = s.delay + depth * 0.5 * (1.0 + std::sin(phase + static_cast<double>(k) * 1.3));
@@ -121,7 +108,7 @@ private:
     }
 
     static constexpr double pi = std::numbers::pi;
-    static constexpr double sweepHz = 0.4; // how fast a moving Mod sweeps the blur
+    static constexpr double sweepHz = 0.4;
     static constexpr double spread = 0.4;
     static constexpr double maximumModulationMs = 2.0;
     static constexpr std::array<double, maximumStages> baseMs {

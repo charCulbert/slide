@@ -96,8 +96,6 @@ void stereoPorts()
     CHECK(p.params && p.params->count(p.p) == slide::parameters.size());
 }
 
-// Mix 0 is the dry signal alone, so the adapter's plumbing can still be checked
-// sample for sample with the delay running underneath it.
 void passThrough()
 {
     Plugin p;
@@ -116,13 +114,11 @@ void passThrough()
     p.run(static_cast<uint32_t>(left.size()), &in, &out);
     CHECK(outLeft == left && outRight == right);
 
-    // In place: the host hands the same buffers to both ports.
     clap_audio_buffer_t same { inChannels.data(), nullptr, 2, 0, 0 };
     p.run(static_cast<uint32_t>(left.size()), &same, &same);
     for (size_t i = 0; i < left.size(); ++i)
         CHECK(left[i] == static_cast<float>(i) * 0.01f && right[i] == -left[i]);
 
-    // Zero frames must be harmless.
     p.run(0, &in, &out);
 }
 
@@ -140,16 +136,14 @@ void doublePassThrough()
     CHECK(outLeft == left && outRight == right);
 }
 
-// A block through the whole adapter: the engine is prepared, the parameters reach
-// it, and the audio comes back late.
 void pluginDelays()
 {
     using namespace slide;
     Plugin p;
     p.set(mix, 100);
     p.set(leftTime, 10);
-    p.set(link, 1);       // Difference
-    p.set(difference, 0); // so right is left
+    p.set(link, 1);
+    p.set(difference, 0);
     p.set(preBlur, 0);
     p.set(loopBlur, 0);
     p.set(postBlur, 0);
@@ -157,27 +151,25 @@ void pluginDelays()
     p.set(repeats, 1);
 
     std::vector<float> inL(1024), inR(1024), outL(1024), outR(1024);
-    inL[0] = inR[0] = 0.5f; // under the wet clip's knee, so the repeat is untouched
+    inL[0] = inR[0] = 0.5f;
     std::array<float*, 2> inChannels { inL.data(), inR.data() };
     std::array<float*, 2> outChannels { outL.data(), outR.data() };
     clap_audio_buffer_t in { inChannels.data(), nullptr, 2, 0, 0 };
     clap_audio_buffer_t out { outChannels.data(), nullptr, 2, 0, 0 };
     p.run(1024, &in, &out);
 
-    const size_t expected = 480; // 10 ms at 48 kHz
+    const size_t expected = 480;
     for (size_t i = 0; i < expected; ++i) CHECK(std::abs(outL[i]) < 1e-6 && std::abs(outR[i]) < 1e-6);
     CHECK(std::abs(outL[expected] - 0.5) < 1e-5 && std::abs(outR[expected] - 0.5) < 1e-5);
 
     const auto* tail = static_cast<const clap_plugin_tail_t*>(p.p->get_extension(p.p, CLAP_EXT_TAIL));
-    CHECK(tail && tail->get(p.p) == 480); // one repeat of 10 ms
+    CHECK(tail && tail->get(p.p) == 480);
 }
 
-// ---------------------------------------------------------------- parameters
 
 void parameterTable()
 {
     using namespace slide;
-    // Ids run in table order, one state slot each.
     CHECK(parameters.size() == stateValueCount);
     for (size_t i = 0; i < parameters.size(); ++i) CHECK(parameters[i].id == i);
 
@@ -189,7 +181,6 @@ void parameterTable()
     CHECK(findParameter(stateValueCount) == nullptr);
     CHECK(maxRepeats == 1000);
 
-    // Only the rails that ask for one carry a log curve.
     for (const auto& p : parameters)
         CHECK(isLogarithmic(p) == (p.id == leftTime || p.id == ratio || p.id == leftBeats
                                    || p.id == repeats));
@@ -202,7 +193,7 @@ void parameterTable()
 
     CHECK(clampParameter(leftTime, 1e9) == 3000 && clampParameter(leftTime, -5) == 10);
     CHECK(clampParameter(leftTime, std::nan("")) == 350);
-    CHECK(clampParameter(repeats, 8.4) == 8.4); // continuous
+    CHECK(clampParameter(repeats, 8.4) == 8.4);
     CHECK(clampParameter(repeats, 1e12) == maxRepeats);
     CHECK(clampParameter(link, 0.6) == 1);
     CHECK(clampParameter(modType, 7) == 2);
@@ -226,7 +217,7 @@ void parameterText()
         CHECK(info.id == p.id && info.min_value == p.min && info.max_value == p.max);
         CHECK(info.default_value == p.initial);
         CHECK(std::strcmp(info.name, p.name) == 0);
-        CHECK(info.flags & CLAP_PARAM_IS_AUTOMATABLE);
+        CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_AUTOMATABLE) == (p.id != link && p.id != sync));
         CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_STEPPED) == p.stepped);
         CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_MODULATABLE) == !p.stepped);
         CHECK(static_cast<bool>(info.flags & CLAP_PARAM_IS_ENUM) == !enumNames(p.id).empty());
@@ -234,8 +225,6 @@ void parameterText()
         double current = 0;
         CHECK(params->get_value(plugin.p, p.id, &current) && current == p.initial);
 
-        // 25 points across the range: text and value must agree with each other after
-        // the first round trip, and stay put on every trip after it.
         for (int step = 0; step <= 24; ++step)
         {
             const auto value = p.min + (p.max - p.min) * step / 24.0;
@@ -253,7 +242,6 @@ void parameterText()
             if (p.stepped) CHECK(first == std::round(first));
         }
 
-        // Garbage is refused; a value out of range is pulled back in.
         double parsed = 0;
         CHECK(!params->text_to_value(plugin.p, p.id, "wobble", &parsed));
         CHECK(!params->text_to_value(plugin.p, p.id, "12 bananas", &parsed));
@@ -264,7 +252,6 @@ void parameterText()
         CHECK(params->text_to_value(plugin.p, p.id, "-9999999", &parsed) && parsed == p.min);
     }
 
-    // The formats themselves.
     struct Case { clap_id id; double value; const char* text; };
     const std::array<Case, 13> cases {{
         { leftTime, 350, "350.0 ms" }, { difference, -175.2, "-175.2 ms" },
@@ -283,7 +270,6 @@ void parameterText()
         CHECK(std::abs(value - c.value) < 0.05);
     }
 
-    // Enum names parse, whole and by index; unknown names do not.
     for (const auto& p : parameters)
     {
         const auto names = enumNames(p.id);
@@ -299,11 +285,9 @@ void parameterText()
     CHECK(params->text_to_value(plugin.p, slide::modType, "2", &value) && value == 2);
 
 
-    // An id out of the table is not a parameter at all.
     CHECK(findParameter(99) == nullptr && clampParameter(99, 1) == 0);
 }
 
-// -------------------------------------------------------------------- state
 
 struct Blob
 {
@@ -346,10 +330,8 @@ void stateRoundTrip()
     Plugin p;
     CHECK(p.state);
 
-    // Move every parameter off its default, then save.
     for (const auto& info : parameters)
     {
-        // A quarter of the way up, or the top when that lands on the default.
         auto value = clampParameter(info.id, info.min + (info.max - info.min) * 0.25);
         if (value == info.initial) value = info.max;
         p.set(info.id, value);
@@ -366,7 +348,6 @@ void stateRoundTrip()
     std::memcpy(&version, blob.data.data() + sizeof(magic), sizeof(version));
     CHECK(magic == stateMagic && version == stateVersion);
 
-    // Back to the defaults, then load: every value returns.
     for (const auto& info : parameters) p.set(info.id, info.initial);
 
     const clap_istream_t reader { &blob, readBlob };
@@ -378,7 +359,7 @@ void stateRoundTrip()
         Blob bad { std::move(bytes), 0 };
         const clap_istream_t badReader { &bad, readBlob };
         CHECK(!p.state->load(p.p, &badReader));
-        CHECK(readValues(p) == moved); // a refused load changes nothing
+        CHECK(readValues(p) == moved);
     };
     refuse({});
     refuse({ blob.data.begin(), blob.data.begin() + 3 });
@@ -387,7 +368,7 @@ void stateRoundTrip()
     corrupt[0] = 0;
     refuse(corrupt);
     corrupt = blob.data;
-    corrupt[4] = 9; // an unknown version
+    corrupt[4] = 9;
     refuse(corrupt);
     corrupt = blob.data;
     const auto notANumber = std::nan("");
@@ -395,7 +376,6 @@ void stateRoundTrip()
     refuse(corrupt);
 }
 
-// ------------------------------------------------------------------- presets
 
 void presetsLoad()
 {
@@ -421,13 +401,10 @@ void presetsLoad()
         {
             const auto& info = parameters[i];
             CHECK(read[i] == clampParameter(info.id, preset.values[info.id]));
-            // Nothing in the table is clipped on the way in.
             CHECK(read[i] == preset.values[info.id]);
         }
     }
 
-    // An unknown key, a missing key, a location and a foreign kind all refuse, and
-    // the loaded values survive.
     const auto held = readValues(p);
     CHECK(!loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, "no-such-preset"));
     CHECK(!loader->from_location(p.p, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, ""));
@@ -516,7 +493,6 @@ void presetDiscovery()
         CHECK(receiver.found[i].first == presets[i].name);
         CHECK(receiver.found[i].second == presets[i].key);
     }
-    // A path-shaped location is not ours.
     Receiver ignored;
     CHECK(!provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, "/tmp",
                                   &ignored.list));
@@ -524,7 +500,6 @@ void presetDiscovery()
     provider->destroy(provider);
 }
 
-// --------------------------------------------------------------------- laws
 
 bool near(double a, double b, double tolerance = 1e-9)
 {
@@ -536,7 +511,6 @@ void lawsByHand()
     using namespace slide;
     using namespace slide::laws;
 
-    // Media.
     for (int m = 0; m <= 2; ++m)
     {
         const auto clean = recipeAt(m, 0);
@@ -548,26 +522,21 @@ void lawsByHand()
     CHECK(near(tape.sine, 0.0025 * amt) && near(tape.sineHz, 0.7));
     CHECK(near(tape.rand, 0.0012 * amt) && near(tape.randHz, 6));
     CHECK(near(tape.hiss, 0.0003 * std::min(4.0, 0.9 * amt)));
-    CHECK(near(tape.lossHz, 9000)); // amt > 0.5, so the loss is full
+    CHECK(near(tape.lossHz, 9000));
     CHECK(tape.drive == 0 && tape.compand == 0);
-    // Oil can: a drive in the loop, and its Wear 100 is 70 elsewhere.
     const auto oil = recipeAt(1, 1);
     const auto oilAmt = std::pow(0.7, 1.8) * 5;
     CHECK(near(oil.lossHz, 2600) && near(oil.drive, 1 + 0.5 * oilAmt));
     CHECK(near(oil.sine, 0.005 * oilAmt) && near(oil.sineHz, 2.3) && oil.compand == 0);
-    // and its hiss at Wear 100 is what it was at 70
     CHECK(near(oil.hiss, 0.0004 * std::min(4.0, 0.9 * std::pow(0.49, 1.8) * 5)));
-    // Bucket: a steady clock, so no wobble, and a compander whose depth follows Wear.
     const auto bucket = recipeAt(2, 1);
     CHECK(bucket.lossTracksTime && near(bucket.lossHz, 8000) && bucket.sine == 0 && bucket.rand == 0);
     CHECK(near(bucket.compand, 1) && bucket.drive == 0 && bucket.hiss > 0);
     CHECK(near(recipeAt(2, 0.1).compand, std::min(1.0, 2 * std::pow(0.1, 1.8) * 5)));
-    // There is no fourth medium.
     for (int m : { -1, 3, 4, 9 })
         CHECK(recipeAt(m, 1).lossHz == 20000 && recipeAt(m, 1).hiss == 0 && recipeAt(m, 1).compand == 0);
     CHECK(std::isfinite(recipeAt(0, std::nan("")).lossHz));
 
-    // Tone's cuts.
     auto cuts = toneCuts(0);
     CHECK(near(cuts.highCutHz, 20000) && near(cuts.lowCutHz, 20));
     cuts = toneCuts(-1);
@@ -575,12 +544,11 @@ void lawsByHand()
     cuts = toneCuts(-0.4);
     CHECK(near(cuts.highCutHz, 12000 * std::pow(2.0, -2.86)));
     cuts = toneCuts(1);
-    CHECK(near(cuts.lowCutHz, 6000) && near(cuts.highCutHz, 20000)); // 6089 held at 6000
+    CHECK(near(cuts.lowCutHz, 6000) && near(cuts.highCutHz, 20000));
     cuts = toneCuts(0.5);
     CHECK(near(cuts.lowCutHz, 20 * std::pow(2.0, 4.125)));
     CHECK(near(toneCuts(7).lowCutHz, 6000) && near(toneCuts(std::nan("")).highCutHz, 20000));
 
-    // The three blurs: off below half a percent, and never more than 16 stages.
     for (auto place : { BlurPlace::pre, BlurPlace::loop, BlurPlace::post })
     {
         for (double off : { 0.0, 0.005, -1.0 })
@@ -605,44 +573,31 @@ void lawsByHand()
     b = blurAt(BlurPlace::loop, 0.5);
     CHECK(near(b.gain, 0.85 * 0.35) && b.stages == 4 + 4);
 
-    // The pass gain behind Repeats. At Cross 0 the nth echo of the longer line is
-    // 60 dB down; one repeat is a single echo.
     CHECK(near(passGain(1, 0, 300, 450), 0) && near(passGain(0.2, 0.5, 300, 450), 0));
     CHECK(near(passGain(8, 0, 300, 450), std::pow(10.0, -3.0 / 7)));
     CHECK(near(passGain(8, 0, 450, 300), std::pow(10.0, -3.0 / 7)));
-    // Full swap alternates lines, so a pass is the mean of the two times long.
     CHECK(near(passGain(8, 1, 300, 450), std::pow(std::pow(10.0, -3.0 / 7), 375.0 / 450)));
-    // Cross raises the gain to make up what spreading loses, never past unity, and
-    // more repeats always mean more gain.
     for (double x : { 0.1, 0.3, 0.5, 0.8 })
     {
         CHECK(passGain(8, x, 300, 450) > passGain(8, 0, 300, 450));
         CHECK(passGain(8, x, 300, 450) < 1);
         CHECK(passGain(16, x, 300, 450) > passGain(8, x, 300, 450));
     }
-    CHECK(near(passGain(8, 0.5, 300, 300), std::pow(10.0, -3.0 / 7))); // 1:1 needs no help
+    CHECK(near(passGain(8, 0.5, 300, 300), std::pow(10.0, -3.0 / 7)));
     CHECK(std::isfinite(passGain(std::nan(""), std::nan(""), std::nan(""), 0)));
     CHECK(passGain(9999, 0.5, 10, 3000) <= 0.999);
-    // At Repeats' infinity the loop's slowest mode neither grows nor decays: unity
-    // uncrossed, and crossed the gain whose slowest mode sits exactly on unity.
-    // Every setting dies away: no pass ever keeps everything.
     for (double x : { 0.0, 0.5, 1.0 }) CHECK(passGain(1e9, x, 300, 450) <= 0.999);
 
-    // Wobble reference and the bucket's loss.
     CHECK(near(wobbleReferenceMs(10), 40) && near(wobbleReferenceMs(2000), 400));
     CHECK(near(wobbleReferenceMs(120), 120));
     CHECK(near(bucketLossHz(8000, 60), 8000));
     CHECK(near(bucketLossHz(8000, 240), 4000));
     CHECK(near(bucketLossHz(8000, 2000), 1385.6406460551018));
-    CHECK(near(bucketLossHz(1300, 2000), 1200));  // the floor holds at 1200 Hz
-    CHECK(near(bucketLossHz(1000, 2000), 1000));  // but never above the medium's own loss
+    CHECK(near(bucketLossHz(1300, 2000), 1200));
+    CHECK(near(bucketLossHz(1000, 2000), 1000));
 }
 
-// ------------------------------------------------------------------- engine
 
-// The engine driven through its own interface: prepare, set, process. Every test
-// starts from a bed with no colour at all — no blur, no wear, all wet — and says
-// what it needs on top of that.
 struct Rig
 {
     slide::Engine engine;
@@ -669,13 +624,11 @@ struct Rig
         engine.set(id, slide::clampParameter(id, value));
     }
 
-    // Every Mod type's amount at once, so a test can switch type and keep it.
     void wear(double amount)
     {
         for (auto id : slide::modAmounts) set(id, amount);
     }
 
-    // Left and right in ms, through Difference so right lands exactly where asked.
     void times(double a, double b)
     {
         set(slide::link, 1);
@@ -728,7 +681,6 @@ Block noise(size_t frames, float amplitude, uint32_t seed = 12345)
     return block;
 }
 
-// A repeat's size across both channels, so an echo that crosses lines still counts.
 double repeatSize(const Block& out, size_t centre, size_t width)
 {
     const auto begin = centre > width / 2 ? centre - width / 2 : 0;
@@ -770,7 +722,6 @@ void integerDelay()
     for (size_t i = 0; i < expectedL; ++i) CHECK(std::abs(out.l[i]) < 1e-9);
     CHECK(std::abs(out.l[expectedL] - 0.5f) < 1e-6);
     CHECK(std::abs(out.r[expectedR] - 0.5f) < 1e-6);
-    // Nothing either side of it: an integer delay is one sample, not a smear.
     CHECK(std::abs(out.l[expectedL - 1]) < 1e-9 && std::abs(out.l[expectedL + 1]) < 1e-9);
     CHECK(near(rig.engine.bpm(), 120, 1e-9));
 }
@@ -778,10 +729,8 @@ void integerDelay()
 void fractionalDelay()
 {
     Rig rig;
-    const auto wanted = 480.5 * 1000.0 / 48000.0; // half a sample past 480
+    const auto wanted = 480.5 * 1000.0 / 48000.0;
     rig.times(wanted, wanted);
-    // The line has to be older than the delay before its whole interpolation window
-    // exists, so the impulse arrives once it is running.
     Block input(4800);
     input.l[1000] = input.r[1000] = 0.5f;
     const auto out = run(rig, input);
@@ -791,12 +740,11 @@ void fractionalDelay()
         sum += out.l[i];
         top = std::max(top, static_cast<double>(std::abs(out.l[i])));
     }
-    CHECK(std::abs(sum - 0.5) < 1e-4); // the interpolation is unity at DC
-    CHECK(top > 0.26 && top < 0.32);   // and the peak lands between the two samples
+    CHECK(std::abs(sum - 0.5) < 1e-4);
+    CHECK(top > 0.26 && top < 0.32);
     CHECK(std::abs(out.l[1480] - out.l[1481]) < 1e-6);
 }
 
-// Repeats 8 at Cross 0: every pass keeps 10^(-3/7), so the eighth echo is 60 dB down.
 void repeatsDecay()
 {
     using namespace slide;
@@ -816,8 +764,6 @@ void repeatsDecay()
     CHECK(std::abs(20 * std::log10(previous / 0.2) + 60) < 0.5);
 }
 
-// Cross is compensated so Repeats keeps its length: the late energy of a 3:2 pair
-// with half crossing sits within a few dB of the same pair with none.
 void crossHoldsRepeats()
 {
     using namespace slide;
@@ -833,12 +779,9 @@ void crossHoldsRepeats()
     };
     const auto none = lateLevel(0);
     for (double x : { 30.0, 50.0, 80.0 }) CHECK(std::abs(lateLevel(x) - none) < 6);
-    // and without the compensation a plain split would have lost far more
     CHECK(none < -40);
 }
 
-// Feed -100 with full Cross is ping pong: only A hears the input, and each pass
-// changes line.
 void pingPong()
 {
     using namespace slide;
@@ -856,18 +799,17 @@ void pingPong()
             sumL += std::abs(out.l[i]);
             sumR += std::abs(out.r[i]);
         }
-        if (k % 2 == 1) CHECK(sumL > 1e-3 && sumR < 1e-6); // odd echoes on A, the left
-        else CHECK(sumR > 1e-3 && sumL < 1e-6);            // even ones on B, the right
+        if (k % 2 == 1) CHECK(sumL > 1e-3 && sumR < 1e-6);
+        else CHECK(sumR > 1e-3 && sumL < 1e-6);
     }
 }
 
-// Feed 0 keeps the sides apart; Feed +100 folds the whole input into B.
 void feedFolds()
 {
     using namespace slide;
     {
         Rig rig;
-        const auto out = run(rig, impulse(rig.samples(300), 0.4f, true)); // left only
+        const auto out = run(rig, impulse(rig.samples(300), 0.4f, true));
         const auto at = rig.samples(100);
         CHECK(std::abs(out.l[at] - 0.4f) < 1e-5 && std::abs(out.r[at]) < 1e-9);
     }
@@ -876,11 +818,10 @@ void feedFolds()
         rig.set(feed, 100);
         const auto out = run(rig, impulse(rig.samples(300), 0.4f, true));
         const auto at = rig.samples(100);
-        CHECK(std::abs(out.l[at]) < 1e-9 && std::abs(out.r[at] - 0.2f) < 1e-5); // half of L+R
+        CHECK(std::abs(out.l[at]) < 1e-9 && std::abs(out.r[at] - 0.2f) < 1e-5);
     }
 }
 
-// Where each line's first echo lands, in ms, read off the output of an impulse.
 std::array<double, 2> firstEchoes(Rig& rig)
 {
     rig.engine.reset();
@@ -903,25 +844,21 @@ void linkAndSync()
         const auto echoes = firstEchoes(rig);
         return near(echoes[0], l, 0.05) && near(echoes[1], r, 0.05);
     };
-    rig.set(link, 0); // Ratio
+    rig.set(link, 0);
     rig.set(ratio, 2);
     rig.set(leftTime, 200);
     CHECK(at(200, 400));
 
-    rig.set(link, 1); // Difference
+    rig.set(link, 1);
     rig.set(difference, -150);
     CHECK(at(200, 50));
 
-    // Sync stores left in beats: 1/4 at 120 bpm is 500 ms, and right follows by
-    // ratio exactly, on the grid or off it.
     rig.set(sync, 1);
     rig.set(leftBeats, 1);
     rig.set(link, 0);
     rig.set(ratio, 1.618);
     rig.engine.setTempo(120);
     CHECK(at(500, 809));
-    // Synced left with right by Difference: right is a fixed offset in ms from the
-    // note, at any tempo.
     rig.set(link, 1);
     rig.set(difference, 12);
     CHECK(at(500, 512));
@@ -935,7 +872,6 @@ void linkAndSync()
     CHECK(at(1000, 1000));
     rig.set(sync, 0);
 
-    // The tail: Repeats times the longer line.
     rig.times(250, 400);
     rig.set(repeats, 8);
     CHECK(near(rig.engine.tailSeconds(), 3.2, 1e-9));
@@ -960,13 +896,10 @@ void wearIsClean()
     }
 }
 
-// D13: the wet path is a wire below 0.9 and a knee above it.
 void wetClip()
 {
     using namespace slide;
     {
-        // Below the knee the clip is the identity, so a half-scale repeat comes back
-        // bit for bit — the same samples a run without the clip would give.
         Rig rig;
         rig.times(10, 10);
         Block input(2400);
@@ -979,15 +912,13 @@ void wetClip()
             if (i != at) CHECK(out.l[i] == 0.0f && out.r[i] == 0.0f);
     }
     {
-        // Past it the knee bites: a wet impulse of three comes back inside the rails.
         Rig rig;
         rig.times(10, 10);
         const auto out = run(rig, impulse(2400, 3.0f));
         const auto top = peak(out);
-        CHECK(top > 0.99 && top <= 1.0); // 1 is the asymptote, and float lands on it
+        CHECK(top > 0.99 && top <= 1.0);
     }
     {
-        // And short of the asymptote it stays strictly under.
         Rig rig;
         rig.times(10, 10);
         const auto out = run(rig, impulse(2400, 1.5f));
@@ -1006,9 +937,8 @@ void extremes()
     {
         const auto out = run(rig, noise(seconds, 1.0f, 7u + static_cast<uint32_t>(i)));
         CHECK(finite(out));
-        CHECK(peak(out) <= 1.0); // D13: Mix is at its maximum, so this is the wet path
+        CHECK(peak(out) <= 1.0);
     }
-    // And the other end of every rail.
     Rig floorRig;
     for (const auto& p : parameters) floorRig.set(static_cast<Parameter>(p.id), p.min);
     const auto low = run(floorRig, noise(floorRig.samples(1000), 1.0f));
@@ -1025,8 +955,6 @@ void silenceFlushes()
     rig.set(repeats, 4);
     rig.times(50, 50);
     (void) run(rig, noise(2000, 0.3f));
-    // The Loop blur's allpasses ring well past the line (about 36 dB a second at
-    // 50 %), so give the whole tail sixteen seconds to reach the floor.
     const auto out = run(rig, Block(rig.samples(16000)));
     const auto tail = out.size() - 1000;
     for (size_t i = tail; i < out.size(); ++i)
@@ -1040,11 +968,9 @@ void silenceFlushes()
 void longestDelayAt44100()
 {
     using namespace slide;
-    // The prototype turned to NaN here: the longest time at the odd rate, with the
-    // wobble pushing the read past the end of the line.
     Rig rig { 44100 };
     rig.times(3000, 3000);
-    rig.set(slide::modType, 1); // Oil can wobbles hardest
+    rig.set(slide::modType, 1);
     rig.wear(100);
     rig.set(repeats, 8);
     for (int i = 0; i < 3; ++i)
@@ -1055,7 +981,6 @@ void longestDelayAt44100()
     }
 }
 
-// Turning Cross from none to swap while a tone plays must not click.
 void crossMovesSmoothly()
 {
     using namespace slide;
@@ -1084,8 +1009,6 @@ void crossMovesSmoothly()
     CHECK(finite(after));
 }
 
-// Bucket's compander: in steady state the expander undoes the compressor, so a
-// held tone comes back at the level it went in, give or take the miss on attack.
 void bucketCompander()
 {
     using namespace slide;
@@ -1105,9 +1028,6 @@ void bucketCompander()
     CHECK(std::abs(20 * std::log10(wet / in)) < 3);
 }
 
-// Bucket at full Wear with a long tail: the expander divides out exactly the gain
-// the compressor wrote, so the loop still decays. It used to run away from about
-// Repeats 16.
 void bucketDecays()
 {
     using namespace slide;
@@ -1126,17 +1046,12 @@ void bucketDecays()
     CHECK(finite(out) && peak(out) <= 1.0);
     const auto first = energy(out, 0, second);
     const auto last = energy(out, 7 * second, 8 * second);
-    // 30 repeats of 150 ms is 60 dB down at 4.5 s; by the eighth second only the
-    // hiss is left.
     CHECK(first > 0.05);
     CHECK(20 * std::log10(last / first) < -40);
     for (int s = 2; s < 8; ++s)
         CHECK(energy(out, s * second, (s + 1) * second) <= energy(out, (s - 1) * second, s * second) * 1.05);
 }
 
-// A blur smears an echo around its time, not after it: the lines are read early by
-// each blur's lag, so the echo's energy stays centred where the picture draws it,
-// at long times and at short ones, where a blur shrinks to fit.
 void blursKeepTime()
 {
     using namespace slide;
@@ -1149,7 +1064,6 @@ void blursKeepTime()
                 rig.times(t, t);
                 rig.set(place, amount);
                 const auto out = run(rig, impulse(rig.samples(4 * t), 0.5f));
-                // Pre and Post move the first echo; Loop blur moves the second
                 const auto echo = place == loopBlur ? 2.0 : 1.0;
                 const auto from = static_cast<size_t>(rig.samples((echo - 0.5) * t));
                 const auto to = static_cast<size_t>(rig.samples((echo + 0.5) * t));
@@ -1164,9 +1078,6 @@ void blursKeepTime()
             }
 }
 
-// Each blur, at its top, changes what comes out, and stays finite and in bounds.
-// The Loop blur only touches what goes round again, so the comparison starts after
-// the first echo of both lines.
 void blursChangeTheSound()
 {
     using namespace slide;
@@ -1188,13 +1099,12 @@ void blursChangeTheSound()
         const auto on = render(place, 100);
         CHECK(finite(on) && peak(on) <= 1.0 && peak(on) > 0.01);
         double difference = 0, size = 0;
-        for (size_t i = 15000; i < on.size(); ++i) // past 300 ms
+        for (size_t i = 15000; i < on.size(); ++i)
         {
             difference += std::pow(on.l[i] - off.l[i], 2) + std::pow(on.r[i] - off.r[i], 2);
             size += std::pow(off.l[i], 2) + std::pow(off.r[i], 2);
         }
         CHECK(size > 0 && difference > 0.3 * size);
-        // An allpass chain keeps the energy roughly where it was.
         CHECK(energy(on, 0, on.size()) < 2 * energy(off, 0, off.size()));
     }
 }
@@ -1220,10 +1130,7 @@ void engineByHand()
     blursKeepTime();
 }
 
-// ------------------------------------------------------------------ fixture
 
-// One row of the fixture: named numbers, inputs first, then outputs. Booleans travel
-// as 0 and 1 so both languages read one kind of value.
 using Row = std::vector<std::pair<const char*, double>>;
 struct Section { const char* name; std::vector<Row> rows; };
 
@@ -1297,7 +1204,6 @@ std::string renderFixture()
     return out + "}\n";
 }
 
-// The committed fixture is exactly what Laws.h produces now.
 void checkFixture()
 {
     std::ifstream file(SLIDE_SOURCE_DIR "/tests/laws-fixture.json", std::ios::binary);
@@ -1305,7 +1211,7 @@ void checkFixture()
     const std::string committed { std::istreambuf_iterator<char>(file), {} };
     CHECK(committed == renderFixture());
 }
-} // namespace
+}
 
 int main(int argc, char** argv)
 {

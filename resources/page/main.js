@@ -1,20 +1,11 @@
-// The bridge. Messages over clap.webview in both directions (lib/messages.js);
-// the face never talks to the plugin itself, and the plugin never knows how
-// the face is drawn. plugin.cpp lists the messages above PluginSendMetadata.
-
 import {sendMessage, onMessage} from './lib/messages.js';
 import './face.js';
 
 const face = document.createElement('slide-face');
-// mote's data-editing idea: a value arriving from the plugin must not fight the
-// gesture the user is in the middle of.
 const editing = new Set();
 
-// The face is the plug-in window's whole world: no frame, no chrome. The host sizes
-// the window after the page loads; the face narrows by width inside its own canvas.
 document.querySelector('#face-host').append(face);
 
-// ---- UI -> plugin -----------------------------------------------------------
 
 addEventListener('parameter-begin', ({detail}) => {
   const id = Number(detail.parameterID);
@@ -33,7 +24,6 @@ addEventListener('parameter-end', ({detail}) => {
   sendMessage({type: 'end', id});
 });
 
-// ---- plugin -> UI -----------------------------------------------------------
 
 onMessage(message => {
   if (message.type === 'metadata') {

@@ -15,23 +15,13 @@
 #include <numbers>
 #include <random>
 
-// Lab engine: two lines, left and right, each a feedback loop. Each pass runs the
-// line through the Mod's loss and drive, Tone's two cuts, the Loop blur and a
-// soft clip, then feeds back, part to itself and part to the other (Cross). Pre blur
-// smears the input before it enters, Post blur smears what comes out. Bucket
-// compresses what it writes and expands what it reads, with the hiss in between.
-//
-// Repeats is how many echoes until the tail is 60 dB down, held at any Cross.
-//
-// Times: left is the stock, its time stored (ms, or beats under Sync); right is the
-// slide, left times Ratio or left plus Difference.
 namespace slide
 {
 
 class Engine
 {
 public:
-    static constexpr double maximumDelayMs = 3100.0; // the longest time plus wobble
+    static constexpr double maximumDelayMs = 3100.0;
 
     /// Allocates the lines, diffusers and filters for this rate. Not realtime.
     void prepare(double newSampleRate)
@@ -123,7 +113,6 @@ public:
         const auto k20 = smoothingCoefficient;
         for (uint32_t n = 0; n < frames; ++n)
         {
-            // --- smoothing
             const auto timeL = timeTarget[0].next(k20);
             const auto timeR = timeTarget[1].next(k20);
             const float feedbackNow[2] { static_cast<float>(feedbackTarget[0].next(k20)),
@@ -145,7 +134,6 @@ public:
             const auto cutOpen = appliedCut <= 20.0;
             const bool lossOpen[2] { appliedLoss[0] >= openCutoffHz, appliedLoss[1] >= openCutoffHz };
 
-            // --- wobble
             double drift[2] { 0, 0 };
             for (int c = 0; c < 2; ++c)
             {
@@ -161,13 +149,9 @@ public:
             const double delay[2] { std::max(1.0, (timeL + drift[0]) * 0.001 * rate),
                                     std::max(1.0, (timeR + drift[1]) * 0.001 * rate) };
 
-            // --- read, expand, and process each pass on its way back
             float read[2], send[2];
             for (int c = 0; c < 2; ++c)
             {
-                // the blurs make their sound late by their lag, so the line is read
-                // that much early: the loop's own for what goes round, Pre and Post's
-                // for what comes out, and every echo lands on time
                 const auto loopAt = std::max(1.0, delay[c] - loopLag[c]);
                 const auto outAt = std::max(1.0, delay[c] - outLag[c]);
                 read[c] = readAt(lines[c], outAt) / std::max(0.01f, 1.0f + readAt(compandGains[c], outAt));
@@ -181,7 +165,6 @@ public:
                 send[c] = v;
             }
 
-            // --- input: Pre blur on each side, then Feed
             const auto dryL = inL ? inL[n] : Sample {};
             const auto dryR = inR ? inR[n] : Sample {};
             const auto rawL = static_cast<float>(dryL);
@@ -193,22 +176,18 @@ public:
                 e[line] = static_cast<float>(listen[line][0] * blurredL + listen[line][1] * blurredR);
             const auto hiss = static_cast<float>(recipe.hiss * hissNoise.next());
 
-            // --- write: (1 - cross) back to itself, cross to the other line; each
-            // echo loses its own line's feedback on the way out
             const float out[2] { feedbackNow[0] * send[0], feedbackNow[1] * send[1] };
             for (int c = 0; c < 2; ++c)
             {
                 float gain;
                 const auto squeezed = compress(c, e[c] + crossSelf * out[c] + crossOther * out[1 - c], compandNow, gain);
                 lines[c].write(squeezed + hiss);
-                compandGains[c].write(gain - 1.0f); // stored less one, so a cleared line is unity
+                compandGains[c].write(gain - 1.0f);
             }
 
-            // --- out: Post blur, then a knee that never reaches 1
             const auto wetL = wetClip(postBlurs[0].process(read[0]));
             const auto wetR = wetClip(postBlurs[1].process(read[1]));
 
-            // --- equal power mix on the raw input
             const auto angle = mixNow * pi * 0.5;
             const auto dry = static_cast<Sample>(std::cos(angle));
             const auto wet = static_cast<float>(std::sin(angle));
@@ -218,21 +197,17 @@ public:
         for (int c = 0; c < 2; ++c) reportedWobble[c].store(wobbleNow[c], std::memory_order_relaxed);
     }
 
-    // the longer line's last counted echo, which is 60 dB down; the host asks on the
-    // main thread, so it is kept where both threads can read it
     double tailSeconds() const noexcept { return reportedTail.load(std::memory_order_relaxed); }
 
 private:
-    // ------------------------------------------------------------------ constants
     static constexpr double pi = std::numbers::pi;
-    static constexpr double smoothingMs = 20.0;      // times, feedback, tone, mix
-    static constexpr double openCutoffHz = 19000;    // at or above this a filter is a wire
-    static constexpr double compandMs = 10.0;        // Bucket's detector
-    static constexpr double compandReference = 0.25; // the level the compander leaves alone
-    static constexpr double compandFloor = 1.0e-4;   // caps the compressor at +34 dB
+    static constexpr double smoothingMs = 20.0;
+    static constexpr double openCutoffHz = 19000;
+    static constexpr double compandMs = 10.0;
+    static constexpr double compandReference = 0.25;
+    static constexpr double compandFloor = 1.0e-4;
     static constexpr float denormalFloor = 1.0e-20f;
 
-    // Uniform in -1..1.
     struct Random
     {
         explicit Random(double seed = 0.37) noexcept
@@ -241,7 +216,6 @@ private:
         std::minstd_rand engine;
     };
 
-    // 20 ms one-pole.
     struct Smoothed
     {
         double value = 0, target = 0;
@@ -254,7 +228,6 @@ private:
         }
     };
 
-    // ------------------------------------------------------------------ derivation
     double leftMs() const noexcept
     {
         return values[sync] == 0 ? values[leftTime] : values[leftBeats] * 60000.0 / tempo;
@@ -277,23 +250,17 @@ private:
         compandTarget.target = recipe.compand;
         lowCutHz = cuts.lowCutHz;
 
-        // A moving Mod sweeps the blurs a little, B more than A; C's clock is steady,
-        // so its blurs stand still.
         const auto motion = amount01 * (type == 0 ? 0.5 : type == 1 ? 0.9 : 0.0);
         const auto pre = laws::blurAt(laws::BlurPlace::pre, values[preBlur] * 0.01);
         const auto loop = laws::blurAt(laws::BlurPlace::loop, values[loopBlur] * 0.01);
         const auto post = laws::blurAt(laws::BlurPlace::post, values[postBlur] * 0.01);
 
-        // Cross splits each echo, (1 - x) to its own line and x to the other.
         const auto x = std::clamp(values[cross] * 0.01, 0.0, 1.0);
         crossSelf = static_cast<float>(1.0 - x);
         crossOther = static_cast<float>(x);
         const auto gain = laws::passGain(values[repeats], x, effectiveMs[0], effectiveMs[1]);
         for (int line = 0; line < 2; ++line) feedbackTarget[line].target = gain;
 
-        // Line 0 is left and line 1 right. Feed folds the input towards one side: at
-        // -100 the left line hears L+R and the right nothing; at +100 the reverse; at
-        // 0 each hears its own side.
         const auto f = std::clamp(values[feed] * 0.01, -1.0, 1.0);
         const auto toLeft = std::max(0.0, -f), toRight = std::max(0.0, f);
         listen[0][0] = 1.0 - toRight - 0.5 * toLeft;
@@ -301,9 +268,6 @@ private:
         listen[1][0] = 0.5 * toRight;
         listen[1][1] = 1.0 - toLeft - 0.5 * toRight;
 
-        // Each blur is kept to a lag the line can take back: the loop's under 80% of
-        // its line's time, Pre's and Post's under 40% each, a blur too long for its
-        // time shrinking to fit.
         const auto fit = [](Diffuser& d, const laws::Blur& b, double limit, double sweepMs) {
             const auto lag = d.lagSamples(b.size, b.stages, sweepMs);
             const auto size = lag > limit ? b.size * limit / lag : b.size;
@@ -341,7 +305,6 @@ private:
 
     static bool moved(double a, double b) noexcept { return std::abs(a - b) > 0.001 * b; }
 
-    // The cutoffs follow the smoothed values every 32 samples, and only when moved.
     void applyCutoffs(double toneHz, double cutHz, double lossL, double lossR) noexcept
     {
         const double loss[2] { lossL, lossR };
@@ -376,7 +339,6 @@ private:
         return std::copysign(0.5f + std::tanh((a - 0.5f) * 2.0f) * 0.5f, v);
     }
 
-    // A wire below 0.9 and a tanh knee above it that never reaches 1.
     static float wetClip(float v) noexcept
     {
         const auto a = std::abs(v);
@@ -384,8 +346,6 @@ private:
         return std::copysign(0.9f + 0.1f * std::tanh((a - 0.9f) * 10.0f), v);
     }
 
-    // Oil can's grit: a tanh with unity gain for small signals, so it never adds
-    // loop gain, only takes it from the loud parts.
     float drive(float v) const noexcept
     {
         if (recipe.drive <= 1) return v;
@@ -393,11 +353,6 @@ private:
         return std::tanh(g * v) / g;
     }
 
-    // Bucket's compander: the compressor follows its input's rectified level over
-    // 10 ms and turns it towards the reference by (reference / level)^(d/2). Its gain
-    // is written into a second line beside the audio, and the expander divides
-    // exactly that gain back out at the same delay, so the pair can never add loop
-    // gain. What is left is the hiss, written between the two, riding the signal.
     float compress(int c, float v, double depth, float& gainOut) noexcept
     {
         compressEnvelope[c] += (std::abs(v) - compressEnvelope[c]) * envelopeCoefficient;
@@ -409,7 +364,6 @@ private:
 
 
 
-    // ------------------------------------------------------------------ state
     std::array<chardsp::FractionalDelayLine<float>, 2> lines, compandGains;
     std::array<Diffuser, 2> preBlurs, loopBlurs, postBlurs;
     std::array<chardsp::OnePole<float>, 2> toneFilters, cutFilters, lossFilters;
@@ -430,7 +384,7 @@ private:
     double appliedTone = 0, appliedCut = 0, appliedLoss[2] {};
     float crossSelf = 1, crossOther = 0;
     double listen[2][2] { { 1, 0 }, { 0, 1 } };
-    double loopLag[2] {}, outLag[2] {}; // samples the blurs make a line's sound late
+    double loopLag[2] {}, outLag[2] {};
     int coefficientCountdown = 0;
     bool primed = false;
 

@@ -1,8 +1,3 @@
-// The CLAP entry point: what a host looks up first when it loads the plugin
-// file. It offers two factories: one makes the one plugin in plugin.cpp, the
-// other lists its factory presets.
-// (clap-wrapper compiles this file into each format separately, so it stays
-// apart from plugin.cpp.)
 #include <string.h>
 #include "core/resources.h"
 #include "plugin.h"
@@ -26,7 +21,7 @@ extern "C" CLAP_EXPORT const clap_plugin_entry_t clap_entry = {
 
     .init = [](const char *path) -> bool
     {
-        core::initResources(path); // finds the files it ships (see core/resources.h)
+        core::initResources(path);
         return true;
     },
 

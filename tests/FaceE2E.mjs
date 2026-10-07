@@ -1,10 +1,3 @@
-// The face on its own in Chrome: resources/page/face.js with compost, fed the parameter table
-// from Parameters.h the way the plug-in sends it. Every zone is dragged sideways and
-// up and down to both ends; the run fails on a script error, on a frame that draws
-// next to nothing, or on a frame slower than a budget.
-//
-//   node tests/FaceE2E.mjs
-//   DAW_ROOT=… node tests/FaceE2E.mjs   (where playwright lives; the browser DAW)
 
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -17,7 +10,6 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const dawRoot = process.env.DAW_ROOT ?? resolve(root, '../wclap-browser-daw');
 const {chromium} = createRequire(`${dawRoot}/package.json`)('playwright');
 
-// The parameter table, read from Parameters.h so the test never drifts from it.
 async function table() {
   const source = await readFile(resolve(root, 'Parameters.h'), 'utf8');
   const ids = Object.fromEntries([...source.matchAll(/^\s+(\w+) = (\d+),?$/gm)].map(m => [m[1], Number(m[2])]));
@@ -47,7 +39,6 @@ face.setMetadata(${JSON.stringify(specs)});
 window.face = face;
 </script></body></html>`;
 
-// resources/page/ as it is staged in the plug-in: face.js and laws.js, compost beside them.
 async function serve(specs) {
   const types = {'.js': 'text/javascript', '.html': 'text/html'};
   const server = createServer(async (request, response) => {
@@ -75,8 +66,6 @@ try {
   await tab.goto(`http://127.0.0.1:${server.address().port}/`);
   await tab.waitForFunction(() => window.face?.zones?.length > 10);
 
-  // What a frame looks like: how many pixels differ from the cleared corner, and how
-  // long the last render took.
   await tab.evaluate(() => {
     const face = window.face, render = face.render.bind(face);
     window.renderErrors = [];
@@ -100,7 +89,6 @@ try {
   for (const z of zones) {
     if (seen.has(z.key)) continue;
     seen.add(z.key);
-    // zones are in device pixels; the page is at 2×
     const cx = (z.x + z.w / 2) / 2, cy = (z.y + z.h / 2) / 2;
     for (const [dx, dy] of [[-400, 0], [400, 0], [0, -300], [0, 300]]) {
       await tab.mouse.move(cx, cy);
@@ -114,7 +102,7 @@ try {
         assert.equal(errors.length + thrown.length, 0, `dragging ${z.key}: ${[...errors, ...thrown].join('\n')}`);
       }
       await tab.mouse.up();
-      await tab.mouse.dblclick(cx, cy); // reset what was moved
+      await tab.mouse.dblclick(cx, cy);
     }
     report.push(z.key);
   }

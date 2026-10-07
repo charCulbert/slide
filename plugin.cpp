@@ -1,14 +1,3 @@
-// Slide Lab: a stereo delay whose interface is a web page (resources/page/), a
-// picture of the repeats, shown by the host itself where it supports
-// clap.webview, otherwise in a WebView inside the host's window.
-//
-// This file is the whole CLAP plugin: its descriptor, audio ports, parameters,
-// state, presets, the clap.webview and clap.gui extensions its page uses, and
-// the audio processing; entry.cpp is the entry point that makes it. The sound
-// is Engine.h (with Diffuser.h, Laws.h and the two chardsp_*.h), the parameter
-// table Parameters.h, the presets Presets.h. libs/ holds the reusable parts:
-// the message codec and file loader (core/), the presenter that shows the page
-// (webview/), and the compost controls the page draws with (compost/).
 #include "clap/clap.h"
 #include "clap/ext/draft/webview.h"
 #include <stdio.h>
@@ -31,7 +20,6 @@ using namespace slide;
 static_assert(std::atomic<double>::is_always_lock_free);
 static_assert(std::atomic<bool>::is_always_lock_free);
 
-// The state: a header, then every parameter's value in id order.
 struct State
 {
     uint32_t magic = stateMagic, version = stateVersion;
@@ -47,30 +35,21 @@ struct MyPlugin
     const clap_host_state_t *hostState;
     const clap_host_preset_load_t *hostPresets;
     double sampleRate = 48000;
-    Engine engine; // audio thread, once activated
+    Engine engine;
 
-    // `values` is the one authority; the engine follows it. Host events inside a
-    // block reach the engine sample-accurately (PluginApplyEvent); everything
-    // else (the page, state, presets) bumps `revision`, and the next process()
-    // or flush() hands the engine the lot (PluginPushValues).
     std::atomic<double> values[stateValueCount];
     std::atomic<uint64_t> revision{1};
-    uint64_t appliedRevision = 0; // audio thread
+    uint64_t appliedRevision = 0;
 
-    // Edits from the page, waiting for process() or flush() to tell the host:
-    // a gesture's begin, its latest value, its end, in that order.
     std::atomic<bool> gestureBegin[stateValueCount], edited[stateValueCount], gestureEnd[stateValueCount];
 
-    // The page. It edits parameters from the main thread through the flags above.
     webview::Gui gui;
     uint32_t guiWidth = 765, guiHeight = 530;
     std::atomic<bool> uiReady{false}, valuesDirty{false};
-    double sentBpm = 0; // main thread: the tempo the page last heard
-    double sentWobble[2] {}; // and the wobble
+    double sentBpm = 0;
+    double sentWobble[2] {};
 };
 
-// The extension tables below refer to these helpers before their full
-// definitions later in this file, so declare them here first.
 static void PluginApplyEvent(MyPlugin *plugin, const clap_event_header_t *event);
 static void PluginSyncMainToAudio(MyPlugin *plugin, const clap_output_events_t *out);
 static void PluginPushValues(MyPlugin *plugin);
@@ -99,10 +78,8 @@ static const clap_plugin_descriptor_t pluginDescriptor = {
     .features = pluginFeatures,
 };
 
-// One stereo input and one stereo output, processed in place if the host
-// likes, in 32 or 64 bits.
-static constexpr clap_id inputPortId = 0x53494e00;  // "SIN\0"
-static constexpr clap_id outputPortId = 0x534f5554; // "SOUT"
+static constexpr clap_id inputPortId = 0x53494e00;
+static constexpr clap_id outputPortId = 0x534f5554;
 
 static const clap_plugin_audio_ports_t extensionAudioPorts = {
     .count = [](const clap_plugin_t *plugin, bool isInput) -> uint32_t { return 1; },
@@ -122,7 +99,6 @@ static const clap_plugin_audio_ports_t extensionAudioPorts = {
     },
 };
 
-// The parameters are Parameters.h's table; ids are its indices.
 static const clap_plugin_params_t extensionParams = {
     .count = [](const clap_plugin_t *plugin) -> uint32_t { return (uint32_t)parameters.size(); },
 
@@ -133,7 +109,9 @@ static const clap_plugin_params_t extensionParams = {
         const auto &p = parameters[index];
         *info = {};
         info->id = p.id;
-        info->flags = CLAP_PARAM_IS_AUTOMATABLE;
+        // Link and Sync change what Ratio, Difference and Left mean; the face re-bases them
+        // so nothing moves, which automation could not, so they are not automatable.
+        info->flags = p.id == link || p.id == sync ? 0 : CLAP_PARAM_IS_AUTOMATABLE;
         info->flags |= p.stepped ? CLAP_PARAM_IS_STEPPED : CLAP_PARAM_IS_MODULATABLE;
         if (!enumNames(p.id).empty())
             info->flags |= CLAP_PARAM_IS_ENUM;
@@ -182,7 +160,6 @@ static const clap_plugin_params_t extensionParams = {
         const double parsed = strtod(text, &end);
         if (end == text || !std::isfinite(parsed))
             return false;
-        // The unit is optional: "350", "350 ms" and "350ms" all read as 350.
         while (*end == ' ')
             end++;
         if (!strcmp(p->unit, "ms") && (end[0] == 'm' || end[0] == 'M') && (end[1] == 's' || end[1] == 'S'))
@@ -215,7 +192,6 @@ static const clap_plugin_latency_t extensionLatency = {
     .get = [](const clap_plugin_t *_plugin) -> uint32_t { return 0; },
 };
 
-// The repeats ring on after the input stops: as long as the engine says.
 static const clap_plugin_tail_t extensionTail = {
     .get = [](const clap_plugin_t *_plugin) -> uint32_t
     {
@@ -227,7 +203,6 @@ static const clap_plugin_tail_t extensionTail = {
     },
 };
 
-// All of `size` bytes, however the host splits the writes.
 static bool writeAll(const clap_ostream_t *stream, const void *data, uint64_t size)
 {
     const char *bytes = (const char *)data;
@@ -242,9 +217,6 @@ static bool writeAll(const clap_ostream_t *stream, const void *data, uint64_t si
     return true;
 }
 
-// The state is State above, written as it lies in memory. Nothing is applied
-// until the whole of it is known good, so a corrupt state leaves the plugin
-// exactly as it was.
 static const clap_plugin_state_t extensionState = {
     .save = [](const clap_plugin_t *_plugin, const clap_ostream_t *stream) -> bool
     {
@@ -281,9 +253,6 @@ static const clap_plugin_state_t extensionState = {
     },
 };
 
-// The factory presets (Presets.h) ship inside the plugin: the preset discovery
-// factory at the end of this file lists them under one location with no path,
-// and this loads one by its key.
 static const clap_plugin_preset_load_t extensionPresetLoad = {
     .from_location = [](const clap_plugin_t *_plugin, uint32_t kind, const char *location, const char *key) -> bool
     {
@@ -304,14 +273,10 @@ static const clap_plugin_preset_load_t extensionPresetLoad = {
     },
 };
 
-// The page, in resources/page. clap.webview gives it to the host: its start
-// URI, its files, and messages from it. Hosts that show pages themselves use
-// this directly; for the others, webview::Gui (behind clap.gui below) shows
-// the same page through this same table.
 static const clap_plugin_webview_t extensionWebview = {
     .get_uri = [](const clap_plugin_t *_plugin, char *uri, uint32_t capacity) -> int32_t
     {
-        static const char start[] = "/page/index.html"; // in resources/
+        static const char start[] = "/page/index.html";
         if (capacity)
             snprintf(uri, capacity, "%s", start);
         return sizeof(start); // including the terminating zero
@@ -335,8 +300,6 @@ static const clap_plugin_webview_t extensionWebview = {
     },
 };
 
-// clap.gui: size policy is ours; creating and embedding the page is webview::Gui's.
-// The face narrows by width inside its own canvas, down to the minimum.
 #define GUI_MIN_WIDTH (640)
 #define GUI_MIN_HEIGHT (460)
 
@@ -364,7 +327,7 @@ static const clap_plugin_gui_t extensionGui = {
     },
 
     .set_scale = [](const clap_plugin_t *_plugin, double scale) -> bool
-    { return false; }, // WebViews scale their content themselves
+    { return false; },
 
     .get_size = [](const clap_plugin_t *_plugin, uint32_t *width, uint32_t *height) -> bool
     {
@@ -418,26 +381,13 @@ static const clap_plugin_gui_t extensionGui = {
     { return ((MyPlugin *)_plugin->plugin_data)->gui.hide(); },
 };
 
-// Linux's native WebView needs a main-thread timer; see webview::Gui::onTimer.
 static const clap_plugin_timer_support_t extensionTimerSupport = {
     .on_timer = [](const clap_plugin_t *_plugin, clap_id timerId)
     { ((MyPlugin *)_plugin->plugin_data)->gui.onTimer(timerId); },
 };
 
-// Messages between the page and the plugin (main thread only). The page never
-// touches the plugin itself, and the plugin never knows how the face is drawn.
-//   page -> plugin  {type: "ready"}
-//                   {type: "begin" | "end", id}       a drag starts or ends
-//                   {type: "value", id, value}
-//                   {type: "visual"}                  on each animation frame
-//   plugin -> page  {type: "metadata", parameters: [{id, identifier, name, unit,
-//                     min, max, initial, step, digits, mid, curve, options}]}
-//                   {type: "values", values: [value per parameter id]}
-//                   {type: "visual", bpm, wobble: [l, r]}  the host's tempo, and how far
-//                                                     the Mod's wobble has each line now
 static void PluginSendMetadata(MyPlugin *plugin)
 {
-    // The face hard-codes no ranges, so the table travels to it whole.
     core::Value::Array list;
     for (const auto &p : parameters)
     {
@@ -467,7 +417,7 @@ static bool PluginReceiveMessage(MyPlugin *plugin, const core::Value &message)
     if (type == "ready")
     {
         plugin->uiReady.store(true, std::memory_order_release);
-        plugin->sentBpm = 0; // a new page has no tempo yet
+        plugin->sentBpm = 0;
         PluginSendMetadata(plugin);
         PluginSendValues(plugin);
         return true;
@@ -475,8 +425,6 @@ static bool PluginReceiveMessage(MyPlugin *plugin, const core::Value &message)
 
     if (type == "visual")
     {
-        // The face needs the host's tempo, for Sync, and the lines' wobble as the
-        // engine has it, so the picture moves with what is heard; both are small.
         const double bpm = plugin->engine.bpm();
         const double l = plugin->engine.wobble(0), r = plugin->engine.wobble(1);
         if (bpm != plugin->sentBpm || l != plugin->sentWobble[0] || r != plugin->sentWobble[1])
@@ -510,7 +458,6 @@ static bool PluginReceiveMessage(MyPlugin *plugin, const core::Value &message)
     else
         return false;
 
-    // The host then calls process() or flush(), which send these to the host.
     if (plugin->hostParams)
         plugin->hostParams->request_flush(plugin->host);
     plugin->host->request_process(plugin->host);
@@ -523,8 +470,6 @@ static void PluginSetValue(MyPlugin *plugin, clap_id id, double value)
     plugin->revision.fetch_add(1, std::memory_order_release);
 }
 
-// After the main thread changes values: tell the page, the host's parameter
-// views, its idea of whether the project is saved, and the audio thread.
 static void PluginNotifyValuesChanged(MyPlugin *plugin)
 {
     if (!plugin->valuesDirty.exchange(true, std::memory_order_acq_rel))
@@ -566,13 +511,11 @@ static void PluginApplyEvent(MyPlugin *plugin, const clap_event_header_t *event)
     if (event->type != CLAP_EVENT_PARAM_VALUE || event->size < sizeof(clap_event_param_value_t))
         return;
     const auto *p = (const clap_event_param_value_t *)event;
-    // Only global values: nothing here is per note, port or channel.
     if (!findParameter(p->param_id) || p->note_id >= 0 || p->port_index >= 0 || p->channel >= 0 || p->key >= 0)
         return;
     PluginSetValue(plugin, p->param_id, p->value);
     plugin->engine.set((Parameter)p->param_id, plugin->values[p->param_id].load(std::memory_order_relaxed));
 
-    // Tell the page on the main thread (see on_main_thread).
     if (!plugin->valuesDirty.exchange(true, std::memory_order_acq_rel))
         plugin->host->request_callback(plugin->host);
 }
@@ -589,7 +532,6 @@ static void PluginSendGesture(const clap_output_events_t *out, clap_id id, uint1
     out->try_push(out, &event.header);
 }
 
-// The page's edits, out to the host: begin, then the value, then end.
 static void PluginSyncMainToAudio(MyPlugin *plugin, const clap_output_events_t *out)
 {
     if (!out)
@@ -623,7 +565,6 @@ static void PluginSyncMainToAudio(MyPlugin *plugin, const clap_output_events_t *
     }
 }
 
-// A channel of a bus in the host's sample size; null if the bus lacks it.
 template <typename Sample>
 static Sample *PluginChannel(const clap_audio_buffer_t &buffer, uint32_t index)
 {
@@ -648,7 +589,6 @@ static void PluginRenderAudio(MyPlugin *plugin, const clap_process_t *process, u
                            outL ? outL + start : nullptr, outR ? outR + start : nullptr, end - start);
 }
 
-// Renders in 32 bits if the host gave 32-bit outputs, else in 64.
 static void PluginRender(MyPlugin *plugin, const clap_process_t *process, uint32_t start, uint32_t end)
 {
     if (PluginChannel<float>(process->audio_outputs[0], 0))
@@ -682,7 +622,7 @@ static const clap_plugin_t pluginClass = {
         if (!(sampleRate > 0))
             return false;
         plugin->sampleRate = sampleRate;
-        plugin->engine.prepare(sampleRate); // allocates the lines
+        plugin->engine.prepare(sampleRate);
         plugin->appliedRevision = 0;
         PluginPushValues(plugin);
         return true;
@@ -712,9 +652,8 @@ static const clap_plugin_t pluginClass = {
 
         PluginSyncMainToAudio(plugin, process->out_events);
         PluginReadTempo(plugin, process->transport);
-        PluginPushValues(plugin); // the page's edits, state and presets reach the engine here
+        PluginPushValues(plugin);
 
-        // Each event applies before the sample at its time.
         const clap_input_events_t *in = process->in_events;
         const uint32_t eventCount = in ? in->size(in) : 0;
         uint32_t frame = 0;
@@ -768,9 +707,6 @@ static const clap_plugin_t pluginClass = {
     },
 };
 
-// The factory presets, for hosts that browse presets: one provider, which
-// declares a single factory-content location with no path (the presets live
-// in the plugin) and hands the indexer Presets.h's table.
 static const clap_preset_discovery_provider_descriptor_t presetProviderDescriptor = {
     .clap_version = CLAP_VERSION_INIT,
     .id = "com.charlieculbert.slide-lab.presets",
@@ -843,7 +779,6 @@ static const clap_preset_discovery_factory_t presetDiscoveryFactory = {
     },
 };
 
-// What entry.cpp needs.
 const clap_plugin_descriptor_t *getPluginDescriptor()
 {
     return &pluginDescriptor;

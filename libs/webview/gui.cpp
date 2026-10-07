@@ -5,8 +5,6 @@
 #include <TargetConditionals.h>
 #endif
 
-// A native WebView (CHOC) on desktop. WCLAP hosts show the page themselves,
-// and iOS has no native view here yet.
 #if !defined(__wasm__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
 #define WEBVIEW_NATIVE 1
 #endif
@@ -42,8 +40,6 @@ struct NativeView
 {
     std::unique_ptr<choc::ui::WebView> view;
     void *attachment = nullptr;
-    // CHOC starts loading before it lets us install the bridge (and WebView2
-    // installs scripts asynchronously), so serve a blank page until then.
     bool bridgeInstalled = false;
 
     ~NativeView()
@@ -116,7 +112,7 @@ bool Gui::create(const char *api, bool floating)
     if (created || !isApiSupported(api, floating)) return false;
     if (std::strcmp(api, CLAP_WINDOW_API_WEBVIEW) == 0)
     {
-        created = true; // the host owns and shows the WebView
+        created = true;
         return true;
     }
 #if WEBVIEW_NATIVE
@@ -130,7 +126,7 @@ bool Gui::create(const char *api, bool floating)
 #endif
     options.acceptsFirstMouseClick = true;
 #ifndef NDEBUG
-    options.enableDebugMode = true; // right-click > Inspect
+    options.enableDebugMode = true;
 #endif
     options.fetchResource = [this, state](const std::string &path)
         -> std::optional<choc::ui::WebView::Options::Resource> {

@@ -2,8 +2,6 @@
 #include <cstdint>
 #include <cstring>
 
-// CBOR (RFC 8949) subset: null, booleans, integers and floats (read as
-// double), text strings, arrays, and maps with text keys. Definite lengths only.
 namespace core {
 
 const Value &Value::operator[](std::string_view key) const
@@ -26,7 +24,6 @@ std::string_view Value::text() const
     return v ? std::string_view(*v) : std::string_view();
 }
 
-// ---- Encoding
 
 static void writeHead(std::vector<unsigned char> &out, unsigned major, uint64_t n)
 {
@@ -44,7 +41,7 @@ static void write(std::vector<unsigned char> &out, const Value &value)
     {
         uint64_t bits;
         std::memcpy(&bits, d, 8);
-        out.push_back(0xfb); // always float64: exact, and simple to read back
+        out.push_back(0xfb);
         for (int i = 7; i >= 0; --i) out.push_back((unsigned char)(bits >> (8 * i)));
     }
     else if (auto s = std::get_if<std::string>(&value.data))
@@ -76,7 +73,6 @@ std::vector<unsigned char> encode(const Value &value)
     return out;
 }
 
-// ---- Decoding: every length is checked against the bytes that remain.
 
 namespace {
 struct Reader
@@ -129,7 +125,7 @@ struct Reader
                 value = d;
                 return true;
             }
-            default: return false; // undefined, half floats, other simple values
+            default: return false;
             }
         }
 
@@ -147,7 +143,7 @@ struct Reader
             return true;
         }
         case 4: {
-            if (n > remaining()) return false; // each item needs at least one byte
+            if (n > remaining()) return false;
             Value::Array array;
             for (uint64_t i = 0; i < n; ++i)
                 if (!read(array.emplace_back(), depth + 1)) return false;
@@ -167,7 +163,7 @@ struct Reader
             value = std::move(map);
             return true;
         }
-        default: return false; // byte strings and tags are not part of this protocol
+        default: return false;
         }
     }
 };

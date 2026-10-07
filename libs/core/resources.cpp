@@ -4,7 +4,7 @@
 #include <iterator>
 
 #if defined(_WIN32)
-#define NOMINMAX // keep std::min usable
+#define NOMINMAX
 #include <windows.h>
 #elif !defined(__wasi__)
 #include <dlfcn.h>
@@ -54,7 +54,7 @@ void initResources(const char *entryPath)
     (void)entryPath;
     const auto binary = thisBinary();
     const auto folder = binary.parent_path();
-    if (folder.parent_path().filename() == "Contents") // <bundle>/Contents/<MacOS|x86_64-win|...>/
+    if (folder.parent_path().filename() == "Contents")
         root() = folder.parent_path() / "Resources";
     else
         root() = folder / (binary.filename() += ".resources");
@@ -93,7 +93,6 @@ std::optional<Resource> readResource(std::string_view urlPath)
     urlPath = urlPath.substr(0, urlPath.find_first_of("?#"));
     if (root().empty() || urlPath.empty() || urlPath[0] != '/') return {};
 
-    // Percent-decode, then accept only plain relative segments.
     std::string decoded;
     for (size_t i = 1; i < urlPath.size(); ++i)
     {
@@ -123,9 +122,6 @@ std::optional<Resource> readResource(std::string_view urlPath)
     }
 
 #if !defined(__wasi__)
-    // Opening a directory can succeed and read as empty, so check first.
-    // Not in WASI: the WCLAP hosts' WASI (wclap-host-js) reports file and
-    // directory types swapped, so this check would reject every file.
     std::error_code error;
     if (!std::filesystem::is_regular_file(file, error)) return {};
 #endif

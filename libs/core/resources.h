@@ -4,14 +4,6 @@
 #include <string>
 #include <string_view>
 
-// Reads the files a plugin ships with it: its resources/ folder (a web page in
-// page/, fonts, images, sounds...), which core_ship_resources copies into each
-// format. Nothing here knows about any plugin.
-//
-// Where the folder lives:
-//   macOS bundles, VST3 bundles     <bundle>/Contents/Resources/
-//   loose binaries (Win/Linux .clap) <binary>.resources/
-//   WCLAP                           <bundle>/resources/
 namespace core {
 
 // Call from clap_entry.init. Native builds find the binary that contains this

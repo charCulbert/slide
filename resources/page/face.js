@@ -1,20 +1,3 @@
-// <slide-face> — the whole face on one canvas: the picture of the echoes in the
-// middle, every parameter on a rail around it, and most of them draggable in the
-// picture too, each gesture level with its rail.
-//
-// The picture: two lines, left (L) and right (R), each a row of echoes. L is the
-// stock and R the slide, R's time held to L's by a ratio or a difference. The
-// band from the first echo to the glass is the loop; before it is the input's (Pre
-// blur), after the glass the output's (Post blur). The glass sits on the tail:
-// sideways is Repeats, up and down is Tone.
-//
-// Every number the face needs about a parameter — range, step, curve, midpoint,
-// option words — arrives through setMetadata; nothing about the parameter set is
-// written down here except which identifier each gesture moves. Continuous
-// parameters are compost value controls sharing the canvas as their event target,
-// so keyboard, ARIA and the gesture lifecycle come from compost and every change
-// leaves as a normal compost parameter event. Link, Sync and the Mod type are compost
-// buttons laid over the canvas where their chips are drawn.
 
 import './compost/components/compost-button.js';
 import {createValueControl} from './compost/value-control.js';
@@ -22,8 +5,6 @@ import * as laws from './laws.js';
 
 const MONO = '"IBM Plex Mono", ui-monospace, monospace';
 
-// The discrete parameters. Each is drawn on the canvas, with its compost button laid
-// over the drawing, invisible, for the keyboard and screen readers.
 const CHIPS = [
   {id: 'mod_type', mode: 'cycle'},
   {id: 'sync', mode: 'switch'},
@@ -31,7 +12,6 @@ const CHIPS = [
 ];
 const CHIP_IDS = CHIPS.map(chip => chip.id);
 
-// Note values in beats, for Sync's snapping and names.
 const NOTES = [[1 / 48, '1/128T'], [1 / 32, '1/128'], [1 / 24, '1/64T'], [3 / 64, '1/128D'], [1 / 16, '1/64'],
   [1 / 12, '1/32T'], [3 / 32, '1/64D'], [1 / 8, '1/32'], [1 / 6, '1/16T'], [3 / 16, '1/32D'], [1 / 4, '1/16'],
   [1 / 3, '1/8T'], [3 / 8, '1/16D'], [1 / 2, '1/8'], [2 / 3, '1/4T'], [3 / 4, '1/8D'], [1, '1/4'],
@@ -40,18 +20,13 @@ const NOTES = [[1 / 48, '1/128T'], [1 / 32, '1/128'], [1 / 24, '1/64T'], [3 / 64
 
 const RATIO_NAMES = ['1:4', '1:3', '1:2', '2:3', '3:4', '1:1', '5:4', '4:3', '3:2', 'φ', '2:1', '3:1', '4:1'];
 const NICE = laws.niceRatios.map((r, i) => [r, RATIO_NAMES[i]]);
-// The ratios that claim label space first on R's rail, most common first.
 const RAIL_RATIOS = ['1:1', '2:1', '1:2', '3:2', '2:3', '3:1', '4:3', '3:4', 'φ', '1:3', '4:1', '1:4', '5:4'];
 
-// Names are set in a condensed grotesque, like a rule's engraving; numbers and
-// readouts are mono.
 const NAMES = '"Barlow Semi Condensed", "IBM Plex Sans Condensed", system-ui, sans-serif';
 const MOD_AMOUNTS = ['mod_a', 'mod_b', 'mod_c'];
 
-// The axis runs to two minutes; a longer tail pins the glass to the edge.
 const AXIS_MAX = 120000;
 
-// Which picture key each parameter identifier lights, for keyboard focus.
 const FOCUS = {left_time: 'L', left_beats: 'L', ratio: 'R', difference: 'R', repeats: 'repeats',
   pre_blur: 'pre', loop_blur: 'loop', post_blur: 'post', tone: 'tone', mix: 'mix', mod_a: 'mod', mod_b: 'mod',
   mod_c: 'mod', cross: 'cross', feed: 'feed'};
@@ -62,8 +37,6 @@ const fmt = ms => ms >= 60000 ? `${(ms / 60000).toFixed(1)} min`
   : ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 1 : 2)} s` : `${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`;
 const fmtCount = n => n < 10 ? n.toFixed(1) : `${Math.round(n)}`;
 
-// The time axis: log from 10 ms to two minutes across the whole width, one scale
-// throughout, so echoes close up evenly however long the tail runs.
 function timeAxis(x0, x1) {
   const lo = laws.minTimeMs, dec = Math.log10(AXIS_MAX / lo);
   const X = t => x0 + Math.log10(clamp(t, lo, AXIS_MAX) / lo) / dec * (x1 - x0);
@@ -98,16 +71,16 @@ export class SlideFace extends HTMLElement {
     this.chipHost = root.querySelector('.chips');
     this.controlHost = root.querySelector('.controls');
 
-    this.meta = new Map();      // identifier -> parameter spec
-    this.metaByID = new Map();  // id -> spec
-    this.controls = new Map();  // identifier -> compost value control
-    this.buttons = new Map();   // identifier -> compost-button
-    this.zones = [];            // hit rectangles, device px, back to front
+    this.meta = new Map();
+    this.metaByID = new Map();
+    this.controls = new Map();
+    this.buttons = new Map();
+    this.zones = [];
     this.rect = null;
     this.hover = null;
     this.drag = null;
     this.focusZone = null;
-    this.held = 0;              // the snap lock's held ratio
+    this.held = 0;
     this.theme = {};
     this.themeDirty = true;
     this.dirty = true;
@@ -130,12 +103,8 @@ export class SlideFace extends HTMLElement {
     addEventListener('scroll', () => { this.rect = null; }, true);
   }
 
-  // Moving the face from one parent to another disconnects and reconnects it. Both
-  // callbacks must therefore be reversible: they start and stop the clock and the
-  // observers, and never touch the value controls, whose ARIA and gesture state have
-  // to survive the move. The canvas's own listeners are wired once, in the constructor.
   connectedCallback() {
-    if (!this.hasAttribute('tabindex')) this.tabIndex = 0; // so a clicked control can be typed into
+    if (!this.hasAttribute('tabindex')) this.tabIndex = 0;
     this.resizeObserver = new ResizeObserver(() => { this.rect = null; this.invalidate(); });
     this.resizeObserver.observe(this.canvas);
     this.scheme = matchMedia('(prefers-color-scheme: dark)');
@@ -147,7 +116,6 @@ export class SlideFace extends HTMLElement {
     const tick = () => {
       this.raf = requestAnimationFrame(tick);
       this.now = performance.now() / 1000;
-      // render() reports false while the view has no box; stay dirty until it does.
       if (this.dirty || this.moving()) this.dirty = !this.render();
     };
     this.raf = requestAnimationFrame(tick);
@@ -161,7 +129,6 @@ export class SlideFace extends HTMLElement {
 
   invalidate() { this.dirty = true; }
 
-  // ---- metadata, values, telemetry -----------------------------------------
 
   /** The parameter table, as the plugin's handshake sent it. */
   setMetadata(list) {
@@ -247,7 +214,6 @@ export class SlideFace extends HTMLElement {
     }
   }
 
-  // ---- reading and writing values ------------------------------------------
 
   val(identifier) {
     const control = this.controls.get(identifier);
@@ -264,18 +230,13 @@ export class SlideFace extends HTMLElement {
 
   initial(identifier) { return this.meta.get(identifier)?.initial ?? 0; }
 
-  /** Inside a drag: the first write to a parameter opens its gesture, and the drag's
-   * end closes every gesture it opened. Outside one, a write is a complete edit:
-   * begin, value, end, and nothing at all when the value is unchanged. */
   write(identifier, value) {
     const control = this.controls.get(identifier);
     if (!control) return;
-    control.setValue(value, true, 'face'); // compost clamps, snaps, skips no-ops and opens the gesture
+    control.setValue(value, true, 'face');
     if (this.drag) this.drag.started.add(identifier); else control.endGesture(false, 'face');
   }
 
-  /** A chip that changes what the times mean re-bases them first, so nothing on
-   * screen or in the sound moves: Link and Sync both keep both lines put. */
   chipChanged(id) {
     const [l, r] = this.lastTimes ?? this.times();
     if (id === 'link') { this.write('ratio', r / l); this.write('difference', r - l); }
@@ -283,7 +244,6 @@ export class SlideFace extends HTMLElement {
     this.invalidate();
   }
 
-  // ---- the parameters in the picture's units -------------------------------
 
   bpm() { return this.frame.bpm > 0 ? this.frame.bpm : 120; }
   beatMs() { return 60000 / this.bpm(); }
@@ -312,26 +272,19 @@ export class SlideFace extends HTMLElement {
     return {beats: best[0], name: best[1], ms: best[0] * this.beatMs()};
   }
 
-  /** A time as the reader wants it: under Sync, its nearest note, with a ~ when it
-   * is not on it (Sync keeps the setting rather than snapping it). */
   nameT(ms) {
     if (!this.sync()) return fmt(ms);
     const n = this.nearestNote(ms);
     return Math.abs(Math.log(n.ms / ms)) < 0.003 ? n.name : `~${n.name}`;
   }
 
-  /** What R reads as: its note under Sync with Ratio, otherwise its relation to L
-   * (under Sync with Diff, L is on the grid and R a fixed offset from it). */
   relWord() {
     const [l, r] = this.times();
     if (this.sync() && this.ratioMode()) return this.nameT(r);
     return this.ratioMode() ? `L × ${ratioName(r / l)}` : `L ${r - l >= 0 ? '+' : '−'} ${fmt(Math.abs(r - l))}`;
   }
 
-  // ---- moving the times -----------------------------------------------------
 
-  /** Writes L's own time in the units Sync stores; under Sync it snaps to the
-   * nearest note unless `free`. */
   writeLeft(ms, free) {
     const t = clamp(ms, laws.minTimeMs, laws.maxTimeMs);
     if (this.sync()) this.write('left_beats', free ? t / this.beatMs() : this.nearestNote(t).beats);
@@ -345,8 +298,6 @@ export class SlideFace extends HTMLElement {
     return s.value;
   }
 
-  /** Moves L alone: R stays where it was at the start of the drag, and the relation
-   * follows. Under Sync L snaps to notes; otherwise the ratio snaps to nice ones. */
   moveL(ms, rFixed, free) {
     const [rMin, rMax] = this.range('ratio');
     let l = clamp(ms, laws.minTimeMs, laws.maxTimeMs);
@@ -363,16 +314,14 @@ export class SlideFace extends HTMLElement {
     }
   }
 
-  /** Moves R alone: the relation changes, L stays. */
   moveR(ms, free) {
     const l = this.times()[0], r = clamp(ms, laws.minTimeMs, laws.maxTimeMs);
     const [rMin, rMax] = this.range('ratio');
-    if (this.ratioMode()) // under Sync, R snaps to notes; otherwise to nice ratios
+    if (this.ratioMode())
       this.write('ratio', clamp(this.sync() ? (free ? r : this.nearestNote(r).ms) / l : this.snapRatio(r / l, free), rMin, rMax));
     else this.write('difference', r - l);
   }
 
-  /** Moves both: L goes, and R keeps its ratio or difference to it. */
   moveBoth(ms, free) {
     const ratio = this.val('ratio'), diff = this.val('difference');
     const lo = this.ratioMode() ? Math.max(laws.minTimeMs, laws.minTimeMs / ratio) : Math.max(laws.minTimeMs, laws.minTimeMs - diff);
@@ -388,20 +337,13 @@ export class SlideFace extends HTMLElement {
     this.write('difference', r - l);
   }
 
-  // R's reset puts it on L: a 1:1 ratio, no difference
   resetR() { this.write('ratio', 1); this.write('difference', 0); }
 
-  // ---- the picture's model --------------------------------------------------
 
-  /** Every echo, as the engine makes them: routes through L (i passes) and R (j
-   * passes) land at i·L + j·R. */
   echoes() {
     const [TA, TB] = this.times(), x = this.percent('cross'), f = this.percent('feed');
     const g = laws.passGain(this.repeats(), x, TA, TB);
     const out = [], heap = [], key = new Map(), FLOOR = Math.pow(10, -66 / 20);
-    // each route is its own echo, even where routes land together at a nice ratio, so
-    // the picture draws a ratio and its near neighbours the same way and nothing pops
-    // as a drag snaps on or off one (each pixel column shows its loudest echo)
     const K = e => `${e.line}:${e.i}:${e.j}`;
     const up = i => { while (i > 0) { const p = (i - 1) >> 1; if (heap[p].t <= heap[i].t) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
     const down = i => { for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
@@ -427,12 +369,8 @@ export class SlideFace extends HTMLElement {
 
   recipe() { return laws.recipeAt(this.modType(), this.modAmount() / 100); }
 
-  /** True while the Mod is moving the echoes, so the picture keeps redrawing. */
   moving() { return this.meta.size > 0 && this.recipe().sine > 0; }
 
-  /** How far the Mod's wobble has each line's time now, as a fraction of it: the
-   * engine's own, random part and all, when it sends it; otherwise (no plug-in, as
-   * in the tests) the slow sine alone, by the same law on the face's clock. */
   wobbleNow() {
     if (this.frame.wobble) return this.frame.wobble;
     const rec = this.recipe(), times = this.times();
@@ -440,11 +378,6 @@ export class SlideFace extends HTMLElement {
       * laws.wobbleReferenceMs(times[line]) / times[line]);
   }
 
-  /** How an echo looks after its passes through the loop's filters, in either
-   * theme: losing highs (the Mod's loss, Tone's dark side) makes it darker and a
-   * little heavier, losing lows (Tone's thin side) brighter and finer. Both grow over
-   * the first few passes. Returns a width factor and a tint from -1 (towards black)
-   * to +1 (towards white). */
   shadeOf(e) {
     const cuts = laws.toneCuts(this.val('tone') / 100);
     const hc = Math.min(this.recipe().lossHz, cuts.highCutHz);
@@ -454,14 +387,11 @@ export class SlideFace extends HTMLElement {
     return {width: Math.max(0.4, 1 + 0.8 * dark * p - 0.55 * thin * p), tint: (thin - dark) * p};
   }
 
-  /** How wide an echo's smear is drawn: Pre and Post evenly on every echo, Loop
-   * growing pass by pass. */
   smearOf(e) {
     const pre = 0.7 * this.percent('pre_blur'), loop = 0.7 * this.percent('loop_blur'), post = 0.7 * this.percent('post_blur');
     return 7 * pre + 9 * post + 4 * loop * Math.sqrt(e.n) * (1 + loop);
   }
 
-  // ---- drawing --------------------------------------------------------------
 
   readTheme() {
     if (!this.themeDirty) return;
@@ -471,8 +401,6 @@ export class SlideFace extends HTMLElement {
     this.themeDirty = false;
   }
 
-  /** The parameters the zone under the pointer (or in hand) moves, so their rails
-   * light up; keyboard focus lights its own. */
   hotParams() {
     const z = this.drag ? this.drag.z : this.zones.find(q => q.key === this.hover);
     if (z) return new Set(this.drag && z.byAxis && this.drag.axis ? [z.byAxis[this.drag.axis]] : z.params || []);
@@ -481,9 +409,6 @@ export class SlideFace extends HTMLElement {
     return new Set(focus ? [focus] : []);
   }
 
-  /** Draws the face, and reports whether it could. A plug-in window starts with no
-   * size at all, so a view with no box is not drawn: the bitmap would not match what
-   * is on screen, and the ResizeObserver asks again the moment there is a box. */
   render() {
     if (!this.meta.size) return false;
     const box = this.rect || (this.rect = this.canvas.getBoundingClientRect());
@@ -495,7 +420,6 @@ export class SlideFace extends HTMLElement {
     this.readTheme();
     const g = this.g, T = this.theme;
     g.clearRect(0, 0, W, H);
-    // what is lit comes from the zones as last drawn, before they are drawn again
     this.lit = this.hotParams();
     this.zones = [];
     this.drawFace(W, H, dpr, g, T);
@@ -511,20 +435,15 @@ export class SlideFace extends HTMLElement {
     const tri = (x, y, s, up, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(x - s, y); g.lineTo(x + s, y);
       g.lineTo(x, up ? y - s * 1.3 : y + s * 1.3); g.closePath(); g.fill(); };
     const rect = (x, y, w, h, col, a = 1) => { g.fillStyle = col; g.globalAlpha = a; g.fillRect(x, y, w, h); g.globalAlpha = 1; };
-    // Names start with a capital and are set in NAMES; the scale letters L and R are
-    // mono capitals, as on a rule.
     const name = (s, x, y, col, size = 9.5, align = 'center', base = 'middle') => {
       if (/^[LR]$/.test(s)) tx(s, x, y, col, size + 0.5, align, base, MONO, 500);
       else tx(s, x, y, col, size + 0.5, align, base, NAMES, 500);
     };
-    // A compost button laid over a drawn control, at its box in device pixels.
     const overlay = (id, x, y, w, h) => {
       const b = this.buttons.get(id);
       if (b) Object.assign(b.style, {left: `${x / dpr}px`, top: `${y / dpr}px`, width: `${w / dpr}px`, height: `${h / dpr}px`});
       return b;
     };
-    // A label on a scale: it is left out rather than drawn over another label of the
-    // same row, so a crowded scale thins its numbers instead of smudging them.
     const taken = new Map();
     const label = (s, x, y, col, size, align = 'center', base = 'bottom', gap = 4) => {
       g.font = `400 ${Math.round(size * dpr)}px ${MONO}`;
@@ -537,7 +456,6 @@ export class SlideFace extends HTMLElement {
     };
     const dash = (x1, y1, x2, y2) => { g.setLineDash([3 * dpr, 3 * dpr]); ln(x1, y1, x2, y2, T.acc, 1, 0.75); g.setLineDash([]); };
 
-    // An engraved rail: fine graduations, 0/50/100 at the majors, and a handle.
     const hRail = (x0, x1, y, value01, label, readout, on, ticks = 10, ends) => {
       ln(x0, y, x1, y, T.hair, 1, on ? 1 : 0.7);
       const n = ticks * 5;
@@ -557,8 +475,6 @@ export class SlideFace extends HTMLElement {
       ln(x - 11 * dpr, hy, x + 11 * dpr, hy, on ? T.acc : T.ink, on ? 2.4 : 1.6);
       name(top, x, y0 - 8 * dpr, T.dim, 9, 'center', 'bottom'); name(bottom, x, y1 + 8 * dpr, T.dim, 9, 'center', 'top');
     };
-    // A blur rail: its graduations smear more the higher they sit, sharp at the foot
-    // and blurred at the head, with the same handle as every other rail.
     const blurRail = (x, y0, y1, value01, title, on) => {
       for (let i = 0; i <= 24; i++) {
         const u = i / 24, y = y1 - u * (y1 - y0), sm = u * u * 10 * dpr, n = 1 + Math.round(sm / (1.2 * dpr));
@@ -573,10 +489,9 @@ export class SlideFace extends HTMLElement {
       name('off', x, y1 + 8 * dpr, T.dim, 9, 'center', 'top');
     };
 
-    // ---- geometry: the picture keeps its width margins and stretches with height
     const X0 = 156 * dpr, X1 = W - 196 * dpr, top = 70 * dpr, bot = H - 160 * dpr, axisY = bot + 12 * dpr;
     const X = timeAxis(X0, X1), [TA, TB] = this.times(), mid = (top + bot) / 2, longer = Math.max(TA, TB);
-    const Xm = X(10000); // the L and R rails run to 10 s, past the longest time
+    const Xm = X(10000);
     this.lastTimes = [TA, TB];
     const cross = this.percent('cross'), feed = this.percent('feed'), tone = this.val('tone') / 100;
     const pre = this.percent('pre_blur'), loop = this.percent('loop_blur'), post = this.percent('post_blur');
@@ -585,9 +500,8 @@ export class SlideFace extends HTMLElement {
     const half = (bot - top) * 0.17, list = this.echoes(), xFirst = X(Math.min(TA, TB));
     const xTail = Math.min(X1, X(tail));
     const lit = this.lit, on = k => lit.has(k);
-    const vy = v => bot - (bot - top) * clamp(v, 0, 1); // the shared vertical scale
+    const vy = v => bot - (bot - top) * clamp(v, 0, 1);
     const held = this.drag ? this.drag.z.key : this.hover || '';
-    // while a rail is held or hovered, its gesture in the picture shows itself
     const fromRail = held.endsWith('Rail');
     const arrow = (x, y, vertical) => { if (!fromRail) return; const s = 9 * dpr;
       g.strokeStyle = T.acc; g.fillStyle = T.acc; g.lineWidth = 1.6 * dpr; g.beginPath();
@@ -597,23 +511,17 @@ export class SlideFace extends HTMLElement {
         else { g.moveTo(x + k * (s + 4 * dpr), y); g.lineTo(x + k * s, y - 4 * dpr); g.lineTo(x + k * s, y + 4 * dpr); }
         g.closePath(); g.fill(); } };
     const cw = 30 * dpr, gTop = top - 8 * dpr, gBot = axisY, afterX = Math.min(X1, xTail + cw / 2);
-    // Cross reads 0–100 up to the middle, where each echo splits equally between the
-    // lines, then on to 200, swap, where every echo changes line.
     const crossWord = () => cross > 0.995 ? 'swap' : `${Math.round(cross * 200)}`;
     const toneWord = () => Math.abs(tone) < 0.01 ? 'full' : `${tone < 0 ? 'dark' : 'thin'} ${Math.round(Math.abs(tone) * 100)}`;
     const feedWords = () => Math.abs(feed) < 0.005 ? 'into L and R' : feed <= -0.995 ? 'into L only' : feed >= 0.995 ? 'into R only'
       : feed < 0 ? `L 100 · R ${Math.round((1 + feed) * 100)}` : `L ${Math.round((1 - feed) * 100)} · R 100`;
 
-    // ---- top band: the name, Mod, Mix
     g.letterSpacing = `${(4 * dpr).toFixed(1)}px`;
     tx('Slide', 16 * dpr, 24 * dpr, T.ink, 13, 'left', 'middle', NAMES, 500);
     g.letterSpacing = '0px';
     const mix = this.percent('mix'), type = this.modType();
     const railX = (x0, x1, id) => ({cursor: 'ew-resize', move: p => this.write(id, clamp((p.x - x0) / (x1 - x0), 0, 1) * 100),
       dbl: () => this.write(id, this.initial(id))});
-    // Mod: one thin amount scale per type, stacked like a rule's A, B, C scales. Each
-    // keeps its own amount; the chosen one is engraved and carries the cursor, the
-    // others show where theirs was left. A row's letter picks it.
     g.font = `500 ${Math.round(10 * dpr)}px ${NAMES}`;
     name('Mod', 104 * dpr, 30 * dpr, T.dim, 9.5, 'left');
     const r0 = 104 * dpr + g.measureText('Mod').width + 34 * dpr, r1 = r0 + 140 * dpr, ys = [17, 30, 43].map(v => v * dpr);
@@ -636,25 +544,20 @@ export class SlideFace extends HTMLElement {
     const mr = [W - 170 * dpr, W - 50 * dpr];
     hRail(mr[0], mr[1], 30 * dpr, mix, 'Mix', `${Math.round(mix * 100)}`, on('mix'), 10, ['dry', 'wet']);
 
-    // ---- picture: before the echoes is the input's (Pre), the band is the loop's
-    // (Loop), after the glass is the output's (Post)
     if (on('pre')) rect(X0, top, Math.max(0, xFirst - X0), bot - top, T.acc, 0.07);
     rect(xFirst, top, Math.max(0, Math.min(xTail, X1) - xFirst), bot - top, T.band, on('loop') || (on('L') && on('R')) ? 0.95 : 0.55);
     if (on('post')) rect(afterX, top, Math.max(0, X1 - afterX), bot - top, T.acc, 0.07);
     for (const r of rows) ln(X0, r, X1, r, T.hair, 1, 0.6);
     this.drawEchoes(list, X, rows, half, X1, dpr, ln);
 
-    // axis: log from 10 ms to two minutes
     ln(X0, axisY, X1, axisY, T.hair);
     for (let d = 10; d < AXIS_MAX; d *= 10) for (let m = 1; m < 10; m++) { const v = d * m; if (v > AXIS_MAX) break;
       ln(X(v), axisY, X(v), axisY + (m === 1 ? 6 : m === 5 ? 3.5 : 2) * dpr, m === 1 ? T.ink2 : T.dim, m === 1 ? 1 : 0.6, m === 1 ? 1 : 0.6); }
     ln(X1, axisY, X1, axisY + 6 * dpr, T.ink2, 1);
-    // labels in order of importance: the ends and decades first, then what fits
     for (const [t, s] of [[10, '10 ms'], [AXIS_MAX, '2 min'], [100, '100'], [1000, '1 s'], [10000, '10 s'], [60000, '1 min'],
       [50, '50'], [500, '500'], [5000, '5 s']])
       label(s, X(t), axisY + 9 * dpr, T.dim, 9.5, 'center', 'top');
 
-    // pointers on the first echoes: sideways is time, up/down pulls the rows together
     for (const [line, t] of [[0, TA], [1, TB]]) {
       const x = X(t), k = line ? 'Rp' : 'Lp', hot = held === k || on(line ? 'R' : 'L') || on('cross');
       tri(x, line ? rows[1] + half + 4 * dpr : rows[0] - half - 4 * dpr, (hot ? 6.5 : 5) * dpr, line === 1, line ? T.lineb : T.ink);
@@ -662,7 +565,6 @@ export class SlideFace extends HTMLElement {
         line ? rows[1] + half + 16 * dpr : rows[0] - half - 14 * dpr, line ? T.lineb : T.ink, 11, 'left', 'middle', NAMES, 500);
     }
 
-    // the glass: a flat cursor window whose hairline is the tail (Repeats)
     const gx = Math.min(xTail, X1 - cw / 2), glassHot = on('repeats') || on('tone');
     rect(gx - cw / 2, gTop, cw, gBot - gTop, T.glass);
     g.strokeStyle = glassHot ? T.acc : T.ink2; g.lineWidth = (glassHot ? 1.4 : 1) * dpr; g.globalAlpha = 0.8;
@@ -670,14 +572,11 @@ export class SlideFace extends HTMLElement {
     rect(gx - cw / 2 - 2 * dpr, gTop - 5 * dpr, cw + 4 * dpr, 5 * dpr, T.ink2, 0.8);
     rect(gx - cw / 2 - 2 * dpr, gBot, cw + 4 * dpr, 5 * dpr, T.ink2, 0.8);
     ln(gx, gTop + 3 * dpr, gx, gBot - 3 * dpr, T.acc, on('repeats') ? 2.4 : 1.3);
-    // Tone: a level line inside the glass, level with its rail
     ln(gx - cw / 2, vy((tone + 1) / 2), gx + cw / 2, vy((tone + 1) / 2), on('tone') ? T.acc : T.ink2, on('tone') ? 2.2 : 1.2);
-    // Post: a level line across the space after the glass, the output's side
     if (afterX < X1) ln(afterX + 4 * dpr, vy(post), X1, vy(post), on('post') ? T.acc : T.ink2, on('post') ? 2 : 1, on('post') ? 1 : 0.5);
     if (on('repeats')) tx(`${fmtCount(repeats)} repeats · ${fmt(tail)}`,
       gx - cw / 2 - 8 * dpr, gTop + 12 * dpr, T.acc, 11, 'right', 'middle', NAMES, 500);
 
-    // gesture hints for whichever rail is in hand
     if (on('pre')) arrow((X0 + xFirst) / 2, vy(pre), true);
     if (on('loop')) arrow((xFirst + Math.min(xTail, X1)) / 2, vy(loop), true);
     if (on('post') && afterX < X1) arrow((afterX + X1) / 2, vy(post), true);
@@ -688,7 +587,6 @@ export class SlideFace extends HTMLElement {
     if (on('repeats')) arrow(gx, gTop - 12 * dpr, false);
     if (on('feed')) arrow(X0 - 70 * dpr, (rows[0] + rows[1]) / 2, true);
 
-    // ---- left: Pre blur, level with the space before the echoes, and the in line
     const px = X0 - 100 * dpr, fx = X0 - 44 * dpr;
     blurRail(px, top, bot, pre, 'Pre-blur', on('pre'));
     if (on('pre')) tx(`${Math.round(pre * 100)}`, px, top - 22 * dpr, T.acc, 10);
@@ -701,26 +599,19 @@ export class SlideFace extends HTMLElement {
     name('In', fx + 14 * dpr, fy, T.dim, 9.5, 'left');
     if (on('feed')) tx(feedWords(), fx + 30 * dpr, fy, T.ink, 11, 'left', 'middle', NAMES, 500);
 
-    // ---- right: Blur, Post-blur, Cross and Tone, each level with its gesture
     const loopX = X1 + 34 * dpr, postX = X1 + 74 * dpr, crossX = X1 + 114 * dpr, toneX = X1 + 154 * dpr;
     blurRail(loopX, top, bot, loop, 'Blur', on('loop'));
     if (on('loop')) { dash(Math.max(xFirst, X0), vy(loop), loopX - 11 * dpr, vy(loop)); tx(`${Math.round(loop * 100)}`, loopX, top - 22 * dpr, T.acc, 10); }
     blurRail(postX, top, bot, post, 'Post-blur', on('post'));
     if (on('post')) { dash(X1, vy(post), postX - 11 * dpr, vy(post)); tx(`${Math.round(post * 100)}`, postX, top - 22 * dpr, T.acc, 10); }
-    // Cross: a plain rail, 0 at the foot, an equal split at the middle, swap at the
-    // head. Its gesture is up and down on either line's pointer; the picture shows it
-    // as the rows' colours mixing and the ties between them.
     vRail(crossX, top, bot, cross, 'Cross', 'off', on('cross'));
     if (on('cross')) dash(X(TB) + 8 * dpr, vy(cross), crossX - 11 * dpr, vy(cross));
     if (on('cross')) tx(crossWord(), crossX, top - 22 * dpr, T.acc, 10);
     vRail(toneX, top, bot, (tone + 1) / 2, 'Thin', 'Dark', on('tone'));
     if (on('tone')) { const y = vy((tone + 1) / 2); dash(gx + cw / 2, y, toneX - 11 * dpr, y); tx(toneWord(), toneX, top - 22 * dpr, T.acc, 10); }
 
-    // ---- bottom rails: L time (with Sync), R relation (with Link), Repeats
     const rY = k => axisY + (46 + k * 38) * dpr;
     hRail(X0, Xm, rY(0), (X(TA) - X0) / (Xm - X0), 'L', this.nameT(TA), on('L'), 0);
-    // Sync and Link sit just after their readouts, beside what they change: Sync a
-    // toggle, Link a Ratio | Diff switch.
     {
       const sync = this.sync(), sx = Xm + 76 * dpr, h = 18 * dpr;
       g.font = `500 ${Math.round(10.5 * dpr)}px ${NAMES}`; const w = g.measureText('Sync').width + 14 * dpr;
@@ -731,13 +622,7 @@ export class SlideFace extends HTMLElement {
       zone({x: sx, y: rY(0) - h / 2, w, h, key: 'syncBtn', cursor: 'pointer',
         move: (p, d, dr) => { if (dr.done) return; dr.done = true; b?.setValue(sync ? 0 : 1, true, 'face'); }});
     }
-    // R's scale, on the time axis so its handle sits under R's first echo: a tick at
-    // every nice ratio (or a spread of differences) from L. Labels go on a lower tier,
-    // then an upper one, the common ratios first; one that fits on neither is left
-    // as a tick, and the picture names the ratio while R moves.
     const rx = X(TB);
-    // Under Sync with Ratio the scale is note values instead: plain notes first,
-    // dotted and triplet after.
     const plain = name => !name.endsWith('D') && !name.endsWith('T');
     const relTicks = this.sync() && this.ratioMode() ? NOTES.map(([beats, n]) => [beats * this.beatMs(), n]).filter(([ms]) => ms >= laws.minTimeMs && ms <= laws.maxTimeMs)
       .map(([ms, n]) => [X(ms), n, plain(n)])
@@ -770,7 +655,6 @@ export class SlideFace extends HTMLElement {
         lx += c.width;
       }
     }
-    // Repeats' rail ends where its top (1000) puts the tail, on the time axis
     const xRepMax = X(longer * laws.maxRepeats);
     ln(X0, rY(2), xRepMax, rY(2), T.hair, 1, on('repeats') ? 1 : 0.7);
     label('1000', xRepMax, rY(2) - 8 * dpr, T.dim, 9);
@@ -780,11 +664,8 @@ export class SlideFace extends HTMLElement {
     ln(xTail, rY(2) - 8 * dpr, xTail, rY(2) + 5 * dpr, on('repeats') ? T.acc : T.ink, on('repeats') ? 2.4 : 1.6);
     name('Repeats', X0 - 7 * dpr, rY(2), T.dim, 9.5, 'right'); tx(`${fmtCount(repeats)} ×`, X1 + 7 * dpr, rY(2), on('repeats') ? T.ink : T.ink2, 10, 'left');
 
-    // ---- zones, back to front
     const level = p => clamp((bot - p.y) / (bot - top), 0, 1);
     const toneAt = v => { const t = v * 2 - 1; return Math.abs(t) < 0.03 ? 0 : t * 100; };
-    // the count whose tail lands at x; the rail's end always means the top, even
-    // when that tail runs past the axis
     const repeatsAt = x => x >= xRepMax - dpr ? laws.maxRepeats : clamp(X.inv(x) / Math.max(...this.times()), 1, laws.maxRepeats);
     zone({x: mr[0] - 6 * dpr, y: 14 * dpr, w: mr[1] - mr[0] + 12 * dpr, h: 26 * dpr, key: 'mixRail', params: ['mix'], ...railX(mr[0], mr[1], 'mix')});
     zone({x: xFirst, y: top, w: Math.max(0, Math.min(xTail, X1) - xFirst), h: bot - top, key: 'band', lock: 'xy', cursor: 'move',
@@ -795,7 +676,6 @@ export class SlideFace extends HTMLElement {
       move: p => this.write('pre_blur', level(p) * 100), dbl: () => this.write('pre_blur', this.initial('pre_blur'))});
     if (afterX < X1) zone({x: afterX, y: top, w: X1 - afterX, h: bot - top, key: 'postZone', params: ['post'], cursor: 'ns-resize',
       move: p => this.write('post_blur', level(p) * 100), dbl: () => this.write('post_blur', this.initial('post_blur'))});
-    // up and down on a pointer is Cross: towards the other line raises it
     const crossBy = (sign, dr, d) => this.write('cross', clamp(dr.snap.cross + sign * d.dy / (bot - top), 0, 1) * 100);
     zone({x: X(TA) - 14 * dpr, y: top, w: 28 * dpr, h: rows[0] + half + 14 * dpr - top, key: 'Lp', lock: 'xy', cursor: 'move',
       params: ['L', 'cross'], byAxis: {x: 'L', y: 'cross'},
@@ -814,7 +694,6 @@ export class SlideFace extends HTMLElement {
     zone({x: fx - 18 * dpr, y: rows[0] - 10 * dpr, w: 50 * dpr, h: rows[1] - rows[0] + 20 * dpr, key: 'in', params: ['feed'], cursor: 'ns-resize',
       move: p => { const f = clamp(((p.y - rows[0]) / (rows[1] - rows[0])) * 2 - 1, -1, 1); this.write('feed', Math.abs(f) < 0.04 ? 0 : f * 100); },
       dbl: () => this.write('feed', 0)});
-    // the rails themselves
     const vZone = (x, key, id, set) => zone({x: x - 16 * dpr, y: top - 6 * dpr, w: 32 * dpr, h: bot - top + 12 * dpr, key: `${key}Rail`,
       params: [key], cursor: 'ns-resize', move: p => set(level(p)), dbl: () => this.write(id, this.initial(id))});
     vZone(px, 'pre', 'pre_blur', v => this.write('pre_blur', v * 100));
@@ -831,29 +710,18 @@ export class SlideFace extends HTMLElement {
       move: p => this.write('repeats', repeatsAt(p.x)), dbl: () => this.write('repeats', this.initial('repeats'))});
   }
 
-  /** Echoes as strokes around a row, the loudest per pixel column; a smear is drawn
-   * as several faint copies side by side. The model lists only so many echoes, so
-   * past the last one each line carries on as an envelope, so a long tail never just
-   * stops. The envelope starts at the level the listed echoes end on, falls at the
-   * rate they were falling, and is drawn the way they are, so the join does not show. */
   drawEchoes(list, X, rows, half, xMax, dpr, ln) {
     const T = this.theme;
-    // An echo keeps the colour of the line it started on, mixed by how much of it
-    // came from each, so Cross shows as the rows mixing; Tone then tints it.
     const colourOf = (e, shade) => {
       const s = clamp(e.aL / Math.max(e.a, 1e-12), 0, 1), k = 0.7 * Math.abs(shade.tint);
       return `color-mix(in srgb, color-mix(in srgb, ${T.ink} ${s * 100}%, ${T.lineb}) ${(1 - k) * 100}%, ${shade.tint > 0 ? 'white' : 'black'})`; };
     const ref = Math.max(...list.map(e => e.a), 1e-9), cols = new Map(), wob = this.wobbleNow();
     const share = this.percent('cross'), level = a => clamp((20 * Math.log10(a / ref) + 60) / 60, 0, 1);
-    // a tie: a diagonal from an echo to the one it seeds on the other row, as strong
-    // as the share Cross sends across times how loud the echo is
     const tie = (from, fx, line, x, a) => {
       const alpha = 0.8 * share * level(a); if (alpha < 0.01) return;
       const dir = line > from ? 1 : -1;
       ln(fx, rows[from] + dir * half * 0.4, x, rows[line] - dir * half * 0.4, T.acc, 1, alpha);
     };
-    // one echo's stroke: its height and strength from its level, shaded by the loop's
-    // filters, smeared by the blurs as faint copies side by side
     const stroke = (e, x) => {
       const frac = level(e.a); if (frac <= 0) return false;
       const shade = this.shadeOf(e), h = half * frac, col = colourOf(e, shade), sm = this.smearOf(e) * dpr;
@@ -870,28 +738,18 @@ export class SlideFace extends HTMLElement {
     for (const line of [0, 1]) {
       const mine = list.filter(e => e.line === line); if (!mine.length || !(list.g > 0)) continue;
       const last = mine[mine.length - 1], T0 = times[line], longer = Math.max(...times);
-      // Where the listed echoes end, the tail goes on at the rate Repeats sets: 60 dB
-      // over Repeats times the longer line, the loop's slowest decay (uncrossed, each
-      // line simply falls by its own pass gain), drawn exactly as they are.
       const per = share > 0 ? -3 / (longer * Math.max(1, this.repeats() - 1)) : Math.log10(list.g) / T0;
-      // the outline the eye reads is the taller echoes, so start from the 90th
-      // percentile of the last listed ones, each carried on to the last one's time at
-      // that rate, so a stretch that was still falling doesn't start it high again
       const tailEnd = mine.slice(-48), levels = tailEnd.map(e => e.a * Math.pow(10, per * (last.t - e.t))).sort((p, q) => p - q);
       const end = {a: levels[Math.min(levels.length - 1, Math.floor(levels.length * 0.9))], t: last.t};
       const mixL = tailEnd.reduce((acc, e) => acc + e.aL, 0) / Math.max(1e-12, tailEnd.reduce((acc, e) => acc + e.a, 0));
       const shift = 1 + wob[line], other = times[1 - line], crossed = share > 0;
-      // strokes where echoes arrive: every pass of this line, and with Cross up every
-      // pass of the other line too, as the listed echoes do. How densely the listed echoes filled the pixel columns just before the join;
-      // where they filled them all, the continuation fills every column too, so the
-      // texture carries on instead of opening into stripes
       const col = 1.5 * dpr, endX = X(last.t * shift), seen = new Set();
       for (const e of mine) { const ex = X(e.t * shift); if (ex > endX - 40 * dpr) seen.add(Math.round(ex / col)); }
       const filled = seen.size / Math.max(1, Math.round(40 * dpr / col));
       let lastX = endX, own = last.t + T0, across = last.t + other;
       for (let k = 0; k < 40000; k++) {
         let t, fromAcross = false;
-        if (filled > 0.6) { // dense: one stroke per column
+        if (filled > 0.6) {
           t = X.inv(lastX + col) / shift; if (!Number.isFinite(t)) break;
           fromAcross = crossed && ((t - last.t) / other) % 1 < ((t - last.t) / T0) % 1;
         } else {
@@ -910,7 +768,6 @@ export class SlideFace extends HTMLElement {
     for (const {e, x} of cols.values()) stroke(e, x);
   }
 
-  // ---- hit testing and gestures ---------------------------------------------
 
   point(e) {
     const r = this.rect || (this.rect = this.canvas.getBoundingClientRect());
@@ -931,7 +788,6 @@ export class SlideFace extends HTMLElement {
     const drag = this.drag;
     if (drag) {
       const d = {dx: p.x - drag.p0.x, dy: p.y - drag.p0.y, free: e.metaKey || e.ctrlKey || e.shiftKey};
-      // a two-way zone picks its axis from the first few pixels of movement
       if (drag.z.lock === 'xy' && !drag.axis) {
         if (Math.max(Math.abs(d.dx), Math.abs(d.dy)) < 4 * this.dpr) return;
         drag.axis = Math.abs(d.dx) >= Math.abs(d.dy) ? 'x' : 'y';
@@ -957,7 +813,6 @@ export class SlideFace extends HTMLElement {
     this.held = 0;
     this.drag = {z, p0: p, axis: z.lock === 'xy' ? null : z.lock, started: new Set(),
       snap: {L, R, repeats: this.repeats(), cross: this.percent('cross')}};
-    // a one-way rail jumps to the pointer at once; a two-way zone waits for its axis
     if (!z.lock) z.move?.(p, {dx: 0, dy: 0, free: e.metaKey || e.ctrlKey || e.shiftKey}, this.drag);
     this.invalidate();
   }
@@ -965,14 +820,12 @@ export class SlideFace extends HTMLElement {
   onPointerUp(e) {
     if (!this.drag) return;
     for (const id of this.drag.started) this.controls.get(id)?.endGesture(false, 'face');
-    // the control just used is the one typing goes to: on a two-way zone, the way it moved
     const z = this.drag.z, key = z.byAxis && this.drag.axis ? z.byAxis[this.drag.axis] : z.params?.[0];
     if (key && e) { const r = this.canvas.getBoundingClientRect(); this.selected = {key, x: e.clientX - r.left, y: e.clientY - r.top}; }
     this.drag = null;
     this.invalidate();
   }
 
-  // ---- typing a value into the control last used ---------------------------
 
   onKey(e) {
     if (!this.selected || this.entry || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -991,8 +844,6 @@ export class SlideFace extends HTMLElement {
         else { box.classList.add('wrong'); box.select(); }
       } else box.classList.remove('wrong');
     });
-    // numbers only, with what the readouts themselves use: a ratio's colon, a
-    // note's slash and its D or T
     box.addEventListener('input', () => { box.value = box.value.replace(/[^0-9.+\-:/dt]/gi, ''); });
     box.addEventListener('blur', () => this.closeEntry());
     this.shadowRoot.append(box);
@@ -1002,16 +853,12 @@ export class SlideFace extends HTMLElement {
 
   closeEntry() { const box = this.entry; this.entry = null; box?.remove(); }
 
-  /** Writes what was typed for a control, in the numbers the face shows it in, and
-   * reports whether it made sense: times in ms or as a note, R as a ratio (3:2 or
-   * 1.5) or under Diff an offset in ms, Cross on its readout's scale (100 is even,
-   * 200 swap), Tone below 0 dark and above thin. */
   enter(key, text) {
     const t = text.trim().toLowerCase().replace(/\s+/g, ' ');
     const ok = Number.isFinite;
     const number = v => /^[+-]?(\d+\.?\d*|\.\d+)$/.test(v) ? Number(v) : NaN;
     const note = v => { const n = NOTES.find(([, name]) => name.toLowerCase() === v.replace(/\.$/, 'd')); return n ? n[0] * this.beatMs() : NaN; };
-    const time = v => ok(number(v)) ? number(v) : note(v); // ms, or a note
+    const time = v => ok(number(v)) ? number(v) : note(v);
     const set = (id, v) => { if (!ok(v)) return false; this.write(id, v); return true; };
     switch (key) {
       case 'L': { const ms = time(t); if (!ok(ms)) return false; this.writeLeft(ms, true); return true; }
@@ -1034,7 +881,6 @@ export class SlideFace extends HTMLElement {
     }
   }
 
-  /** Double-click puts back the default of whatever is under the pointer. */
   onDoubleClick(e) {
     const z = this.hit(this.point(e));
     this.onPointerUp();

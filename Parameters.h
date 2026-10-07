@@ -13,8 +13,6 @@
 namespace slide
 {
 
-// The two lines are left (L) and right (R): L is the stock, whose time is stored; R
-// is the slide, derived from L through Link (Ratio or Difference).
 enum Parameter : clap_id
 {
     leftTime = 0,
@@ -39,15 +37,9 @@ enum Parameter : clap_id
 
 inline constexpr std::size_t stateValueCount = 18;
 
-// Mod type picks one of three treatments of the loop (A: a slow drift with a little
-// flutter, B: an irregular lurch with grit, C: a steady clock, dark and breathing);
-// each keeps its own amount, so switching type keeps each one's setting.
 inline constexpr Parameter modAmounts[3] { modA, modB, modC };
 using laws::maxRepeats;
 
-// `mid` is the value that sits at the middle of the rail. A parameter is on a log
-// curve exactly when a mid strictly inside a positive range says so; every other
-// parameter is linear and carries mid 0.
 struct ParameterInfo
 {
     clap_id id;
@@ -85,8 +77,6 @@ inline constexpr std::array<ParameterInfo, 18> parameters {{
     { modC,       "mod_c",      "Mod C",      "%",  0, 100, 35, 1, 0, 0, false }
 }};
 
-// The option list of a stepped parameter whose steps are words; empty for every
-// other parameter.
 inline constexpr std::span<const char* const> enumNames(clap_id id) noexcept
 {
     switch (id)
@@ -98,7 +88,6 @@ inline constexpr std::span<const char* const> enumNames(clap_id id) noexcept
     }
 }
 
-// Ids are table indices.
 inline constexpr const ParameterInfo* findParameter(clap_id id) noexcept
 {
     return id < parameters.size() ? &parameters[id] : nullptr;

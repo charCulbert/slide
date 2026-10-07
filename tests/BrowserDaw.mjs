@@ -1,9 +1,3 @@
-// Slide in the wclap-browser-daw, after ../mote/tests/BrowserDaw.mjs: load the
-// WCLAP, confirm the face appears, drag Left and watch the value come back through
-// the bridge, toggle Sync, and keep a screenshot.
-//
-//   node tests/BrowserDaw.mjs            (the DAW served at 127.0.0.1:8470)
-//   DAW_ROOT=… DAW_URL=… node tests/BrowserDaw.mjs
 
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
@@ -34,8 +28,6 @@ try {
   await page.locator('#plugin-tree .plugin-row').filter({hasText: 'Slide'}).dblclick();
 
   const ui = page.frameLocator('iframe[title^="Slide"]');
-  // The face is one canvas plus a semantic element per parameter; the metadata
-  // handshake has landed once Left exists with compost's slider role.
   await ui.getByRole('slider', {name: 'Left time', exact: true}).waitFor({timeout: 30000});
   await ui.getByRole('button', {name: 'Sync', exact: true}).waitFor();
   await page.screenshot({path: `${artifacts}/loaded.png`});
@@ -43,8 +35,6 @@ try {
   const frame = page.frames().find(f => f.url().includes('/_wclap/resource/'));
   assert(frame, 'Slide resource frame was not created');
 
-  // The chips are ordinary DOM and appear even when the canvas never draws, so the
-  // picture is checked by counting pixels that differ from the cleared corner.
   const face = () => frame.evaluate(() => {
     const element = document.querySelector('slide-face');
     const canvas = element?.shadowRoot?.querySelector('canvas');
@@ -72,7 +62,6 @@ try {
     Math.round(picture.box.width), '×', Math.round(picture.box.height));
   await frame.evaluate(() => {
     window.slideTest = {values: {}};
-    // the plug-in's messages are CBOR; the page's own decoder reads them
     return import('./lib/messages.js').then(({onMessage}) => onMessage(message => {
       if (message.type !== 'values') return;
       message.values.forEach((value, id) => { window.slideTest.values[String(id)] = value; });
@@ -80,8 +69,6 @@ try {
   });
   const value = id => frame.evaluate(i => window.slideTest.values[i], String(id));
 
-  // Drag Left: the keyboard drives the same compost gesture the pointer does, and
-  // the plugin must answer with the new value.
   const left = ui.getByRole('slider', {name: 'Left time', exact: true});
   await left.focus();
   const before = Number(await left.getAttribute('aria-valuenow'));
@@ -94,8 +81,6 @@ try {
     ['0', after], {timeout: 10000});
   assert.equal(await value(0), after, 'Left did not round-trip through the bridge');
 
-  // A drag on the picture itself: L's pointer on its first echo, whose sideways
-  // drag moves Left time.
   const iframe = await page.locator('iframe[title^="Slide"]').boundingBox();
   const grab = await frame.evaluate(() => {
     const element = document.querySelector('slide-face');
@@ -115,8 +100,6 @@ try {
   assert(dragged > before2, `Dragging the picture did not raise Left: ${before2} -> ${dragged}`);
   console.log('DRAG Left', before2, '->', dragged);
 
-    // Sync is drawn on the canvas with its compost button laid over it for the
-  // keyboard; press it the way a keyboard user would.
   await ui.getByRole('button', {name: 'Sync', exact: true}).focus();
   await page.keyboard.press('Space');
   await frame.waitForFunction(() => window.slideTest.values['4'] === 1, null, {timeout: 10000});

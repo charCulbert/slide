@@ -1,11 +1,3 @@
-# A plugin interface that is a web page. Hosts with clap.webview show the page
-# themselves (WCLAP hosts always do); elsewhere CHOC's WebView shows it inside
-# the host's window. Either way the page talks to the plugin with
-# js/messages.js, and the plugin serves the page's files through clap.webview.
-#
-#   include(libs/webview/webview.cmake)
-#   webview_add_to(<impl target>)             the presenter (clap.gui side)
-#   webview_resources(<out var> <name> <folder>)   <folder> plus page/lib/messages.js, to ship
 include_guard(DIRECTORY)
 include(FetchContent)
 
@@ -38,10 +30,6 @@ function(webview_add_to target)
     endif()
 endfunction()
 
-# Assembles the plugin's resources to ship: <folder> (its page in page/, and
-# any other files) plus js/messages.js as page/lib/messages.js, in the build
-# folder's resources/, rebuilt on every build by target <name>_resources.
-# Sets <out var> to that folder, for core_ship_resources.
 function(webview_resources out name folder)
     get_filename_component(folder "${folder}" ABSOLUTE)
     set(staging "${CMAKE_CURRENT_BINARY_DIR}/resources")

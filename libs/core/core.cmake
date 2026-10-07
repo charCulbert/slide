@@ -1,11 +1,3 @@
-# What every plugin here builds on: the CLAP SDK, clap-wrapper (VST3, AU,
-# standalone and WCLAP from the one CLAP plugin), the message codec its
-# interface (and its state) use, and the loader for the files it ships.
-#
-#   include(libs/core/core.cmake)
-#   core_add_to(<impl target>)                    codec and resource loader
-#   core_ship_resources(<plugin name> <folder>)   copies <folder> into every format
-#   core_ship_resources(<plugin name> "")         no files: signs and packages only
 include_guard(DIRECTORY)
 include(FetchContent)
 
@@ -15,20 +7,15 @@ FetchContent_Declare(clap
     GIT_REPOSITORY https://github.com/free-audio/clap.git
     GIT_TAG 1.2.10
     GIT_SHALLOW TRUE)
-# clap-wrapper downloads the VST3 and AudioUnit SDKs it needs.
 set(CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES TRUE)
 FetchContent_Declare(clap-wrapper
     GIT_REPOSITORY https://github.com/free-audio/clap-wrapper.git
     GIT_TAG 2bc329c774b4584918c2150dda918afd5e6b2b87)
 FetchContent_MakeAvailable(clap clap-wrapper)
 if(CMAKE_SYSTEM_NAME STREQUAL "WASI" AND TARGET clap-wrapper-shared-detail)
-    # Only the native wrappers use this library, and under WASI the pinned
-    # clap-wrapper gives it an empty define (-D=1) that fails to compile.
     set_target_properties(clap-wrapper-shared-detail PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endif()
 
-# The implementation library every format links: the plugin's own sources are
-# added by the caller. Headers include libs by folder: "core/messages.h".
 function(core_add_to target)
     target_sources(${target} PRIVATE "${CORE_DIR}/messages.cpp" "${CORE_DIR}/resources.cpp")
     target_include_directories(${target} PUBLIC "${CORE_DIR}/..")
@@ -36,20 +23,12 @@ function(core_add_to target)
     set_target_properties(${target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4)
-        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS) # keep the portable C string functions
+        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wno-unused-parameter)
     endif()
 endfunction()
 
-# Ships <folder> (the plugin's resources: a web page in page/, fonts, images,
-# sounds...) with each format of the plugin make_clapfirst_plugins made
-# (TARGET_NAME <name>), where core/resources.cpp reads it:
-#   macOS and VST3 bundles   <bundle>/Contents/Resources/
-#   loose binaries           <binary>.resources/ (Windows and Linux CLAPs)
-#   WCLAP                    <name>.wclap.tar.gz: module.wasm and resources/
-# The copy runs on every build, so edits to the folder need no relink. Pass
-# DEPENDS <target> when a build step assembles the folder.
 function(core_ship_resources name folder)
     cmake_parse_arguments(ARG "" "" "DEPENDS" ${ARGN})
     foreach(format clap vst3 auv2 auv3 standalone aax)
@@ -60,7 +39,6 @@ function(core_ship_resources name folder)
         if(APPLE OR format MATCHES "vst3|aax")
             set(destination "$<TARGET_FILE_DIR:${target}>/../Resources")
         else()
-            # next to a loose binary (TARGET_FILE here would make the target depend on itself)
             set(destination "$<TARGET_FILE_DIR:${target}>/$<TARGET_FILE_NAME:${target}>.resources")
         endif()
         if(folder)
@@ -84,9 +62,7 @@ function(core_ship_resources name folder)
     endforeach()
 
     if(TARGET ${name}_wclap)
-        # Browsers download the module, so leave debug info out of Release builds.
         target_link_options(${name}_wclap PRIVATE $<$<CONFIG:Release,MinSizeRel>:-Wl,--strip-debug>)
-        # A WCLAP is a .tar.gz of module.wasm plus its files, at the archive root.
         set(bundle "$<TARGET_FILE_DIR:${name}_wclap>/${name}.wclap")
         set(contents module.wasm)
         set(copy "")

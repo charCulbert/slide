@@ -1,7 +1,3 @@
-// R3: two implementations of the Laws. This test pins resources/page/laws.js to the fixture
-// tests/laws-fixture.json, which the C++ tests write straight out of Laws.h.
-//
-//   node --test tests/laws.test.mjs
 
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -37,7 +33,6 @@ test('toneCuts', () => {
   }
 });
 
-// The snap lock lives only in the face, so it is pinned here by hand.
 test('nearestNiceRatio', () => {
   const snap = (raw, held, value, newHeld) => {
     const out = laws.nearestNiceRatio(raw, held);
@@ -45,10 +40,10 @@ test('nearestNiceRatio', () => {
     close(out.newHeld, newHeld, `newHeld ${raw} held ${held}`);
   };
   snap(1.5, 0, 1.5, 1.5);
-  snap(1.5 * Math.exp(0.02), 1.5, 1.5, 1.5);                     // still held
-  snap(1.5 * Math.exp(0.03), 1.5, 1.5 * Math.exp(0.03), 0);      // released past 2.5 %
-  snap(1.5 * Math.exp(0.02), 0, 1.5 * Math.exp(0.02), 0);        // not captured
-  snap(1.5 * Math.exp(0.01), 0, 1.5, 1.5);                       // captured within 1.2 %
+  snap(1.5 * Math.exp(0.02), 1.5, 1.5, 1.5);
+  snap(1.5 * Math.exp(0.03), 1.5, 1.5 * Math.exp(0.03), 0);
+  snap(1.5 * Math.exp(0.02), 0, 1.5 * Math.exp(0.02), 0);
+  snap(1.5 * Math.exp(0.01), 0, 1.5, 1.5);
   snap(2.5, 0, 2.5, 0);
   snap(0.252, 0, 0.25, 0.25);
   snap(1 / 3 * 1.005, 0, 1 / 3, 1 / 3);

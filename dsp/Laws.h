@@ -3,15 +3,11 @@
 #include <algorithm>
 #include <cmath>
 
-// The pure formulas shared by the engine and the face. Every function here is
-// total: it clamps or substitutes rather than returning a non-finite number, so the
-// face can call it while a gesture is still mid-flight.
 namespace slide::laws
 {
 
 inline constexpr double minTimeMs = 10, maxTimeMs = 3000;
 inline constexpr double openHighCutHz = 20000;
-// Repeats' top: the thousandth echo of the longer line is 60 dB down.
 inline constexpr double maxRepeats = 1000;
 
 inline double finiteOr(double value, double fallback) noexcept
@@ -37,28 +33,26 @@ inline Recipe recipeAt(int medium, double wear01) noexcept
     const auto w = std::clamp(finiteOr(wear01, 0.0), 0.0, 1.0);
     if (w <= 0 || medium < 0 || medium > 2) return cleanRecipe;
 
-    // Oil can is the wildest medium, so its Wear is scaled by 0.7.
     const auto amt = std::pow(medium == 1 ? 0.7 * w : w, 1.8) * 5.0;
     Recipe recipe = cleanRecipe;
     double loss = openHighCutHz;
     switch (medium)
     {
-        case 0: // Tape: a slow drift with a little flutter
+        case 0:
             recipe = { 0.0025, 0.7, 0.0012, 6.0, 0, false, 0.0003, 0, 0 };
             loss = 9000;
             break;
-        case 1: // Oil can: the disc's rotation, an irregular lurch, and the grit of an analog loop
+        case 1:
             recipe = { 0.005, 2.3, 0.015, 1.4, 0, false, 0.0004, 1.0 + 0.5 * amt, 0 };
             loss = 2600;
             break;
-        default: // Bucket: a steady clock, so no wobble; hiss that breathes under the compander
+        default:
             recipe = { 0, 0, 0, 0, 0, true, 0.0015, 0, std::min(1.0, amt * 2.0) };
             loss = 8000;
             break;
     }
     recipe.sine *= amt;
     recipe.rand *= amt;
-    // Oil can's hiss takes one more 0.7 on its Wear.
     const auto hissAmt = medium == 1 ? std::pow(0.49 * w, 1.8) * 5.0 : amt;
     recipe.hiss *= std::min(4.0, 0.9 * hissAmt);
     recipe.lossHz = loss + (openHighCutHz - loss) * (1.0 - std::min(1.0, amt * 2.0));
@@ -105,25 +99,18 @@ inline Blur blurAt(BlurPlace place, double amount01) noexcept
 }
 
 /// The per-pass gain for Repeats n with Cross x and line times a and b (ms). At
-/// Cross 0 it is 10^(-3/(n-1)): the longer line's nth echo is 60 dB down. With
-/// Cross the loop's slowest mode would decay faster than that, so the gain is the
-/// one that puts that mode's decay back at the Cross-0 rate. With d the decay per
-/// ms, the loop's characteristic equation at z = d is (1 - g s d^-a)(1 - g s d^-b)
-/// - g^2 x^2 d^-(a+b) = 0, s = 1 - x: a quadratic in g, whose smaller root is taken,
-/// written as 2 / (B + sqrt(D)) so it stays exact where the two roots meet.
+/// Cross 0 it is 10^(-3/(n-1)): the longer line's nth echo is 60 dB down.
 inline double passGain(double repeats, double cross, double a, double b) noexcept
 {
     const auto passes = std::max(1.0, finiteOr(repeats, 1.0)) - 1.0;
     if (passes < 1e-3) return 0.0;
     const auto plain = std::pow(10.0, -3.0 / passes);
-    // a pass always loses a little, so every setting dies away
     const auto cap = 0.999;
     const auto x = std::clamp(finiteOr(cross, 0.0), 0.0, 1.0), s = 1.0 - x;
     if (x <= 0) return std::min(plain, cap);
     const auto ta = std::max(minTimeMs, finiteOr(a, minTimeMs));
     const auto tb = std::max(minTimeMs, finiteOr(b, minTimeMs));
     const auto longer = std::max(ta, tb);
-    // d^-t written as plain^(-t / longer), so nothing overflows
     const auto pa = std::pow(plain, -ta / longer), pb = std::pow(plain, -tb / longer);
     const auto qa = s * pa, qb = s * pb, c = x * x * pa * pb;
     const auto A = qa * qb - c, B = qa + qb;
@@ -142,7 +129,6 @@ inline double bucketLossHz(double lossHz, double timeMs) noexcept
 {
     const auto loss = finiteOr(lossHz, openHighCutHz);
     const auto time = std::max(minTimeMs, finiteOr(timeMs, minTimeMs));
-    // The floor never lifts the cut above the medium's own loss.
     return std::min(loss, std::max(1200.0, loss * std::sqrt(60.0 / time)));
 }
 
