@@ -876,14 +876,13 @@ export class SlideFace extends HTMLElement {
       const last = mine[mine.length - 1], T0 = times[line], longer = Math.max(...times);
       // Where the listed echoes end, the tail goes on at the rate Repeats sets: 60 dB
       // over Repeats times the longer line, the loop's slowest decay (uncrossed, each
-      // line simply falls by its own pass gain). It starts from a typical level of the last
-      // few listed echoes (their median), so it doesn't jump with whichever echo
-      // happens to be last, and is drawn exactly as they are.
+      // line simply falls by its own pass gain), drawn exactly as they are.
       const per = this.percent('cross') > 0 ? -3 / (longer * Math.max(1, this.repeats() - 1)) : Math.log10(list.g) / T0;
-      // the outline the eye reads is the taller echoes, so start from the upper
-      // quartile of the last listed ones
-      const tailEnd = mine.slice(-48), levels = tailEnd.map(e => e.a).sort((p, q) => p - q);
-      const end = {a: levels[Math.min(levels.length - 1, Math.floor(levels.length * 0.9))], t: tailEnd.reduce((acc, e) => acc + e.t, 0) / tailEnd.length};
+      // the outline the eye reads is the taller echoes, so start from the 90th
+      // percentile of the last listed ones, each carried on to the last one's time at
+      // that rate, so a stretch that was still falling doesn't start it high again
+      const tailEnd = mine.slice(-48), levels = tailEnd.map(e => e.a * Math.pow(10, per * (last.t - e.t))).sort((p, q) => p - q);
+      const end = {a: levels[Math.min(levels.length - 1, Math.floor(levels.length * 0.9))], t: last.t};
       const mixL = tailEnd.reduce((acc, e) => acc + e.aL, 0) / Math.max(1e-12, tailEnd.reduce((acc, e) => acc + e.a, 0));
       const shift = 1 + wob[line], other = times[1 - line], crossed = this.percent('cross') > 0;
       // strokes where echoes arrive: every pass of this line, and with Cross up every
