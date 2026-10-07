@@ -412,8 +412,10 @@ void presetsLoad()
         p.p->get_extension(p.p, CLAP_EXT_PRESET_LOAD));
     CHECK(loader);
 
-    const std::array<const char*, 7> keys { "stereo-fifth", "ping-pong", "golden-cross", "dotted-cross",
-                                            "slap", "long-smear", "long-wash" };
+    const std::array<const char*, 17> keys { "stereo-fifth", "ping-pong", "golden-cross", "dotted-cross",
+                                             "slap", "long-smear", "long-wash", "tape-quarter", "dotted-lead",
+                                             "three-four", "triplet-swing", "wide-double", "comb-tones",
+                                             "bucket-dub", "oil-warble", "cloud", "hold" };
     CHECK(presets.size() == keys.size());
     for (size_t i = 0; i < keys.size(); ++i) CHECK(std::strcmp(presets[i].key, keys[i]) == 0);
     CHECK(presets[6].values[repeats] == 300);
@@ -513,9 +515,9 @@ void presetDiscovery()
     Receiver receiver;
     CHECK(provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr,
                                  &receiver.list));
-    CHECK(receiver.found.size() == presets.size() && presets.size() == 7);
-    CHECK(receiver.plugins == 7 && receiver.creators == 7 && receiver.features == 7
-          && receiver.flags == 7);
+    CHECK(receiver.found.size() == presets.size() && presets.size() == 17);
+    CHECK(receiver.plugins == 17 && receiver.creators == 17 && receiver.features == 17
+          && receiver.flags == 17);
     for (size_t i = 0; i < presets.size(); ++i)
     {
         CHECK(receiver.found[i].first == presets[i].name);
