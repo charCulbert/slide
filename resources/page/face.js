@@ -609,6 +609,8 @@ export class SlideFace extends HTMLElement {
     tx('Slide', 16 * dpr, 24 * dpr, T.ink, 13, 'left', 'middle', NAMES, 500);
     g.letterSpacing = '0px';
     const mix = this.percent('mix'), type = this.modType();
+    const railX = (x0, x1, id) => ({cursor: 'ew-resize', move: p => this.write(id, clamp((p.x - x0) / (x1 - x0), 0, 1) * 100),
+      dbl: () => this.write(id, this.initial(id))});
     // Mod: one thin amount scale per type, stacked like a rule's A, B, C scales. Each
     // keeps its own amount; the chosen one is engraved and carries the cursor, the
     // others show where theirs was left. A row's letter picks it.
@@ -626,9 +628,8 @@ export class SlideFace extends HTMLElement {
         chosen ? (on('mod') ? 2.4 : 1.6) : 1, chosen ? 1 : 0.6);
       if (chosen) tx(amount < 0.005 ? 'clean' : `${Math.round(amount * 100)}`, r1 + 7 * dpr, y, on('mod') ? T.ink : T.ink2, 10, 'left');
       const pick = (p, d, dr) => { if (dr.done) return; dr.done = true; if (i !== type) modButton?.setValue(i, true, 'face'); };
-      if (chosen) zone({x: r0 - 6 * dpr, y: y - 7 * dpr, w: r1 - r0 + 12 * dpr, h: 14 * dpr, key: 'modRail', params: ['mod'], cursor: 'ew-resize',
-        move: p => this.write(MOD_AMOUNTS[i], clamp((p.x - r0) / (r1 - r0), 0, 1) * 100),
-        dbl: () => this.write(MOD_AMOUNTS[i], this.initial(MOD_AMOUNTS[i]))});
+      if (chosen) zone({x: r0 - 6 * dpr, y: y - 7 * dpr, w: r1 - r0 + 12 * dpr, h: 14 * dpr, key: 'modRail', params: ['mod'],
+        ...railX(r0, r1, MOD_AMOUNTS[i])});
       else zone({x: r0 - 6 * dpr, y: y - 7 * dpr, w: r1 - r0 + 12 * dpr, h: 14 * dpr, key: 'modPick', cursor: 'pointer', move: pick});
       zone({x: r0 - 22 * dpr, y: y - 7 * dpr, w: 18 * dpr, h: 14 * dpr, key: 'modPick', cursor: 'pointer', move: pick});
     });
@@ -785,8 +786,6 @@ export class SlideFace extends HTMLElement {
     // the count whose tail lands at x; the rail's end always means the top, even
     // when that tail runs past the axis
     const repeatsAt = x => x >= xRepMax - dpr ? laws.maxRepeats : clamp(X.inv(x) / Math.max(...this.times()), 1, laws.maxRepeats);
-    const railX = (x0, x1, id) => ({cursor: 'ew-resize', move: p => this.write(id, clamp((p.x - x0) / (x1 - x0), 0, 1) * 100),
-      dbl: () => this.write(id, this.initial(id))});
     zone({x: mr[0] - 6 * dpr, y: 14 * dpr, w: mr[1] - mr[0] + 12 * dpr, h: 26 * dpr, key: 'mixRail', params: ['mix'], ...railX(mr[0], mr[1], 'mix')});
     zone({x: xFirst, y: top, w: Math.max(0, Math.min(xTail, X1) - xFirst), h: bot - top, key: 'band', lock: 'xy', cursor: 'move',
       params: ['L', 'R', 'loop'], byAxis: {x: 'L', y: 'loop'},
@@ -835,9 +834,8 @@ export class SlideFace extends HTMLElement {
   /** Echoes as strokes around a row, the loudest per pixel column; a smear is drawn
    * as several faint copies side by side. The model lists only so many echoes, so
    * past the last one each line carries on as an envelope, so a long tail never just
-   * stops. The envelope starts at the level the
-   * listed echoes end on, falls at the rate they were falling, and is drawn the way
-   * they are, so the join does not show. */
+   * stops. The envelope starts at the level the listed echoes end on, falls at the
+   * rate they were falling, and is drawn the way they are, so the join does not show. */
   drawEchoes(list, X, rows, half, xMax, dpr, ln) {
     const T = this.theme;
     // An echo keeps the colour of the line it started on, mixed by how much of it
@@ -846,10 +844,18 @@ export class SlideFace extends HTMLElement {
       const s = clamp(e.aL / Math.max(e.a, 1e-12), 0, 1), k = 0.7 * Math.abs(shade.tint);
       return `color-mix(in srgb, color-mix(in srgb, ${T.ink} ${s * 100}%, ${T.lineb}) ${(1 - k) * 100}%, ${shade.tint > 0 ? 'white' : 'black'})`; };
     const ref = Math.max(...list.map(e => e.a), 1e-9), cols = new Map(), wob = this.wobbleNow();
+    const share = this.percent('cross'), level = a => clamp((20 * Math.log10(a / ref) + 60) / 60, 0, 1);
+    // a tie: a diagonal from an echo to the one it seeds on the other row, as strong
+    // as the share Cross sends across times how loud the echo is
+    const tie = (from, fx, line, x, a) => {
+      const alpha = 0.8 * share * level(a); if (alpha < 0.01) return;
+      const dir = line > from ? 1 : -1;
+      ln(fx, rows[from] + dir * half * 0.4, x, rows[line] - dir * half * 0.4, T.acc, 1, alpha);
+    };
     // one echo's stroke: its height and strength from its level, shaded by the loop's
     // filters, smeared by the blurs as faint copies side by side
     const stroke = (e, x) => {
-      const frac = clamp((20 * Math.log10(e.a / ref) + 60) / 60, 0, 1); if (frac <= 0) return false;
+      const frac = level(e.a); if (frac <= 0) return false;
       const shade = this.shadeOf(e), h = half * frac, col = colourOf(e, shade), sm = this.smearOf(e) * dpr;
       const alpha = 0.25 + 0.75 * Math.pow(frac, 0.7);
       if (sm <= 0.5) { ln(x, rows[e.line] - h, x, rows[e.line] + h, col, 1.5 * shade.width, alpha); return true; }
@@ -867,18 +873,16 @@ export class SlideFace extends HTMLElement {
       // Where the listed echoes end, the tail goes on at the rate Repeats sets: 60 dB
       // over Repeats times the longer line, the loop's slowest decay (uncrossed, each
       // line simply falls by its own pass gain), drawn exactly as they are.
-      const per = this.percent('cross') > 0 ? -3 / (longer * Math.max(1, this.repeats() - 1)) : Math.log10(list.g) / T0;
+      const per = share > 0 ? -3 / (longer * Math.max(1, this.repeats() - 1)) : Math.log10(list.g) / T0;
       // the outline the eye reads is the taller echoes, so start from the 90th
       // percentile of the last listed ones, each carried on to the last one's time at
       // that rate, so a stretch that was still falling doesn't start it high again
       const tailEnd = mine.slice(-48), levels = tailEnd.map(e => e.a * Math.pow(10, per * (last.t - e.t))).sort((p, q) => p - q);
       const end = {a: levels[Math.min(levels.length - 1, Math.floor(levels.length * 0.9))], t: last.t};
       const mixL = tailEnd.reduce((acc, e) => acc + e.aL, 0) / Math.max(1e-12, tailEnd.reduce((acc, e) => acc + e.a, 0));
-      const shift = 1 + wob[line], other = times[1 - line], crossed = this.percent('cross') > 0;
+      const shift = 1 + wob[line], other = times[1 - line], crossed = share > 0;
       // strokes where echoes arrive: every pass of this line, and with Cross up every
-      // pass of the other line too, as the listed echoes do; where they crowd closer
-      // than a column, the column keeps the first
-      // how densely the listed echoes filled the pixel columns just before the join;
+      // pass of the other line too, as the listed echoes do. How densely the listed echoes filled the pixel columns just before the join;
       // where they filled them all, the continuation fills every column too, so the
       // texture carries on instead of opening into stripes
       const col = 1.5 * dpr, endX = X(last.t * shift), seen = new Set();
@@ -899,26 +903,10 @@ export class SlideFace extends HTMLElement {
         lastX = x;
         const a = end.a * Math.pow(10, per * (t - end.t));
         if (!stroke({line, n: last.n + (t - last.t) / T0, a, aL: a * mixL}, x)) break;
-        // an echo that came across gets its tie, as the listed ones do
-        const tie = fromAcross ? 0.8 * this.percent('cross') * clamp((20 * Math.log10(a / ref) + 60) / 60, 0, 1) : 0;
-        if (tie >= 0.01) {
-          const from = 1 - line, hx = X((t - T0) * (1 + wob[from]));
-          ln(hx, rows[from] + (line > from ? half : -half) * 0.4, x, rows[line] + (line > from ? -half : half) * 0.4, T.acc, 1, tie);
-        }
+        if (fromAcross) tie(1 - line, X((t - T0) * (1 + wob[1 - line])), line, x, a);
       }
     }
-    { // ties: a diagonal from an echo to the one it seeds on the other row, as strong
-      // as the share Cross sends across times how loud the echo is
-      const share = this.percent('cross');
-      if (share > 0) for (const {e, x} of cols.values()) {
-        if (!e.hop) continue;
-        const frac = clamp((20 * Math.log10(e.a / ref) + 60) / 60, 0, 1), alpha = 0.8 * share * frac;
-        if (alpha < 0.01) continue;
-        const px = X(e.hop.t * (1 + wob[e.hop.line])), y0 = rows[e.hop.line] + (e.line > e.hop.line ? half : -half) * 0.4,
-          y1 = rows[e.line] + (e.line > e.hop.line ? -half : half) * 0.4;
-        ln(px, y0, x, y1, T.acc, 1, alpha);
-      }
-    }
+    if (share > 0) for (const {e, x} of cols.values()) if (e.hop) tie(e.hop.line, X(e.hop.t * (1 + wob[e.hop.line])), e.line, x, e.a);
     for (const {e, x} of cols.values()) stroke(e, x);
   }
 
