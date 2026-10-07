@@ -26,7 +26,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -47,7 +47,7 @@ jobs:
           node --test tests/laws.test.mjs
 
       - name: Check out clap-validator
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: free-audio/clap-validator
           ref: 0.4.1
@@ -86,7 +86,7 @@ jobs:
           auval -v $AU
 
       - name: Upload validated plugins
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.TARGET }}-${{ matrix.os }}
           path: |
@@ -100,7 +100,7 @@ jobs:
     name: WCLAP
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -121,7 +121,7 @@ jobs:
           grep -qx 'resources/page/index.html' contents.txt
 
       - name: Upload WCLAP
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.TARGET }}-wclap
           path: build-wclap/${{ env.TARGET }}.wclap.tar.gz
@@ -135,7 +135,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
