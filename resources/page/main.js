@@ -1,9 +1,6 @@
 // The bridge. Messages over clap.webview in both directions (lib/messages.js);
 // the face never talks to the plugin itself, and the plugin never knows how
-// the face is drawn. plugin.cpp lists the messages above PluginSendMetadata:
-//
-//   UI  -> plugin : ready | begin {id} | value {id, value} | end {id} | visual
-//   plugin -> UI  : metadata {parameters} | values {values} | visual {bpm}
+// the face is drawn. plugin.cpp lists the messages above PluginSendMetadata.
 
 import {sendMessage, onMessage} from './lib/messages.js';
 import './face.js';
@@ -50,7 +47,6 @@ onMessage(message => {
   }
 });
 
-// The tempo is pulled on the animation clock, and only while the face is visible.
 const pull = () => {
   requestAnimationFrame(pull);
   if (!document.hidden) sendMessage({type: 'visual'});

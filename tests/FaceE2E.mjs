@@ -64,7 +64,7 @@ async function serve(specs) {
 }
 
 const specs = await table();
-assert(specs.length >= 16, `read only ${specs.length} parameters from Parameters.h`);
+assert(specs.length >= 18, `read only ${specs.length} parameters from Parameters.h`);
 const server = await serve(specs);
 const browser = await chromium.launch({channel: 'chrome', headless: true});
 const errors = [];

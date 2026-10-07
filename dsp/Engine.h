@@ -21,8 +21,7 @@
 // smears the input before it enters, Post blur smears what comes out. Bucket
 // compresses what it writes and expands what it reads, with the hiss in between.
 //
-// Repeats is how many echoes until the tail is 60 dB down, held at any Cross; at its
-// top the loop does not decay at all.
+// Repeats is how many echoes until the tail is 60 dB down, held at any Cross.
 //
 // Times: left is the stock, its time stored (ms, or beats under Sync); right is the
 // slide, left times Ratio or left plus Difference.

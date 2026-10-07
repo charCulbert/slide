@@ -3,8 +3,7 @@
 // picture too, each gesture level with its rail.
 //
 // The picture: two lines, left (L) and right (R), each a row of echoes. L is the
-// stock and R the slide, R's time held to L's by a ratio or a difference. The time
-// axis is log from 10 ms to 10 s, then a perspective stretch to ∞ at the edge. The
+// stock and R the slide, R's time held to L's by a ratio or a difference. The
 // band from the first echo to the glass is the loop; before it is the input's (Pre
 // blur), after the glass the output's (Post blur). The glass sits on the tail:
 // sideways is Repeats, up and down is Tone.
@@ -14,7 +13,7 @@
 // written down here except which identifier each gesture moves. Continuous
 // parameters are compost value controls sharing the canvas as their event target,
 // so keyboard, ARIA and the gesture lifecycle come from compost and every change
-// leaves as a normal compost parameter event. Link, Sync and Medium are compost
+// leaves as a normal compost parameter event. Link, Sync and the Mod type are compost
 // buttons laid over the canvas where their chips are drawn.
 
 import './compost/components/compost-button.js';
@@ -836,8 +835,8 @@ export class SlideFace extends HTMLElement {
 
   /** Echoes as strokes around a row, the loudest per pixel column; a smear is drawn
    * as several faint copies side by side. The model lists only so many echoes, so
-   * past the last one each line carries on as an envelope, out into the perspective
-   * stretch, so a long tail never just stops. The envelope starts at the level the
+   * past the last one each line carries on as an envelope, so a long tail never just
+   * stops. The envelope starts at the level the
    * listed echoes end on, falls at the rate they were falling, and is drawn the way
    * they are, so the join does not show. */
   drawEchoes(list, X, rows, half, xMax, dpr, ln) {

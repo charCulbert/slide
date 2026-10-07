@@ -177,7 +177,7 @@ void pluginDelays()
 void parameterTable()
 {
     using namespace slide;
-    // Ids run 0 to 15 in table order, one state slot each.
+    // Ids run in table order, one state slot each.
     CHECK(parameters.size() == stateValueCount);
     for (size_t i = 0; i < parameters.size(); ++i) CHECK(parameters[i].id == i);
 
@@ -299,9 +299,7 @@ void parameterText()
     CHECK(params->text_to_value(plugin.p, slide::modType, "2", &value) && value == 2);
 
 
-    // An id out of the table is not a parameter at all. (Asking the extension about
-    // one is host misbehaviour, which clap-helpers turns into a hard stop, so the
-    // question is asked of the table.)
+    // An id out of the table is not a parameter at all.
     CHECK(findParameter(99) == nullptr && clampParameter(99, 1) == 0);
 }
 
@@ -1136,9 +1134,6 @@ void bucketDecays()
         CHECK(energy(out, s * second, (s + 1) * second) <= energy(out, (s - 1) * second, s * second) * 1.05);
 }
 
-// Each blur, at its top, changes what comes out, and stays finite and in bounds.
-// The Loop blur only touches what goes round again, so the comparison starts after
-// the first echo of both lines.
 // A blur smears an echo around its time, not after it: the lines are read early by
 // each blur's lag, so the echo's energy stays centred where the picture draws it,
 // at long times and at short ones, where a blur shrinks to fit.
@@ -1169,6 +1164,9 @@ void blursKeepTime()
             }
 }
 
+// Each blur, at its top, changes what comes out, and stays finite and in bounds.
+// The Loop blur only touches what goes round again, so the comparison starts after
+// the first echo of both lines.
 void blursChangeTheSound()
 {
     using namespace slide;

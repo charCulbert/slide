@@ -5,8 +5,7 @@
 
 // The pure formulas shared by the engine and the face. Every function here is
 // total: it clamps or substitutes rather than returning a non-finite number, so the
-// face can call it while a gesture is still mid-flight. `ui/laws.js` is the same
-// code in JavaScript and `tests/laws-fixture.json` pins the two together.
+// face can call it while a gesture is still mid-flight.
 namespace slide::laws
 {
 
