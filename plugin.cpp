@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <optional>
 #include <type_traits>
 #include "core/messages.h"
 #include "core/resources.h"
@@ -47,8 +48,12 @@ struct MyPlugin
     webview::Gui gui;
     uint32_t guiWidth = 765, guiHeight = 530;
     std::atomic<bool> uiReady{false}, valuesDirty{false};
-    double sentBpm = 0;
-    double sentWobble[2] {};
+    struct Visual
+    {
+        double bpm, wobble[2];
+        bool operator==(const Visual &) const = default;
+    };
+    std::optional<Visual> sentVisual;
     double textSync = 0; // main thread: the Sync the host's text was last drawn for
 };
 
@@ -439,7 +444,7 @@ static bool PluginReceiveMessage(MyPlugin *plugin, const core::Value &message)
     if (type == "ready")
     {
         plugin->uiReady.store(true, std::memory_order_release);
-        plugin->sentBpm = 0;
+        plugin->sentVisual.reset();
         PluginSendMetadata(plugin);
         PluginSendValues(plugin);
         return true;
@@ -447,14 +452,11 @@ static bool PluginReceiveMessage(MyPlugin *plugin, const core::Value &message)
 
     if (type == "visual")
     {
-        const double bpm = plugin->engine.bpm();
-        const double l = plugin->engine.wobble(0), r = plugin->engine.wobble(1);
-        if (bpm != plugin->sentBpm || l != plugin->sentWobble[0] || r != plugin->sentWobble[1])
+        const MyPlugin::Visual now{plugin->engine.bpm(), {plugin->engine.wobble(0), plugin->engine.wobble(1)}};
+        if (plugin->sentVisual != now)
         {
-            plugin->sentBpm = bpm;
-            plugin->sentWobble[0] = l;
-            plugin->sentWobble[1] = r;
-            plugin->gui.send(core::Value::Map{{"type", "visual"}, {"bpm", bpm}, {"wobble", core::Value::Array{l, r}}});
+            plugin->sentVisual = now;
+            plugin->gui.send(core::Value::Map{{"type", "visual"}, {"bpm", now.bpm}, {"wobble", core::Value::Array{now.wobble[0], now.wobble[1]}}});
         }
         return true;
     }

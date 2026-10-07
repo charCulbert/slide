@@ -27,6 +27,7 @@ struct Recipe
 };
 
 inline constexpr Recipe cleanRecipe { 0, 0, 0, 0, openHighCutHz, false, 0, 0, 0 };
+inline constexpr double modBWearScale = 0.7;
 
 /// Mod A (0), B (1) or C (2) at an amount of 0–1.
 inline Recipe recipeAt(int medium, double wear01) noexcept
@@ -34,7 +35,7 @@ inline Recipe recipeAt(int medium, double wear01) noexcept
     const auto w = std::clamp(finiteOr(wear01, 0.0), 0.0, 1.0);
     if (w <= 0 || medium < 0 || medium > 2) return cleanRecipe;
 
-    const auto amt = std::pow(medium == 1 ? 0.7 * w : w, 1.8) * 5.0;
+    const auto amt = std::pow(medium == 1 ? modBWearScale * w : w, 1.8) * 5.0;
     Recipe recipe = cleanRecipe;
     double loss = openHighCutHz;
     switch (medium)
@@ -54,7 +55,7 @@ inline Recipe recipeAt(int medium, double wear01) noexcept
     }
     recipe.sine *= amt;
     recipe.rand *= amt;
-    const auto hissAmt = medium == 1 ? std::pow(0.49 * w, 1.8) * 5.0 : amt;
+    const auto hissAmt = medium == 1 ? std::pow(modBWearScale * modBWearScale * w, 1.8) * 5.0 : amt;
     recipe.hiss *= std::min(4.0, 0.9 * hissAmt);
     recipe.lossHz = loss + (openHighCutHz - loss) * (1.0 - std::min(1.0, amt * 2.0));
     return recipe;

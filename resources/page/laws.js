@@ -20,15 +20,16 @@ const cleanRecipe = Object.freeze({
   sine: 0, sineHz: 0, rand: 0, randHz: 0, lossHz: openHighCutHz, lossTracksTime: false,
   hiss: 0, drive: 0, compand: 0
 });
+const modBWearScale = 0.7;
 
-/** Tape (0), Oil can (1) or Bucket (2) at a Wear of 0–1. `rand` is the depth before
+/** Mod A (0), B (1) or C (2) at an amount of 0–1. `rand` is the depth before
  * the engine's ×6, `drive` of 0 means no saturation, and `compand` is how far toward
  * 2:1 the compander works. */
 export function recipeAt(medium, wear01) {
   const w = clamp(finiteOr(wear01, 0), 0, 1);
   if (!(w > 0) || medium < 0 || medium > 2) return { ...cleanRecipe };
 
-  const amt = Math.pow(medium === 1 ? 0.7 * w : w, 1.8) * 5;
+  const amt = Math.pow(medium === 1 ? modBWearScale * w : w, 1.8) * 5;
   let recipe, loss;
   if (medium === 0) {
     recipe = { ...cleanRecipe, sine: 0.0025, sineHz: 0.7, rand: 0.0012, randHz: 6, hiss: 0.0003 };
@@ -43,7 +44,7 @@ export function recipeAt(medium, wear01) {
   }
   recipe.sine *= amt;
   recipe.rand *= amt;
-  const hissAmt = medium === 1 ? Math.pow(0.49 * w, 1.8) * 5 : amt;
+  const hissAmt = medium === 1 ? Math.pow(modBWearScale * modBWearScale * w, 1.8) * 5 : amt;
   recipe.hiss *= Math.min(4, 0.9 * hissAmt);
   recipe.lossHz = loss + (openHighCutHz - loss) * (1 - Math.min(1, amt * 2));
   return recipe;
