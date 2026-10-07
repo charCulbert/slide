@@ -1,7 +1,6 @@
 # Slide
 
-A stereo delay plug-in inspired by slide rules ([see the International Slide Rule
-Museum](https://www.sliderulemuseum.com/)).
+A stereo delay plug-in inspired by [slide rules](https://www.sliderulemuseum.com/).
 
 ## Download
 
