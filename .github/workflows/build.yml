@@ -57,7 +57,11 @@ jobs:
         run: |
           plugin=$(find build -name "$NAME.clap" -print -quit)
           test -n "$plugin"
-          cargo run --release --locked --manifest-path validator/Cargo.toml -- validate "$plugin" --only-failed
+          # clap-validator 0.4.1 deadlocks on any second preset in a container location
+          # (begin_preset holds its result lock while flush_preset takes it again), so its two
+          # preset-discovery tests hang; tests/SlideTests.cpp covers discovery and loading.
+          cargo run --release --locked --manifest-path validator/Cargo.toml -- validate "$plugin" --only-failed \
+            -x preset-discovery-crawl -x preset-discovery-load
 
       - name: Validate VST3
         run: |
