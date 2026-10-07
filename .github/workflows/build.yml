@@ -122,3 +122,34 @@ jobs:
           name: ${{ env.TARGET }}-wclap
           path: build-wclap/${{ env.TARGET }}.wclap.tar.gz
           if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [native, wclap]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package
+        run: |
+          mkdir dist
+          for pair in macos-latest:macOS windows-latest:Windows ubuntu-latest:Linux; do
+            os=${pair%%:*}; label=${pair##*:}
+            out="pack/Slide Lab"
+            rm -rf pack; mkdir -p "$out"
+            find "artifacts/$TARGET-$os" -maxdepth 4 \( -name "$NAME.clap" -o -name "$NAME.clap.resources" \
+              -o -name "$NAME.vst3" -o -name "$NAME.component" \) -prune -exec cp -R {} "$out/" \;
+            (cd pack && zip -qr "../dist/Slide-Lab-$label.zip" "Slide Lab")
+          done
+          cp "artifacts/$TARGET-wclap/$TARGET.wclap.tar.gz" dist/
+          ls -l dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --generate-notes
