@@ -123,8 +123,8 @@ jobs:
       - name: Upload WCLAP
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.TARGET }}-wclap
           path: build-wclap/${{ env.TARGET }}.wclap.tar.gz
+          archive: false
           if-no-files-found: error
 
   release:
@@ -150,7 +150,8 @@ jobs:
               -o -name "$NAME.vst3" -o -name "$NAME.component" \) -prune -exec cp -R {} "$out/" \;
             (cd pack && zip -qr "../dist/Slide-$label.zip" "Slide")
           done
-          cp "artifacts/$TARGET-wclap/$TARGET.wclap.tar.gz" dist/
+          find artifacts -name "$TARGET.wclap.tar.gz" -type f -exec cp {} dist/ \;
+          test -f "dist/$TARGET.wclap.tar.gz"
           ls -l dist
 
       - name: Publish
