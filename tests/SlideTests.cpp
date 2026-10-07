@@ -218,6 +218,23 @@ void parameterTable()
     for (const auto& p : parameters) CHECK(defaults[p.id] == p.initial);
 }
 
+// Under Sync the host reads and writes Left as a note: its time at referenceBpm.
+void syncedLeftText()
+{
+    using namespace slide;
+    Plugin plugin;
+    char text[32];
+    double value = 0;
+    CHECK(plugin.params->value_to_text(plugin.p, leftTime, 250, text, sizeof text) && !std::strcmp(text, "250.0 ms"));
+    plugin.set(sync, 1);
+    CHECK(plugin.params->value_to_text(plugin.p, leftTime, 250, text, sizeof text) && !std::strcmp(text, "1/8"));
+    CHECK(plugin.params->value_to_text(plugin.p, leftTime, 260, text, sizeof text) && !std::strcmp(text, "~1/8"));
+    CHECK(plugin.params->value_to_text(plugin.p, leftTime, 500.0 / 3, text, sizeof text) && !std::strcmp(text, "1/8T"));
+    CHECK(plugin.params->text_to_value(plugin.p, leftTime, "1/8D", &value) && std::abs(value - 375) < 1e-9);
+    CHECK(plugin.params->text_to_value(plugin.p, leftTime, "~1/4", &value) && std::abs(value - 500) < 1e-9);
+    CHECK(plugin.params->text_to_value(plugin.p, leftTime, "1/2t", &value) && std::abs(value - (2000.0 / 3)) < 1e-9);
+}
+
 void parameterText()
 {
     using namespace slide;
@@ -1207,6 +1224,20 @@ std::vector<Section> buildFixture()
                     }
         sections.push_back({ "lineTimes", std::move(rows) });
     }
+    {
+        std::vector<Row> rows;
+        for (const auto& n : notes) rows.push_back({ { "beats", n.beats } });
+        sections.push_back({ "notes", std::move(rows) });
+    }
+    {
+        std::vector<Row> rows;
+        for (double beats : { 0.01, 0.3, 0.5, 0.52, 0.74, 1.0, 1.3, 2.9, 7.0, 40.0 })
+        {
+            const auto n = nearestNote(beats);
+            rows.push_back({ { "in", beats }, { "beats", n.note.beats }, { "on", n.on ? 1.0 : 0.0 } });
+        }
+        sections.push_back({ "nearestNote", std::move(rows) });
+    }
     sections.push_back({ "constants", { { { "minTimeMs", minTimeMs }, { "maxTimeMs", maxTimeMs },
                                           { "openHighCutHz", openHighCutHz }, { "maxRepeats", maxRepeats },
                                           { "referenceBpm", referenceBpm } } } });
@@ -1259,6 +1290,7 @@ int main(int argc, char** argv)
     passThrough();
     doublePassThrough();
     flushWhileInactive();
+    syncedLeftText();
     pluginDelays();
     parameterTable();
     parameterText();

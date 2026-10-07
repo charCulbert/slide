@@ -2,6 +2,7 @@
 #include "clap/ext/draft/webview.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <cctype>
 #include <string.h>
 #include <algorithm>
 #include <atomic>
@@ -48,6 +49,7 @@ struct MyPlugin
     std::atomic<bool> uiReady{false}, valuesDirty{false};
     double sentBpm = 0;
     double sentWobble[2] {};
+    double textSync = 0; // main thread: the Sync the host's text was last drawn for
 };
 
 static void PluginApplyEvent(MyPlugin *plugin, const clap_event_header_t *event);
@@ -138,6 +140,13 @@ static const clap_plugin_params_t extensionParams = {
             return false;
         value = clampParameter(id, value);
         const auto options = enumNames(id);
+        // under Sync, Left reads as the note it is (its time is written at referenceBpm)
+        if (id == leftTime && ((MyPlugin *)_plugin->plugin_data)->values[sync].load(std::memory_order_relaxed) >= 0.5)
+        {
+            const auto n = laws::nearestNote(value * laws::referenceBpm / 60000.0);
+            const int written = snprintf(text, size, "%s%s", n.on ? "" : "~", n.note.name);
+            return written >= 0 && (uint32_t)written < size;
+        }
         const int written = !options.empty()
             ? snprintf(text, size, "%s", options[(size_t)value])
             : snprintf(text, size, "%.*f%s%s", p->digits, value, *p->unit && strcmp(p->unit, "%") ? " " : "", p->unit);
@@ -156,6 +165,19 @@ static const clap_plugin_params_t extensionParams = {
                 *value = (double)i;
                 return true;
             }
+        const auto same = [](const char *a, const char *b) {
+            for (; *a && *b; ++a, ++b)
+                if (std::tolower((unsigned char)*a) != std::tolower((unsigned char)*b))
+                    return false;
+            return *a == *b;
+        };
+        if (id == leftTime)
+            for (const auto &n : laws::notes)
+                if (same(n.name, text[0] == '~' ? text + 1 : text))
+                {
+                    *value = clampParameter(id, n.beats * 60000.0 / laws::referenceBpm);
+                    return true;
+                }
         char *end = nullptr;
         const double parsed = strtod(text, &end);
         if (end == text || !std::isfinite(parsed))
@@ -470,8 +492,20 @@ static void PluginSetValue(MyPlugin *plugin, clap_id id, double value)
     plugin->revision.fetch_add(1, std::memory_order_release);
 }
 
+// Left's text depends on Sync, so the host redraws it whenever Sync moves (main thread).
+static void PluginRescanTextOnSync(MyPlugin *plugin)
+{
+    const double now = plugin->values[sync].load(std::memory_order_relaxed);
+    if (now == plugin->textSync)
+        return;
+    plugin->textSync = now;
+    if (plugin->hostParams)
+        plugin->hostParams->rescan(plugin->host, CLAP_PARAM_RESCAN_TEXT);
+}
+
 static void PluginNotifyValuesChanged(MyPlugin *plugin)
 {
+    PluginRescanTextOnSync(plugin);
     if (!plugin->valuesDirty.exchange(true, std::memory_order_acq_rel))
         plugin->host->request_callback(plugin->host);
     if (plugin->hostParams)
@@ -703,6 +737,7 @@ static const clap_plugin_t pluginClass = {
     .on_main_thread = [](const clap_plugin *_plugin)
     {
         MyPlugin *plugin = (MyPlugin *)_plugin->plugin_data;
+        PluginRescanTextOnSync(plugin);
         if (plugin->valuesDirty.exchange(false, std::memory_order_acq_rel) &&
             plugin->uiReady.load(std::memory_order_acquire))
             PluginSendValues(plugin);

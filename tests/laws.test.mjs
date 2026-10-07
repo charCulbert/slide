@@ -66,6 +66,17 @@ test('lineTimes', () => {
   }
 });
 
+test('notes', () => {
+  assert.equal(laws.notes.length, fixture.notes.length);
+  fixture.notes.forEach((row, i) => close(laws.notes[i][0], row.beats, `note ${i}`));
+  for (const row of fixture.nearestNote) {
+    const n = laws.nearestNote(row.in);
+    close(n.beats, row.beats, JSON.stringify(row));
+    assert.equal(n.on, Boolean(row.on), JSON.stringify(row));
+  }
+  assert.deepEqual(['1/8', '1/8D', '1/8T'].map(name => laws.notes.find(n => n[1] === name)[0]), [0.5, 0.75, 1 / 3]);
+});
+
 test('constants', () => {
   for (const [key, value] of Object.entries(fixture.constants[0])) assert.equal(laws[key], value, key);
 });

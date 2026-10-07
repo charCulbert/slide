@@ -190,6 +190,46 @@
     {"leftMs": 2900, "sync": 1, "bpm": 147, "byRatio": 0, "relation": -150, "left": 2367.34693877551, "right": 2217.34693877551},
     {"leftMs": 2900, "sync": 1, "bpm": 147, "byRatio": 0, "relation": 4000, "left": 2367.34693877551, "right": 3000}
   ],
+  "notes": [
+    {"beats": 0.0208333333333333},
+    {"beats": 0.03125},
+    {"beats": 0.0416666666666667},
+    {"beats": 0.046875},
+    {"beats": 0.0625},
+    {"beats": 0.0833333333333333},
+    {"beats": 0.09375},
+    {"beats": 0.125},
+    {"beats": 0.166666666666667},
+    {"beats": 0.1875},
+    {"beats": 0.25},
+    {"beats": 0.333333333333333},
+    {"beats": 0.375},
+    {"beats": 0.5},
+    {"beats": 0.666666666666667},
+    {"beats": 0.75},
+    {"beats": 1},
+    {"beats": 1.33333333333333},
+    {"beats": 1.5},
+    {"beats": 2},
+    {"beats": 2.66666666666667},
+    {"beats": 3},
+    {"beats": 4},
+    {"beats": 6},
+    {"beats": 8},
+    {"beats": 16}
+  ],
+  "nearestNote": [
+    {"in": 0.01, "beats": 0.0208333333333333, "on": 0},
+    {"in": 0.3, "beats": 0.333333333333333, "on": 0},
+    {"in": 0.5, "beats": 0.5, "on": 1},
+    {"in": 0.52, "beats": 0.5, "on": 0},
+    {"in": 0.74, "beats": 0.75, "on": 0},
+    {"in": 1, "beats": 1, "on": 1},
+    {"in": 1.3, "beats": 1.33333333333333, "on": 0},
+    {"in": 2.9, "beats": 3, "on": 0},
+    {"in": 7, "beats": 8, "on": 0},
+    {"in": 40, "beats": 16, "on": 0}
+  ],
   "constants": [
     {"minTimeMs": 10, "maxTimeMs": 3000, "openHighCutHz": 20000, "maxRepeats": 1000, "referenceBpm": 120}
   ]

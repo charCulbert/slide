@@ -51,6 +51,20 @@ export function recipeAt(medium, wear01) {
 
 export const referenceBpm = 120;
 
+/** Note lengths in beats, with their names: D dotted, T triplet. */
+export const notes = [[1 / 48, '1/128T'], [1 / 32, '1/128'], [1 / 24, '1/64T'], [3 / 64, '1/128D'], [1 / 16, '1/64'],
+  [1 / 12, '1/32T'], [3 / 32, '1/64D'], [1 / 8, '1/32'], [1 / 6, '1/16T'], [3 / 16, '1/32D'], [1 / 4, '1/16'],
+  [1 / 3, '1/8T'], [3 / 8, '1/16D'], [1 / 2, '1/8'], [2 / 3, '1/4T'], [3 / 4, '1/8D'], [1, '1/4'],
+  [4 / 3, '1/2T'], [3 / 2, '1/4D'], [2, '1/2'], [8 / 3, '1/1T'], [3, '1/2D'], [4, '1/1'], [6, '1/1D'],
+  [8, '2/1'], [16, '4/1']];
+
+/** The note nearest a length in beats, and whether it is on it. */
+export function nearestNote(beats) {
+  let best = notes[0];
+  for (const n of notes) if (Math.abs(Math.log(n[0] / beats)) < Math.abs(Math.log(best[0] / beats))) best = n;
+  return {beats: best[0], name: best[1], on: Math.abs(Math.log(best[0] / beats)) < 0.003};
+}
+
 /** The two lines' times in ms, as Laws.h's lineTimes: Left (followed from
  * referenceBpm to the tempo under Sync), and Right from it by Ratio or Difference. */
 export function lineTimes(leftMs, sync, bpm, byRatio, ratio, difference) {

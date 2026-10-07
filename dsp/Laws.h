@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace slide::laws
@@ -61,6 +62,36 @@ inline Recipe recipeAt(int medium, double wear01) noexcept
 
 /// The tempo Left's time is written at: under Sync it follows the tempo from here.
 inline constexpr double referenceBpm = 120;
+
+/// Note lengths in beats, with their names: D dotted, T triplet.
+struct Note
+{
+    double beats;
+    const char* name;
+};
+
+inline constexpr std::array<Note, 26> notes {{
+    { 1.0 / 48, "1/128T" }, { 1.0 / 32, "1/128" }, { 1.0 / 24, "1/64T" }, { 3.0 / 64, "1/128D" }, { 1.0 / 16, "1/64" },
+    { 1.0 / 12, "1/32T" }, { 3.0 / 32, "1/64D" }, { 1.0 / 8, "1/32" }, { 1.0 / 6, "1/16T" }, { 3.0 / 16, "1/32D" },
+    { 1.0 / 4, "1/16" }, { 1.0 / 3, "1/8T" }, { 3.0 / 8, "1/16D" }, { 1.0 / 2, "1/8" }, { 2.0 / 3, "1/4T" },
+    { 3.0 / 4, "1/8D" }, { 1, "1/4" }, { 4.0 / 3, "1/2T" }, { 3.0 / 2, "1/4D" }, { 2, "1/2" }, { 8.0 / 3, "1/1T" },
+    { 3, "1/2D" }, { 4, "1/1" }, { 6, "1/1D" }, { 8, "2/1" }, { 16, "4/1" }
+}};
+
+/// The note nearest a length in beats, and whether it is on it.
+struct NearestNote
+{
+    const Note& note;
+    bool on;
+};
+
+inline NearestNote nearestNote(double beats) noexcept
+{
+    const auto off = [beats](const Note& n) { return std::abs(std::log(n.beats / beats)); };
+    const Note* best = &notes[0];
+    for (const auto& n : notes) if (off(n) < off(*best)) best = &n;
+    return { *best, off(*best) < 0.003 };
+}
 
 /// The two lines' times in ms: Left (followed from referenceBpm to the tempo under
 /// Sync), and Right from it by Ratio or Difference, both held to the time range.

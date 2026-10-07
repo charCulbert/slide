@@ -12,11 +12,7 @@ const CHIPS = [
 ];
 const CHIP_IDS = CHIPS.map(chip => chip.id);
 
-const NOTES = [[1 / 48, '1/128T'], [1 / 32, '1/128'], [1 / 24, '1/64T'], [3 / 64, '1/128D'], [1 / 16, '1/64'],
-  [1 / 12, '1/32T'], [3 / 32, '1/64D'], [1 / 8, '1/32'], [1 / 6, '1/16T'], [3 / 16, '1/32D'], [1 / 4, '1/16'],
-  [1 / 3, '1/8T'], [3 / 8, '1/16D'], [1 / 2, '1/8'], [2 / 3, '1/4T'], [3 / 4, '1/8D'], [1, '1/4'],
-  [4 / 3, '1/2T'], [3 / 2, '1/4D'], [2, '1/2'], [8 / 3, '1/1T'], [3, '1/2D'], [4, '1/1'], [6, '1/1D'],
-  [8, '2/1'], [16, '4/1']];
+const NOTES = laws.notes;
 
 const RATIO_NAMES = ['1:4', '1:3', '1:2', '2:3', '3:4', '1:1', '5:4', '4:3', '3:2', 'φ', '2:1', '3:1', '4:1'];
 const NICE = laws.niceRatios.map((r, i) => [r, RATIO_NAMES[i]]);
@@ -281,17 +277,12 @@ export class SlideFace extends HTMLElement {
     return Math.max(...this.times()) * this.repeats();
   }
 
-  nearestNote(ms) {
-    const beats = ms / this.beatMs();
-    let best = NOTES[0];
-    for (const n of NOTES) if (Math.abs(Math.log(n[0] / beats)) < Math.abs(Math.log(best[0] / beats))) best = n;
-    return {beats: best[0], name: best[1], ms: best[0] * this.beatMs()};
-  }
+  nearestNote(ms) { const n = laws.nearestNote(ms / this.beatMs()); return {...n, ms: n.beats * this.beatMs()}; }
 
   nameT(ms) {
     if (!this.sync()) return fmt(ms);
     const n = this.nearestNote(ms);
-    return Math.abs(Math.log(n.ms / ms)) < 0.003 ? n.name : `~${n.name}`;
+    return n.on ? n.name : `~${n.name}`;
   }
 
   relWord() {
