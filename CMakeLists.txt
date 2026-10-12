@@ -7,7 +7,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
 endif()
 
-project(Slide VERSION 1.0.0 LANGUAGES C CXX)
+project(Slide VERSION 0.1.5 LANGUAGES C CXX)
 if(APPLE)
     enable_language(OBJC OBJCXX)
 endif()
@@ -24,17 +24,25 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
-set(LIBS "${CMAKE_CURRENT_SOURCE_DIR}/libs")
+include(FetchContent)
+FetchContent_Declare(clap_template
+    GIT_REPOSITORY https://github.com/charCulbert/char-clap-template.git
+    GIT_TAG v0.1.0
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR none)
+FetchContent_MakeAvailable(clap_template)
+set(LIBS "${clap_template_SOURCE_DIR}/libs")
+set(CHARDSP "${CMAKE_CURRENT_SOURCE_DIR}/libs/chardsp")
 include(${LIBS}/core/core.cmake)
 include(${LIBS}/webview/webview.cmake)
 
-if(NOT EXISTS "${LIBS}/chardsp/chardsp/chardsp_OnePole.h")
+if(NOT EXISTS "${CHARDSP}/chardsp/chardsp_OnePole.h")
     message(FATAL_ERROR "libs/chardsp is empty: run `git submodule update --init`")
 endif()
 
 add_library(Slide_impl STATIC plugin.cpp)
 target_include_directories(Slide_impl PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/dsp" "${LIBS}/chardsp")
+    "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/dsp" "${CHARDSP}")
 core_add_to(Slide_impl)
 webview_add_to(Slide_impl)
 
