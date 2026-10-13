@@ -30,8 +30,14 @@ cmake --build build
 ```
 
 That builds CLAP, VST3, AU (macOS) and a standalone app into `build/`. It needs
-CMake 3.28 or later and a C++20 compiler; on Linux also `libasound2-dev`,
-`libgtk-3-dev` and `libwebkit2gtk-4.1-dev`.
+CMake 3.28 or later and a C++20 compiler; on Linux also `libasound2-dev`
+and `libx11-dev`.
+
+A web page interface needs no GTK or WebKit to build. To show the page, the
+machine running the plugin needs WebKitGTK (`libwebkit2gtk-4.1-0` on Debian
+and Ubuntu) and glibc: the page runs in a helper process, started through
+glibc's dynamic loader. Without WebKitGTK the plugin still loads, with no
+interface.
 
 WCLAP, for browser hosts, needs the [WASI SDK](https://github.com/WebAssembly/wasi-sdk/releases):
 
